@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { Workflow } from "lucide-react";
+import { Workflow, Search, X, Pin, PinOff } from "lucide-react";
 import {
   ReactFlow,
   Background,
@@ -19,8 +19,7 @@ import "@xyflow/react/dist/style.css";
 
 interface CrateNode {
   name: string;
-  /** 0–100: how often this crate gets rebuilt in this scenario */
-  heat: number;
+  heat: number; // 0–100
   deps: string[];
 }
 
@@ -28,30 +27,39 @@ interface Scenario {
   id: number;
   name: string;
   profile: "dev" | "release";
-  frequency: number; // 0–100
+  /** Per-user execution counts — aggregated for display */
+  userFreqs: Record<string, number>;
   pinned: boolean;
+  avgBuildMs: number;
+  llvmLines: number;
+  cratesInGraph: number;
   crateGraph: CrateNode[];
 }
 
 // ── Heat color scale ─────────────────────────────────────────────────────────
 
 function heatColor(heat: number): { border: string; bg: string; text: string } {
-  if (heat >= 80) return { border: "#ef4444", bg: "#451a1a", text: "#fca5a5" };
-  if (heat >= 60) return { border: "#f59e0b", bg: "#451a03", text: "#fcd34d" };
-  if (heat >= 40) return { border: "#eab308", bg: "#3a3505", text: "#fde68a" };
-  if (heat >= 20) return { border: "#6366f1", bg: "#1e1b4b", text: "#a5b4fc" };
-  return { border: "#334155", bg: "#0f172a", text: "#64748b" };
+  if (heat >= 80) return { border: "#ef4444", bg: "#3b1118", text: "#fca5a5" };
+  if (heat >= 60) return { border: "#f59e0b", bg: "#352008", text: "#fcd34d" };
+  if (heat >= 40) return { border: "#eab308", bg: "#2e2a08", text: "#fde68a" };
+  if (heat >= 20) return { border: "#6366f1", bg: "#1c1a3a", text: "#a5b4fc" };
+  return { border: "#334155", bg: "#111827", text: "#64748b" };
 }
 
 // ── Mock data ────────────────────────────────────────────────────────────────
+
+const USERS = ["alice", "bob", "carol", "dave"];
 
 const MOCK_SCENARIOS: Scenario[] = [
   {
     id: 1,
     name: "cargo test -p auth_core",
     profile: "dev",
-    frequency: 97,
+    userFreqs: { alice: 45, bob: 25, carol: 18, dave: 9 },
     pinned: true,
+    avgBuildMs: 4310,
+    llvmLines: 184200,
+    cratesInGraph: 38,
     crateGraph: [
       {
         name: "auth_core",
@@ -72,8 +80,11 @@ const MOCK_SCENARIOS: Scenario[] = [
     id: 2,
     name: "cargo build --workspace",
     profile: "dev",
-    frequency: 84,
+    userFreqs: { alice: 20, bob: 35, carol: 15, dave: 14 },
     pinned: true,
+    avgBuildMs: 18620,
+    llvmLines: 921000,
+    cratesInGraph: 142,
     crateGraph: [
       {
         name: "wezel_app",
@@ -103,8 +114,11 @@ const MOCK_SCENARIOS: Scenario[] = [
     id: 3,
     name: "cargo test -p pheromone_agent",
     profile: "dev",
-    frequency: 72,
+    userFreqs: { alice: 38, bob: 12, carol: 14, dave: 8 },
     pinned: false,
+    avgBuildMs: 6060,
+    llvmLines: 210000,
+    cratesInGraph: 51,
     crateGraph: [
       {
         name: "pheromone_agent",
@@ -126,8 +140,11 @@ const MOCK_SCENARIOS: Scenario[] = [
     id: 4,
     name: "cargo build -p forager --release",
     profile: "release",
-    frequency: 58,
+    userFreqs: { alice: 8, bob: 10, carol: 28, dave: 12 },
     pinned: true,
+    avgBuildMs: 42400,
+    llvmLines: 1120000,
+    cratesInGraph: 189,
     crateGraph: [
       {
         name: "forager",
@@ -159,8 +176,11 @@ const MOCK_SCENARIOS: Scenario[] = [
     id: 5,
     name: "cargo clippy -p wezel_ui",
     profile: "dev",
-    frequency: 45,
+    userFreqs: { alice: 5, bob: 8, carol: 12, dave: 20 },
     pinned: false,
+    avgBuildMs: 8200,
+    llvmLines: 340000,
+    cratesInGraph: 67,
     crateGraph: [
       { name: "wezel_ui", heat: 90, deps: ["api_client", "theme"] },
       { name: "api_client", heat: 55, deps: ["proto_gen", "reqwest"] },
@@ -175,8 +195,11 @@ const MOCK_SCENARIOS: Scenario[] = [
     id: 6,
     name: "cargo test --workspace --release",
     profile: "release",
-    frequency: 31,
+    userFreqs: { bob: 18, carol: 8, dave: 5 },
     pinned: false,
+    avgBuildMs: 63200,
+    llvmLines: 1540000,
+    cratesInGraph: 212,
     crateGraph: [
       { name: "wezel_app", heat: 88, deps: ["auth_core", "api_server"] },
       { name: "auth_core", heat: 80, deps: ["crypto_utils"] },
@@ -191,8 +214,11 @@ const MOCK_SCENARIOS: Scenario[] = [
     id: 7,
     name: "cargo build -p db_migrations",
     profile: "dev",
-    frequency: 26,
+    userFreqs: { alice: 3, carol: 18, dave: 5 },
     pinned: false,
+    avgBuildMs: 3200,
+    llvmLines: 98000,
+    cratesInGraph: 24,
     crateGraph: [
       { name: "db_migrations", heat: 95, deps: ["sqlx", "config"] },
       { name: "config", heat: 40, deps: ["serde", "toml"] },
@@ -205,8 +231,11 @@ const MOCK_SCENARIOS: Scenario[] = [
     id: 8,
     name: "cargo test -p proto_gen",
     profile: "dev",
-    frequency: 19,
+    userFreqs: { bob: 4, dave: 15 },
     pinned: false,
+    avgBuildMs: 11000,
+    llvmLines: 420000,
+    cratesInGraph: 78,
     crateGraph: [
       { name: "proto_gen", heat: 92, deps: ["prost", "tonic", "serde"] },
       { name: "prost", heat: 10, deps: [] },
@@ -219,37 +248,48 @@ const MOCK_SCENARIOS: Scenario[] = [
 // ── Theme ────────────────────────────────────────────────────────────────────
 
 const C = {
-  bg: "#0f0f1a",
-  surface: "#16162a",
-  surface2: "#1e1e3a",
-  border: "#2d2d4a",
-  text: "#e2e8f0",
-  textDim: "#64748b",
+  bg: "#0a0a14",
+  surface: "#12121f",
+  surface2: "#1a1a2e",
+  surface3: "#22223a",
+  border: "#262640",
+  text: "#d4d4e8",
+  textMid: "#9494b8",
+  textDim: "#5a5a7a",
   accent: "#6366f1",
-  accentDim: "#4f46e5",
   green: "#22c55e",
-  greenBg: "#052e16",
   amber: "#f59e0b",
-  amberBg: "#451a03",
   red: "#ef4444",
   pink: "#ec4899",
   cyan: "#06b6d4",
 };
 
-const FONT =
-  "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const MONO = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
+const SANS = "'Inter', -apple-system, system-ui, sans-serif";
 
-// ── Graph layout helper ──────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtMs(ms: number): string {
+  if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${ms}ms`;
+}
+
+function fmtCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return `${n}`;
+}
+
+// ── Graph layout ─────────────────────────────────────────────────────────────
 
 function layoutGraph(crateGraph: CrateNode[]): {
   nodes: Node[];
   edges: Edge[];
 } {
-  // Build adjacency: a map from crate name to its index
   const nameToIdx = new Map<string, number>();
   crateGraph.forEach((c, i) => nameToIdx.set(c.name, i));
 
-  // Compute depth (layer) for each node via topological sort
   const depths = new Map<string, number>();
   function getDepth(name: string): number {
     if (depths.has(name)) return depths.get(name)!;
@@ -258,44 +298,38 @@ function layoutGraph(crateGraph: CrateNode[]): {
       depths.set(name, 0);
       return 0;
     }
-    const maxChildDepth = Math.max(
-      ...node.deps.filter((d) => nameToIdx.has(d)).map((d) => getDepth(d)),
-    );
-    const d = maxChildDepth + 1;
+    const d =
+      1 +
+      Math.max(
+        ...node.deps.filter((d) => nameToIdx.has(d)).map((d) => getDepth(d)),
+      );
     depths.set(name, d);
     return d;
   }
   crateGraph.forEach((c) => getDepth(c.name));
 
-  // Group by layer (invert: root at top)
   const maxDepth = Math.max(...Array.from(depths.values()), 0);
   const layers: string[][] = Array.from({ length: maxDepth + 1 }, () => []);
   crateGraph.forEach((c) => {
-    const layer = maxDepth - (depths.get(c.name) ?? 0);
-    layers[layer].push(c.name);
+    layers[maxDepth - (depths.get(c.name) ?? 0)].push(c.name);
   });
 
-  const NODE_W = 170;
-  const NODE_H = 52;
-  const GAP_X = 40;
-  const GAP_Y = 90;
-
+  const NW = 150,
+    NH = 44,
+    GX = 32,
+    GY = 72;
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  layers.forEach((layer, layerIdx) => {
-    const layerWidth = layer.length * NODE_W + (layer.length - 1) * GAP_X;
-    const offsetX = -layerWidth / 2;
-    layer.forEach((name, colIdx) => {
+  layers.forEach((layer, ly) => {
+    const w = layer.length * NW + (layer.length - 1) * GX;
+    layer.forEach((name, ci) => {
       const crate = crateGraph.find((c) => c.name === name)!;
       const colors = heatColor(crate.heat);
       nodes.push({
         id: name,
-        type: "crateNode",
-        position: {
-          x: offsetX + colIdx * (NODE_W + GAP_X),
-          y: layerIdx * (NODE_H + GAP_Y),
-        },
+        type: "crate",
+        position: { x: -w / 2 + ci * (NW + GX), y: ly * (NH + GY) },
         data: { label: name, heat: crate.heat, colors },
       });
     });
@@ -304,17 +338,17 @@ function layoutGraph(crateGraph: CrateNode[]): {
   crateGraph.forEach((crate) => {
     crate.deps.forEach((dep) => {
       if (nameToIdx.has(dep)) {
-        const srcColors = heatColor(crate.heat);
+        const col = heatColor(crate.heat);
         edges.push({
           id: `${crate.name}->${dep}`,
           source: crate.name,
           target: dep,
-          style: { stroke: srcColors.border, strokeWidth: 1.5, opacity: 0.5 },
+          style: { stroke: col.border, strokeWidth: 1.5, opacity: 0.45 },
           markerEnd: {
             type: MarkerType.ArrowClosed,
-            color: srcColors.border,
-            width: 14,
-            height: 14,
+            color: col.border,
+            width: 12,
+            height: 12,
           },
         });
       }
@@ -324,7 +358,7 @@ function layoutGraph(crateGraph: CrateNode[]): {
   return { nodes, edges };
 }
 
-// ── Custom ReactFlow node ────────────────────────────────────────────────────
+// ── ReactFlow crate node ─────────────────────────────────────────────────────
 
 function CrateNodeComponent({ data }: NodeProps) {
   const d = data as {
@@ -336,16 +370,16 @@ function CrateNodeComponent({ data }: NodeProps) {
     <div
       style={{
         background: d.colors.bg,
-        border: `2px solid ${d.colors.border}`,
-        borderRadius: 8,
-        padding: "6px 14px",
+        border: `1.5px solid ${d.colors.border}`,
+        borderRadius: 6,
+        padding: "4px 10px",
         color: d.colors.text,
-        fontSize: 12,
-        fontFamily: "'JetBrains Mono', monospace, " + FONT,
+        fontSize: 11,
+        fontFamily: MONO,
         fontWeight: 500,
-        minWidth: 120,
+        minWidth: 100,
         textAlign: "center",
-        boxShadow: `0 0 10px ${d.colors.border}33`,
+        boxShadow: `0 0 8px ${d.colors.border}22`,
       }}
     >
       <Handle
@@ -353,20 +387,20 @@ function CrateNodeComponent({ data }: NodeProps) {
         position={Position.Top}
         style={{
           background: d.colors.border,
-          width: 6,
-          height: 6,
+          width: 5,
+          height: 5,
           border: "none",
         }}
       />
       <div
         style={{
-          fontSize: 9,
+          fontSize: 8,
           color: d.colors.border,
-          letterSpacing: 1,
-          marginBottom: 2,
+          letterSpacing: 0.8,
+          marginBottom: 1,
         }}
       >
-        {d.heat}% hot
+        {d.heat}%
       </div>
       <div>{d.label}</div>
       <Handle
@@ -374,8 +408,8 @@ function CrateNodeComponent({ data }: NodeProps) {
         position={Position.Bottom}
         style={{
           background: d.colors.border,
-          width: 6,
-          height: 6,
+          width: 5,
+          height: 5,
           border: "none",
         }}
       />
@@ -383,60 +417,20 @@ function CrateNodeComponent({ data }: NodeProps) {
   );
 }
 
-const nodeTypes = { crateNode: CrateNodeComponent };
+const nodeTypes = { crate: CrateNodeComponent };
 
-// ── Small UI components ──────────────────────────────────────────────────────
+// ── Small components ─────────────────────────────────────────────────────────
 
-function StatusPill({
-  label,
-  status,
-  color,
-}: {
-  label: string;
-  status: string;
-  color: string;
-}) {
+function FreqBar({ value }: { value: number }) {
+  const col = value >= 70 ? C.red : value >= 40 ? C.amber : C.accent;
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        background: C.surface2,
-        border: `1px solid ${C.border}`,
-        borderRadius: 20,
-        padding: "4px 12px 4px 8px",
-        fontSize: 11,
-        fontWeight: 500,
-      }}
-    >
-      <div
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: "50%",
-          background: color,
-          boxShadow: `0 0 6px ${color}`,
-        }}
-      />
-      <span style={{ color: C.textDim, marginRight: 2 }}>{label}</span>
-      <span style={{ color }}>{status}</span>
-    </div>
-  );
-}
-
-function FrequencyBar({ value }: { value: number }) {
-  const barColor = value >= 70 ? C.red : value >= 40 ? C.amber : C.accent;
-  return (
-    <div
-      style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 100 }}
-    >
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <div
         style={{
           flex: 1,
-          height: 6,
-          background: C.surface2,
-          borderRadius: 3,
+          height: 4,
+          background: C.surface3,
+          borderRadius: 2,
           overflow: "hidden",
         }}
       >
@@ -444,80 +438,228 @@ function FrequencyBar({ value }: { value: number }) {
           style={{
             width: `${value}%`,
             height: "100%",
-            background: barColor,
-            borderRadius: 3,
-            transition: "width 0.3s ease",
+            background: col,
+            borderRadius: 2,
           }}
         />
       </div>
       <span
         style={{
-          fontSize: 11,
-          color: barColor,
-          minWidth: 28,
+          fontSize: 10,
+          color: col,
+          minWidth: 24,
           textAlign: "right",
+          fontFamily: MONO,
         }}
       >
-        {value}%
+        {value}
       </span>
     </div>
   );
 }
 
-function PinToggle({
-  pinned,
-  onToggle,
+function Badge({
+  children,
+  color,
+  bg,
 }: {
-  pinned: boolean;
-  onToggle: () => void;
+  children: React.ReactNode;
+  color: string;
+  bg: string;
 }) {
-  return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
-      style={{
-        background: pinned ? `${C.accent}22` : "transparent",
-        border: `1px solid ${pinned ? C.accent : C.border}`,
-        borderRadius: 6,
-        padding: "4px 10px",
-        cursor: "pointer",
-        color: pinned ? C.accent : C.textDim,
-        fontSize: 11,
-        fontFamily: FONT,
-        fontWeight: 500,
-        transition: "all 0.15s ease",
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-      }}
-    >
-      <span style={{ fontSize: 13 }}>{pinned ? "📌" : "○"}</span>
-      <span style={{ fontSize: 10 }}>{pinned ? "Tracked" : "Track"}</span>
-    </button>
-  );
-}
-
-function ProfileBadge({ profile }: { profile: "dev" | "release" }) {
-  const isDev = profile === "dev";
   return (
     <span
       style={{
-        display: "inline-block",
         fontSize: 10,
         fontWeight: 600,
+        letterSpacing: 0.6,
+        padding: "1px 6px",
+        borderRadius: 3,
+        background: bg,
+        color,
+        border: `1px solid ${color}33`,
         textTransform: "uppercase",
-        letterSpacing: 0.8,
-        padding: "2px 8px",
-        borderRadius: 4,
-        background: isDev ? C.surface2 : C.amberBg,
-        color: isDev ? C.textDim : C.amber,
-        border: `1px solid ${isDev ? C.border : `${C.amber}33`}`,
       }}
     >
-      {profile}
+      {children}
     </span>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      <span
+        style={{
+          fontSize: 9,
+          color: C.textDim,
+          textTransform: "uppercase",
+          letterSpacing: 0.8,
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </span>
+      <span style={{ fontSize: 15, fontWeight: 700, color, fontFamily: MONO }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// ── Filter bar ───────────────────────────────────────────────────────────────
+
+function FilterBar({
+  search,
+  onSearch,
+  userFilter,
+  onUserFilter,
+  profileFilter,
+  onProfileFilter,
+}: {
+  search: string;
+  onSearch: (v: string) => void;
+  userFilter: string[];
+  onUserFilter: (v: string[]) => void;
+  profileFilter: string | null;
+  onProfileFilter: (v: string | null) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 0",
+        fontSize: 11,
+        flexWrap: "wrap",
+      }}
+    >
+      {/* Search */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          background: C.surface2,
+          border: `1px solid ${C.border}`,
+          borderRadius: 4,
+          padding: "3px 8px",
+          minWidth: 180,
+        }}
+      >
+        <Search size={12} color={C.textDim} />
+        <input
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+          placeholder="filter commands…"
+          style={{
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: C.text,
+            fontSize: 11,
+            fontFamily: MONO,
+            width: "100%",
+          }}
+        />
+        {search && (
+          <button
+            onClick={() => onSearch("")}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              display: "flex",
+            }}
+          >
+            <X size={11} color={C.textDim} />
+          </button>
+        )}
+      </div>
+
+      {/* User filter */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span
+          style={{
+            color: C.textDim,
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: 0.5,
+          }}
+        >
+          USER
+        </span>
+        {USERS.map((u) => (
+          <button
+            key={u}
+            onClick={() =>
+              onUserFilter(
+                userFilter.includes(u)
+                  ? userFilter.filter((x) => x !== u)
+                  : [...userFilter, u],
+              )
+            }
+            style={{
+              background: userFilter.includes(u)
+                ? C.accent + "22"
+                : "transparent",
+              border: `1px solid ${userFilter.includes(u) ? C.accent : C.border}`,
+              borderRadius: 3,
+              padding: "2px 7px",
+              cursor: "pointer",
+              color: userFilter.includes(u) ? C.accent : C.textMid,
+              fontSize: 10,
+              fontFamily: MONO,
+            }}
+          >
+            {u}
+          </button>
+        ))}
+      </div>
+
+      {/* Profile filter */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span
+          style={{
+            color: C.textDim,
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: 0.5,
+          }}
+        >
+          PROFILE
+        </span>
+        {(["dev", "release"] as const).map((p) => (
+          <button
+            key={p}
+            onClick={() => onProfileFilter(profileFilter === p ? null : p)}
+            style={{
+              background: profileFilter === p ? C.accent + "22" : "transparent",
+              border: `1px solid ${profileFilter === p ? C.accent : C.border}`,
+              borderRadius: 3,
+              padding: "2px 7px",
+              cursor: "pointer",
+              color: profileFilter === p ? C.accent : C.textMid,
+              fontSize: 10,
+              fontFamily: MONO,
+              textTransform: "uppercase",
+            }}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -525,52 +667,49 @@ function ProfileBadge({ profile }: { profile: "dev" | "release" }) {
 
 function HeatLegend() {
   const stops = [
-    { label: "Cold", heat: 5 },
-    { label: "Low", heat: 25 },
-    { label: "Medium", heat: 45 },
-    { label: "Warm", heat: 65 },
-    { label: "Hot", heat: 90 },
+    { label: "cold", heat: 5 },
+    { label: "low", heat: 25 },
+    { label: "mid", heat: 45 },
+    { label: "warm", heat: 65 },
+    { label: "hot", heat: 90 },
   ];
   return (
     <div
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 12,
-        padding: "6px 12px",
-        background: C.surface,
-        border: `1px solid ${C.border}`,
-        borderRadius: 8,
-        fontSize: 10,
+        gap: 10,
+        fontSize: 9,
         color: C.textDim,
+        fontFamily: MONO,
       }}
     >
       <span
         style={{
-          fontWeight: 600,
+          fontWeight: 700,
           letterSpacing: 0.5,
           textTransform: "uppercase",
         }}
       >
-        Rebuild frequency:
+        rebuild freq
       </span>
       {stops.map((s) => {
-        const colors = heatColor(s.heat);
+        const c = heatColor(s.heat);
         return (
           <div
             key={s.label}
-            style={{ display: "flex", alignItems: "center", gap: 4 }}
+            style={{ display: "flex", alignItems: "center", gap: 3 }}
           >
             <div
               style={{
-                width: 10,
-                height: 10,
-                borderRadius: 3,
-                background: colors.bg,
-                border: `2px solid ${colors.border}`,
+                width: 8,
+                height: 8,
+                borderRadius: 2,
+                background: c.bg,
+                border: `1.5px solid ${c.border}`,
               }}
             />
-            <span style={{ color: colors.text }}>{s.label}</span>
+            <span style={{ color: c.text }}>{s.label}</span>
           </div>
         );
       })}
@@ -578,10 +717,129 @@ function HeatLegend() {
   );
 }
 
-// ── Graph panel ──────────────────────────────────────────────────────────────
+// ── Summary panel (right of graph) ───────────────────────────────────────────
 
-function GraphPanel({ scenario }: { scenario: Scenario }) {
-  const { nodes: initialNodes, edges: initialEdges } = useMemo(
+function Summary({
+  scenario,
+  frequency,
+}: {
+  scenario: Scenario;
+  frequency: number;
+}) {
+  const hotCrates = [...scenario.crateGraph]
+    .sort((a, b) => b.heat - a.heat)
+    .slice(0, 6);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+        fontSize: 11,
+        minWidth: 180,
+      }}
+    >
+      {/* Metrics */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Stat
+          label="Avg build"
+          value={fmtMs(scenario.avgBuildMs)}
+          color={C.amber}
+        />
+        <Stat
+          label="LLVM lines"
+          value={fmtCount(scenario.llvmLines)}
+          color={C.cyan}
+        />
+        <Stat
+          label="Crates"
+          value={`${scenario.cratesInGraph}`}
+          color={C.pink}
+        />
+        <Stat
+          label="Frequency"
+          value={`${frequency}`}
+          color={frequency >= 70 ? C.red : C.accent}
+        />
+      </div>
+
+      <div style={{ height: 1, background: C.border }} />
+
+      {/* Hottest crates */}
+      <div>
+        <div
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            color: C.textDim,
+            letterSpacing: 0.8,
+            textTransform: "uppercase",
+            marginBottom: 6,
+          }}
+        >
+          Hottest crates
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          {hotCrates.map((c) => {
+            const col = heatColor(c.heat);
+            return (
+              <div
+                key={c.name}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "3px 6px",
+                  borderRadius: 3,
+                  background: col.bg,
+                  border: `1px solid ${col.border}33`,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontFamily: MONO,
+                    color: col.text,
+                    flex: 1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {c.name}
+                </span>
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontFamily: MONO,
+                    color: col.border,
+                    fontWeight: 700,
+                    minWidth: 28,
+                    textAlign: "right",
+                  }}
+                >
+                  {c.heat}%
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Detail view: graph + summary ─────────────────────────────────────────────
+
+function DetailView({
+  scenario,
+  frequency,
+}: {
+  scenario: Scenario;
+  frequency: number;
+}) {
+  const { nodes, edges } = useMemo(
     () => layoutGraph(scenario.crateGraph),
     [scenario.id], // eslint-disable-line react-hooks/exhaustive-deps
   );
@@ -592,103 +850,108 @@ function GraphPanel({ scenario }: { scenario: Scenario }) {
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        gap: 12,
+        gap: 8,
       }}
     >
-      {/* Header */}
-      <div>
-        <div
-          style={{
-            fontSize: 10,
-            color: C.textDim,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-            marginBottom: 4,
-          }}
-        >
-          Build Graph
-        </div>
-        <div
-          style={{
-            fontSize: 15,
-            fontWeight: 600,
-            color: C.text,
-            fontFamily: "'JetBrains Mono', monospace, " + FONT,
-          }}
-        >
-          {scenario.name}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            marginTop: 8,
-            alignItems: "center",
-          }}
-        >
-          <ProfileBadge profile={scenario.profile} />
-          {scenario.pinned && (
-            <span style={{ fontSize: 11, color: C.accent }}>
-              📌 Tracked by Forager
-            </span>
-          )}
-          <span style={{ fontSize: 11, color: C.textDim }}>
-            {scenario.crateGraph.length} crates
-          </span>
-        </div>
-      </div>
-
-      {/* Legend */}
-      <HeatLegend />
-
-      {/* Graph */}
+      {/* Header row */}
       <div
         style={{
-          flex: 1,
-          borderRadius: 10,
-          border: `1px solid ${C.border}`,
-          overflow: "hidden",
-          background: C.bg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
         }}
       >
-        <ReactFlow
-          nodes={initialNodes}
-          edges={initialEdges}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.3 }}
-          colorMode="dark"
-          minZoom={0.3}
-          maxZoom={2}
-          proOptions={{ hideAttribution: true }}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: C.text,
+              fontFamily: MONO,
+            }}
+          >
+            {scenario.name}
+          </span>
+          <Badge
+            color={scenario.profile === "dev" ? C.textMid : C.amber}
+            bg={scenario.profile === "dev" ? C.surface3 : C.amber + "18"}
+          >
+            {scenario.profile}
+          </Badge>
+
+          {scenario.pinned && (
+            <span style={{ fontSize: 10, color: C.accent }}>📌 tracked</span>
+          )}
+        </div>
+        <HeatLegend />
+      </div>
+
+      {/* Graph + Summary */}
+      <div style={{ flex: 1, display: "flex", gap: 12, minHeight: 0 }}>
+        {/* Graph */}
+        <div
+          style={{
+            flex: 1,
+            borderRadius: 6,
+            border: `1px solid ${C.border}`,
+            overflow: "hidden",
+            background: C.bg,
+          }}
         >
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={20}
-            size={1}
-            color="#1e1e3a"
-          />
-          <Controls
-            style={{
-              background: C.surface,
-              borderRadius: 6,
-              border: `1px solid ${C.border}`,
-            }}
-          />
-          <MiniMap
-            nodeColor={(n) => {
-              const colors = (n.data as { colors?: { border: string } })
-                ?.colors;
-              return colors?.border ?? C.accent;
-            }}
-            maskColor="rgba(0, 0, 0, 0.7)"
-            style={{
-              background: C.bg,
-              border: `1px solid ${C.border}`,
-              borderRadius: 6,
-            }}
-          />
-        </ReactFlow>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.25 }}
+            colorMode="dark"
+            minZoom={0.3}
+            maxZoom={2}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={16}
+              size={1}
+              color="#1a1a2e"
+            />
+            <Controls
+              style={{
+                background: C.surface,
+                borderRadius: 4,
+                border: `1px solid ${C.border}`,
+              }}
+            />
+            <MiniMap
+              nodeColor={(n) => {
+                const c = (n.data as { colors?: { border: string } })?.colors;
+                return c?.border ?? C.accent;
+              }}
+              maskColor="rgba(0,0,0,0.75)"
+              style={{
+                background: C.bg,
+                border: `1px solid ${C.border}`,
+                borderRadius: 4,
+                height: 80,
+                width: 120,
+              }}
+            />
+          </ReactFlow>
+        </div>
+        {/* Summary sidebar */}
+        <div
+          style={{
+            width: 200,
+            overflowY: "auto",
+            padding: "8px 4px",
+            borderLeft: `1px solid ${C.border}`,
+            paddingLeft: 12,
+          }}
+        >
+          <Summary scenario={scenario} frequency={frequency} />
+        </div>
       </div>
     </div>
   );
@@ -699,18 +962,40 @@ function GraphPanel({ scenario }: { scenario: Scenario }) {
 export default function App() {
   const [scenarios, setScenarios] = useState(MOCK_SCENARIOS);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-
-  const sorted = [...scenarios].sort((a, b) => b.frequency - a.frequency);
-  const selected =
-    selectedId != null
-      ? (scenarios.find((s) => s.id === selectedId) ?? null)
-      : null;
+  const [search, setSearch] = useState("");
+  const [userFilter, setUserFilter] = useState<string[]>([]);
+  const [profileFilter, setProfileFilter] = useState<string | null>(null);
 
   const togglePin = useCallback((id: number) => {
     setScenarios((prev) =>
       prev.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s)),
     );
   }, []);
+
+  const getFreq = useCallback(
+    (s: Scenario) => {
+      if (userFilter.length === 0)
+        return Object.values(s.userFreqs).reduce((a, b) => a + b, 0);
+      return userFilter.reduce((sum, u) => sum + (s.userFreqs[u] ?? 0), 0);
+    },
+    [userFilter],
+  );
+
+  const filtered = useMemo(() => {
+    let list = [...scenarios];
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter((s) => s.name.toLowerCase().includes(q));
+    }
+    if (profileFilter) list = list.filter((s) => s.profile === profileFilter);
+    list.sort((a, b) => getFreq(b) - getFreq(a));
+    return list;
+  }, [scenarios, search, profileFilter, getFreq]);
+
+  const selected =
+    selectedId != null
+      ? (scenarios.find((s) => s.id === selectedId) ?? null)
+      : null;
 
   return (
     <div
@@ -719,30 +1004,30 @@ export default function App() {
         height: "100vh",
         background: C.bg,
         color: C.text,
-        fontFamily: FONT,
+        fontFamily: SANS,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
       }}
     >
-      {/* ── Top bar ─────────────────────────────────────── */}
+      {/* ── Top bar ──────────────────────────────────────── */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 24px",
-          height: 56,
-          minHeight: 56,
+          padding: "0 16px",
+          height: 40,
+          minHeight: 40,
           borderBottom: `1px solid ${C.border}`,
           background: C.surface,
+          justifyContent: "space-between",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Workflow size={24} color={C.accent} strokeWidth={2.5} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Workflow size={18} color={C.accent} strokeWidth={2.5} />
           <span
             style={{
-              fontSize: 20,
+              fontSize: 15,
               fontWeight: 800,
               color: C.accent,
               letterSpacing: -0.5,
@@ -751,60 +1036,41 @@ export default function App() {
             wezel
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <StatusPill label="Pheromone" status="connected" color={C.green} />
-          <StatusPill label="Forager" status="idle" color={C.amber} />
+        <div style={{ fontSize: 10, color: C.textDim, fontFamily: MONO }}>
+          {filtered.length}/{scenarios.length} commands ·{" "}
+          {scenarios.filter((s) => s.pinned).length} tracked
         </div>
       </div>
 
-      {/* ── Main content ────────────────────────────────── */}
+      {/* ── Main ─────────────────────────────────────────── */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* Scenario list */}
+        {/* Left: command list */}
         <div
           style={{
-            width: selected ? 420 : "100%",
-            minWidth: 380,
-            overflowY: "auto",
-            padding: 20,
-            transition: "width 0.2s ease",
+            width: selected ? 380 : "100%",
+            minWidth: 340,
             flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            borderRight: selected ? `1px solid ${C.border}` : "none",
+            transition: "width 0.15s ease",
           }}
         >
+          {/* Filters */}
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 16,
+              padding: "6px 12px",
+              borderBottom: `1px solid ${C.border}`,
             }}
           >
-            <div>
-              <h2
-                style={{
-                  fontSize: 15,
-                  fontWeight: 700,
-                  margin: 0,
-                  color: C.text,
-                }}
-              >
-                Build Commands
-              </h2>
-              <p style={{ fontSize: 12, color: C.textDim, margin: "4px 0 0" }}>
-                Ranked by execution frequency from Pheromone
-              </p>
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: C.textDim,
-                background: C.surface2,
-                padding: "4px 10px",
-                borderRadius: 6,
-              }}
-            >
-              {scenarios.length} commands ·{" "}
-              {scenarios.filter((s) => s.pinned).length} pinned
-            </div>
+            <FilterBar
+              search={search}
+              onSearch={setSearch}
+              userFilter={userFilter}
+              onUserFilter={setUserFilter}
+              profileFilter={profileFilter}
+              onProfileFilter={setProfileFilter}
+            />
           </div>
 
           {/* Table header */}
@@ -812,93 +1078,126 @@ export default function App() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "minmax(200px, 3fr) 70px minmax(120px, 1fr) 90px",
-              gap: 12,
-              padding: "8px 16px",
-              fontSize: 10,
-              fontWeight: 600,
+                "minmax(140px, 3fr) 50px minmax(80px, 1fr) 56px",
+              gap: 6,
+              padding: "4px 12px",
+              fontSize: 9,
+              fontWeight: 700,
               color: C.textDim,
               textTransform: "uppercase",
-              letterSpacing: 1,
+              letterSpacing: 0.8,
               borderBottom: `1px solid ${C.border}`,
+              background: C.surface,
             }}
           >
             <span>Command</span>
-            <span>Profile</span>
-            <span>Frequency</span>
+            <span>Prof.</span>
+            <span>Freq</span>
             <span style={{ textAlign: "center" }}>Track</span>
           </div>
 
           {/* Rows */}
-          {sorted.map((s) => {
-            const isSelected = s.id === selectedId;
-            return (
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {filtered.length === 0 && (
               <div
-                key={s.id}
-                onClick={() => setSelectedId(isSelected ? null : s.id)}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "minmax(200px, 3fr) 70px minmax(120px, 1fr) 90px",
-                  gap: 12,
-                  padding: "12px 16px",
-                  alignItems: "center",
-                  cursor: "pointer",
-                  borderRadius: 8,
-                  background: isSelected ? `${C.accent}12` : "transparent",
-                  borderLeft: isSelected
-                    ? `3px solid ${C.accent}`
-                    : "3px solid transparent",
-                  transition: "all 0.12s ease",
-                  marginTop: 2,
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected)
-                    e.currentTarget.style.background = C.surface2;
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected)
-                    e.currentTarget.style.background = "transparent";
+                  padding: 20,
+                  textAlign: "center",
+                  color: C.textDim,
+                  fontSize: 12,
                 }}
               >
-                <span
+                No commands match filters
+              </div>
+            )}
+            {filtered.map((s) => {
+              const isSel = s.id === selectedId;
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => setSelectedId(isSel ? null : s.id)}
                   style={{
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: isSelected ? C.text : "#c8c8e0",
-                    fontFamily: "'JetBrains Mono', monospace, " + FONT,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    display: "grid",
+                    gridTemplateColumns:
+                      "minmax(140px, 3fr) 50px minmax(80px, 1fr) 56px",
+                    gap: 6,
+                    padding: "6px 12px",
+                    alignItems: "center",
+                    cursor: "pointer",
+                    background: isSel ? C.accent + "10" : "transparent",
+                    borderLeft: isSel
+                      ? `2px solid ${C.accent}`
+                      : "2px solid transparent",
+                    transition: "all 0.1s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSel) e.currentTarget.style.background = C.surface2;
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSel)
+                      e.currentTarget.style.background = "transparent";
                   }}
                 >
-                  {s.name}
-                </span>
-                <ProfileBadge profile={s.profile} />
-                <FrequencyBar value={s.frequency} />
-                <div style={{ display: "flex", justifyContent: "center" }}>
-                  <PinToggle
-                    pinned={s.pinned}
-                    onToggle={() => togglePin(s.id)}
-                  />
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: isSel ? C.text : C.textMid,
+                      fontFamily: MONO,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {s.name}
+                  </span>
+                  <Badge
+                    color={s.profile === "dev" ? C.textDim : C.amber}
+                    bg={s.profile === "dev" ? C.surface3 : C.amber + "15"}
+                  >
+                    {s.profile === "dev" ? "dev" : "rel"}
+                  </Badge>
+                  <FreqBar value={getFreq(s)} />
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        togglePin(s.id);
+                      }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 2,
+                        color: s.pinned ? C.accent : C.textDim,
+                        display: "flex",
+                        opacity: s.pinned ? 1 : 0.5,
+                      }}
+                    >
+                      {s.pinned ? <Pin size={13} /> : <PinOff size={13} />}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
-        {/* Graph panel */}
+        {/* Right: detail */}
         {selected && (
           <div
             style={{
               flex: 1,
-              borderLeft: `1px solid ${C.border}`,
-              overflowY: "auto",
-              padding: 20,
+              padding: 12,
+              overflow: "hidden",
               background: C.bg,
             }}
           >
-            <GraphPanel key={selected.id} scenario={selected} />
+            <DetailView
+              key={selected.id}
+              scenario={selected}
+              frequency={getFreq(selected)}
+            />
           </div>
         )}
       </div>
