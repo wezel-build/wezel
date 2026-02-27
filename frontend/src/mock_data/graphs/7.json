@@ -1,0 +1,33 @@
+[
+  {
+    "name": "db_migrations",
+    "heat": 95,
+    "deps": [
+      "sqlx",
+      "config"
+    ]
+  },
+  {
+    "name": "config",
+    "heat": 40,
+    "deps": [
+      "serde",
+      "toml"
+    ]
+  },
+  {
+    "name": "sqlx",
+    "heat": 8,
+    "deps": []
+  },
+  {
+    "name": "serde",
+    "heat": 2,
+    "deps": []
+  },
+  {
+    "name": "toml",
+    "heat": 2,
+    "deps": []
+  }
+]

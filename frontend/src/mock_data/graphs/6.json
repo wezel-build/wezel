@@ -1,0 +1,37 @@
+[
+  {
+    "name": "wezel_app",
+    "heat": 88,
+    "deps": ["auth_core", "api_server"]
+  },
+  {
+    "name": "auth_core",
+    "heat": 80,
+    "deps": ["crypto_utils"]
+  },
+  {
+    "name": "api_server",
+    "heat": 75,
+    "deps": ["auth_core", "db_pool"]
+  },
+  {
+    "name": "crypto_utils",
+    "heat": 40,
+    "deps": ["ring"]
+  },
+  {
+    "name": "db_pool",
+    "heat": 50,
+    "deps": ["sqlx"]
+  },
+  {
+    "name": "ring",
+    "heat": 5,
+    "deps": []
+  },
+  {
+    "name": "sqlx",
+    "heat": 6,
+    "deps": []
+  }
+]

@@ -1,0 +1,118 @@
+[
+  {
+    "id": 1,
+    "name": "cargo test -p auth_core",
+    "profile": "dev",
+    "userFreqs": {
+      "alice": 45,
+      "bob": 25,
+      "carol": 18,
+      "dave": 9
+    },
+    "pinned": true,
+    "avgBuildMs": 4310,
+    "llvmLines": 184200,
+    "cratesInGraph": 38
+  },
+  {
+    "id": 2,
+    "name": "cargo build --workspace",
+    "profile": "dev",
+    "userFreqs": {
+      "alice": 20,
+      "bob": 35,
+      "carol": 15,
+      "dave": 14
+    },
+    "pinned": true,
+    "avgBuildMs": 18620,
+    "llvmLines": 921000,
+    "cratesInGraph": 142
+  },
+  {
+    "id": 3,
+    "name": "cargo test -p pheromone_agent",
+    "profile": "dev",
+    "userFreqs": {
+      "alice": 38,
+      "bob": 12,
+      "carol": 14,
+      "dave": 8
+    },
+    "pinned": false,
+    "avgBuildMs": 6060,
+    "llvmLines": 210000,
+    "cratesInGraph": 51
+  },
+  {
+    "id": 4,
+    "name": "cargo build -p forager --release",
+    "profile": "release",
+    "userFreqs": {
+      "alice": 8,
+      "bob": 10,
+      "carol": 28,
+      "dave": 12
+    },
+    "pinned": true,
+    "avgBuildMs": 42400,
+    "llvmLines": 1120000,
+    "cratesInGraph": 189
+  },
+  {
+    "id": 5,
+    "name": "cargo clippy -p wezel_ui",
+    "profile": "dev",
+    "userFreqs": {
+      "alice": 5,
+      "bob": 8,
+      "carol": 12,
+      "dave": 20
+    },
+    "pinned": false,
+    "avgBuildMs": 8200,
+    "llvmLines": 340000,
+    "cratesInGraph": 67
+  },
+  {
+    "id": 6,
+    "name": "cargo test --workspace --release",
+    "profile": "release",
+    "userFreqs": {
+      "bob": 18,
+      "carol": 8,
+      "dave": 5
+    },
+    "pinned": false,
+    "avgBuildMs": 63200,
+    "llvmLines": 1540000,
+    "cratesInGraph": 212
+  },
+  {
+    "id": 7,
+    "name": "cargo build -p db_migrations",
+    "profile": "dev",
+    "userFreqs": {
+      "alice": 3,
+      "carol": 18,
+      "dave": 5
+    },
+    "pinned": false,
+    "avgBuildMs": 3200,
+    "llvmLines": 98000,
+    "cratesInGraph": 24
+  },
+  {
+    "id": 8,
+    "name": "cargo test -p proto_gen",
+    "profile": "dev",
+    "userFreqs": {
+      "bob": 4,
+      "dave": 15
+    },
+    "pinned": false,
+    "avgBuildMs": 11000,
+    "llvmLines": 420000,
+    "cratesInGraph": 78
+  }
+]

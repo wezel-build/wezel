@@ -1,0 +1,47 @@
+[
+  {
+    "name": "auth_core",
+    "heat": 95,
+    "deps": ["crypto_utils", "db_pool", "config"]
+  },
+  {
+    "name": "crypto_utils",
+    "heat": 72,
+    "deps": ["ring", "base64"]
+  },
+  {
+    "name": "db_pool",
+    "heat": 65,
+    "deps": ["sqlx", "config"]
+  },
+  {
+    "name": "config",
+    "heat": 40,
+    "deps": ["serde", "toml"]
+  },
+  {
+    "name": "ring",
+    "heat": 5,
+    "deps": []
+  },
+  {
+    "name": "base64",
+    "heat": 3,
+    "deps": []
+  },
+  {
+    "name": "sqlx",
+    "heat": 8,
+    "deps": []
+  },
+  {
+    "name": "serde",
+    "heat": 2,
+    "deps": []
+  },
+  {
+    "name": "toml",
+    "heat": 2,
+    "deps": []
+  }
+]

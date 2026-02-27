@@ -1,0 +1,52 @@
+[
+  {
+    "name": "pheromone_agent",
+    "heat": 98,
+    "deps": ["fs_watcher", "cargo_metadata", "ipc"]
+  },
+  {
+    "name": "fs_watcher",
+    "heat": 60,
+    "deps": ["notify", "crossbeam"]
+  },
+  {
+    "name": "cargo_metadata",
+    "heat": 45,
+    "deps": ["serde_json", "camino"]
+  },
+  {
+    "name": "ipc",
+    "heat": 70,
+    "deps": ["serde", "bincode"]
+  },
+  {
+    "name": "notify",
+    "heat": 5,
+    "deps": []
+  },
+  {
+    "name": "crossbeam",
+    "heat": 3,
+    "deps": []
+  },
+  {
+    "name": "serde_json",
+    "heat": 4,
+    "deps": ["serde"]
+  },
+  {
+    "name": "camino",
+    "heat": 2,
+    "deps": []
+  },
+  {
+    "name": "serde",
+    "heat": 2,
+    "deps": []
+  },
+  {
+    "name": "bincode",
+    "heat": 3,
+    "deps": []
+  }
+]

@@ -1,0 +1,37 @@
+[
+  {
+    "name": "wezel_ui",
+    "heat": 90,
+    "deps": ["api_client", "theme"]
+  },
+  {
+    "name": "api_client",
+    "heat": 55,
+    "deps": ["proto_gen", "reqwest"]
+  },
+  {
+    "name": "theme",
+    "heat": 80,
+    "deps": ["serde"]
+  },
+  {
+    "name": "proto_gen",
+    "heat": 30,
+    "deps": ["prost"]
+  },
+  {
+    "name": "reqwest",
+    "heat": 3,
+    "deps": []
+  },
+  {
+    "name": "prost",
+    "heat": 2,
+    "deps": []
+  },
+  {
+    "name": "serde",
+    "heat": 2,
+    "deps": []
+  }
+]

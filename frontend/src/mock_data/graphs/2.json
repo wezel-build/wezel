@@ -1,0 +1,72 @@
+[
+  {
+    "name": "wezel_app",
+    "heat": 90,
+    "deps": ["auth_core", "api_server", "wezel_ui"]
+  },
+  {
+    "name": "auth_core",
+    "heat": 82,
+    "deps": ["crypto_utils", "db_pool"]
+  },
+  {
+    "name": "api_server",
+    "heat": 78,
+    "deps": ["auth_core", "proto_gen", "db_pool"]
+  },
+  {
+    "name": "wezel_ui",
+    "heat": 70,
+    "deps": ["api_client", "serde"]
+  },
+  {
+    "name": "api_client",
+    "heat": 55,
+    "deps": ["proto_gen", "reqwest"]
+  },
+  {
+    "name": "proto_gen",
+    "heat": 45,
+    "deps": ["prost", "tonic"]
+  },
+  {
+    "name": "crypto_utils",
+    "heat": 30,
+    "deps": ["ring"]
+  },
+  {
+    "name": "db_pool",
+    "heat": 35,
+    "deps": ["sqlx"]
+  },
+  {
+    "name": "ring",
+    "heat": 4,
+    "deps": []
+  },
+  {
+    "name": "sqlx",
+    "heat": 6,
+    "deps": []
+  },
+  {
+    "name": "prost",
+    "heat": 3,
+    "deps": []
+  },
+  {
+    "name": "tonic",
+    "heat": 5,
+    "deps": []
+  },
+  {
+    "name": "reqwest",
+    "heat": 2,
+    "deps": []
+  },
+  {
+    "name": "serde",
+    "heat": 2,
+    "deps": []
+  }
+]

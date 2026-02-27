@@ -15,6 +15,17 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import usersData from "./mock_data/users.json";
+import scenariosData from "./mock_data/scenarios.json";
+import graph1 from "./mock_data/graphs/1.json";
+import graph2 from "./mock_data/graphs/2.json";
+import graph3 from "./mock_data/graphs/3.json";
+import graph4 from "./mock_data/graphs/4.json";
+import graph5 from "./mock_data/graphs/5.json";
+import graph6 from "./mock_data/graphs/6.json";
+import graph7 from "./mock_data/graphs/7.json";
+import graph8 from "./mock_data/graphs/8.json";
+
 // ── Data model ───────────────────────────────────────────────────────────────
 
 interface CrateNode {
@@ -46,204 +57,27 @@ function heatColor(heat: number): { border: string; bg: string; text: string } {
   return { border: "#334155", bg: "#111827", text: "#64748b" };
 }
 
-// ── Mock data ────────────────────────────────────────────────────────────────
+// ── Mock data (from JSON) ────────────────────────────────────────────────────
 
-const USERS = ["alice", "bob", "carol", "dave"];
+const USERS: string[] = usersData;
 
-const MOCK_SCENARIOS: Scenario[] = [
-  {
-    id: 1,
-    name: "cargo test -p auth_core",
-    profile: "dev",
-    userFreqs: { alice: 45, bob: 25, carol: 18, dave: 9 },
-    pinned: true,
-    avgBuildMs: 4310,
-    llvmLines: 184200,
-    cratesInGraph: 38,
-    crateGraph: [
-      {
-        name: "auth_core",
-        heat: 95,
-        deps: ["crypto_utils", "db_pool", "config"],
-      },
-      { name: "crypto_utils", heat: 72, deps: ["ring", "base64"] },
-      { name: "db_pool", heat: 65, deps: ["sqlx", "config"] },
-      { name: "config", heat: 40, deps: ["serde", "toml"] },
-      { name: "ring", heat: 5, deps: [] },
-      { name: "base64", heat: 3, deps: [] },
-      { name: "sqlx", heat: 8, deps: [] },
-      { name: "serde", heat: 2, deps: [] },
-      { name: "toml", heat: 2, deps: [] },
-    ],
-  },
-  {
-    id: 2,
-    name: "cargo build --workspace",
-    profile: "dev",
-    userFreqs: { alice: 20, bob: 35, carol: 15, dave: 14 },
-    pinned: true,
-    avgBuildMs: 18620,
-    llvmLines: 921000,
-    cratesInGraph: 142,
-    crateGraph: [
-      {
-        name: "wezel_app",
-        heat: 90,
-        deps: ["auth_core", "api_server", "wezel_ui"],
-      },
-      { name: "auth_core", heat: 82, deps: ["crypto_utils", "db_pool"] },
-      {
-        name: "api_server",
-        heat: 78,
-        deps: ["auth_core", "proto_gen", "db_pool"],
-      },
-      { name: "wezel_ui", heat: 70, deps: ["api_client", "serde"] },
-      { name: "api_client", heat: 55, deps: ["proto_gen", "reqwest"] },
-      { name: "proto_gen", heat: 45, deps: ["prost", "tonic"] },
-      { name: "crypto_utils", heat: 30, deps: ["ring"] },
-      { name: "db_pool", heat: 35, deps: ["sqlx"] },
-      { name: "ring", heat: 4, deps: [] },
-      { name: "sqlx", heat: 6, deps: [] },
-      { name: "prost", heat: 3, deps: [] },
-      { name: "tonic", heat: 5, deps: [] },
-      { name: "reqwest", heat: 2, deps: [] },
-      { name: "serde", heat: 2, deps: [] },
-    ],
-  },
-  {
-    id: 3,
-    name: "cargo test -p pheromone_agent",
-    profile: "dev",
-    userFreqs: { alice: 38, bob: 12, carol: 14, dave: 8 },
-    pinned: false,
-    avgBuildMs: 6060,
-    llvmLines: 210000,
-    cratesInGraph: 51,
-    crateGraph: [
-      {
-        name: "pheromone_agent",
-        heat: 98,
-        deps: ["fs_watcher", "cargo_metadata", "ipc"],
-      },
-      { name: "fs_watcher", heat: 60, deps: ["notify", "crossbeam"] },
-      { name: "cargo_metadata", heat: 45, deps: ["serde_json", "camino"] },
-      { name: "ipc", heat: 70, deps: ["serde", "bincode"] },
-      { name: "notify", heat: 5, deps: [] },
-      { name: "crossbeam", heat: 3, deps: [] },
-      { name: "serde_json", heat: 4, deps: ["serde"] },
-      { name: "camino", heat: 2, deps: [] },
-      { name: "serde", heat: 2, deps: [] },
-      { name: "bincode", heat: 3, deps: [] },
-    ],
-  },
-  {
-    id: 4,
-    name: "cargo build -p forager --release",
-    profile: "release",
-    userFreqs: { alice: 8, bob: 10, carol: 28, dave: 12 },
-    pinned: true,
-    avgBuildMs: 42400,
-    llvmLines: 1120000,
-    cratesInGraph: 189,
-    crateGraph: [
-      {
-        name: "forager",
-        heat: 92,
-        deps: ["scenario_runner", "measure_collect", "ipc"],
-      },
-      {
-        name: "scenario_runner",
-        heat: 80,
-        deps: ["cargo_metadata", "tempfile"],
-      },
-      {
-        name: "measure_collect",
-        heat: 75,
-        deps: ["time_utils", "llvm_lines_parser"],
-      },
-      { name: "ipc", heat: 50, deps: ["serde", "bincode"] },
-      { name: "cargo_metadata", heat: 20, deps: ["serde_json"] },
-      { name: "tempfile", heat: 5, deps: [] },
-      { name: "time_utils", heat: 15, deps: [] },
-      { name: "llvm_lines_parser", heat: 60, deps: ["regex"] },
-      { name: "serde", heat: 2, deps: [] },
-      { name: "bincode", heat: 3, deps: [] },
-      { name: "serde_json", heat: 3, deps: [] },
-      { name: "regex", heat: 2, deps: [] },
-    ],
-  },
-  {
-    id: 5,
-    name: "cargo clippy -p wezel_ui",
-    profile: "dev",
-    userFreqs: { alice: 5, bob: 8, carol: 12, dave: 20 },
-    pinned: false,
-    avgBuildMs: 8200,
-    llvmLines: 340000,
-    cratesInGraph: 67,
-    crateGraph: [
-      { name: "wezel_ui", heat: 90, deps: ["api_client", "theme"] },
-      { name: "api_client", heat: 55, deps: ["proto_gen", "reqwest"] },
-      { name: "theme", heat: 80, deps: ["serde"] },
-      { name: "proto_gen", heat: 30, deps: ["prost"] },
-      { name: "reqwest", heat: 3, deps: [] },
-      { name: "prost", heat: 2, deps: [] },
-      { name: "serde", heat: 2, deps: [] },
-    ],
-  },
-  {
-    id: 6,
-    name: "cargo test --workspace --release",
-    profile: "release",
-    userFreqs: { bob: 18, carol: 8, dave: 5 },
-    pinned: false,
-    avgBuildMs: 63200,
-    llvmLines: 1540000,
-    cratesInGraph: 212,
-    crateGraph: [
-      { name: "wezel_app", heat: 88, deps: ["auth_core", "api_server"] },
-      { name: "auth_core", heat: 80, deps: ["crypto_utils"] },
-      { name: "api_server", heat: 75, deps: ["auth_core", "db_pool"] },
-      { name: "crypto_utils", heat: 40, deps: ["ring"] },
-      { name: "db_pool", heat: 50, deps: ["sqlx"] },
-      { name: "ring", heat: 5, deps: [] },
-      { name: "sqlx", heat: 6, deps: [] },
-    ],
-  },
-  {
-    id: 7,
-    name: "cargo build -p db_migrations",
-    profile: "dev",
-    userFreqs: { alice: 3, carol: 18, dave: 5 },
-    pinned: false,
-    avgBuildMs: 3200,
-    llvmLines: 98000,
-    cratesInGraph: 24,
-    crateGraph: [
-      { name: "db_migrations", heat: 95, deps: ["sqlx", "config"] },
-      { name: "config", heat: 40, deps: ["serde", "toml"] },
-      { name: "sqlx", heat: 8, deps: [] },
-      { name: "serde", heat: 2, deps: [] },
-      { name: "toml", heat: 2, deps: [] },
-    ],
-  },
-  {
-    id: 8,
-    name: "cargo test -p proto_gen",
-    profile: "dev",
-    userFreqs: { bob: 4, dave: 15 },
-    pinned: false,
-    avgBuildMs: 11000,
-    llvmLines: 420000,
-    cratesInGraph: 78,
-    crateGraph: [
-      { name: "proto_gen", heat: 92, deps: ["prost", "tonic", "serde"] },
-      { name: "prost", heat: 10, deps: [] },
-      { name: "tonic", heat: 12, deps: [] },
-      { name: "serde", heat: 2, deps: [] },
-    ],
-  },
-];
+const graphsById: Record<number, CrateNode[]> = {
+  1: graph1,
+  2: graph2,
+  3: graph3,
+  4: graph4,
+  5: graph5,
+  6: graph6,
+  7: graph7,
+  8: graph8,
+};
+
+const MOCK_SCENARIOS: Scenario[] = (
+  scenariosData as Omit<Scenario, "crateGraph">[]
+).map((s) => ({
+  ...s,
+  crateGraph: graphsById[s.id] ?? [],
+}));
 
 // ── Theme ────────────────────────────────────────────────────────────────────
 
