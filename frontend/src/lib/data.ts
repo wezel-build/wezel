@@ -1,5 +1,6 @@
 import usersData from "../mock_data/users.json";
 import scenariosData from "../mock_data/scenarios.json";
+import commitsData from "../mock_data/commits.json";
 import graph1 from "../mock_data/graphs/1.json";
 import graph2 from "../mock_data/graphs/2.json";
 import graph3 from "../mock_data/graphs/3.json";
@@ -39,6 +40,42 @@ export interface Scenario {
   pinned: boolean;
   graph: CrateTopo[];
   runs: Run[];
+}
+
+// ── Forager commit model ─────────────────────────────────────────────────────
+
+export type MeasurementStatus =
+  | "not-started"
+  | "pending"
+  | "running"
+  | "complete"
+  | "failed";
+
+export interface MeasurementDetail {
+  name: string;
+  value: number;
+  prevValue?: number;
+}
+
+export interface Measurement {
+  id: number;
+  name: string;
+  kind: string;
+  status: MeasurementStatus;
+  value?: number;
+  prevValue?: number;
+  unit?: string;
+  detail?: MeasurementDetail[];
+}
+
+export interface ForagerCommit {
+  sha: string;
+  shortSha: string;
+  author: string;
+  message: string;
+  timestamp: string;
+  status: "not-started" | "running" | "complete";
+  measurements: Measurement[];
 }
 
 // ── Heat computation ─────────────────────────────────────────────────────────
@@ -101,3 +138,5 @@ export const MOCK_SCENARIOS: Scenario[] = (
   graph: graphsById[s.id] ?? [],
   runs: runsById[s.id] ?? [],
 }));
+
+export const MOCK_COMMITS = commitsData as ForagerCommit[];

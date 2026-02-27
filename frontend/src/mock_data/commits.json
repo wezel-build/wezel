@@ -1,0 +1,662 @@
+[
+  {
+    "sha": "a3f8c12d9e4b6a7c8f0d1e2b3a4c5d6e7f8a9b0c",
+    "shortSha": "a3f8c12",
+    "author": "alice",
+    "message": "refactor auth_core session handling",
+    "timestamp": "2024-01-15T08:12:00Z",
+    "status": "complete",
+    "measurements": [
+      {
+        "id": 1,
+        "name": "incremental from auth_core",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 4310,
+        "prevValue": 4150,
+        "unit": "ms"
+      },
+      {
+        "id": 2,
+        "name": "incremental from crypto_utils",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 6820,
+        "prevValue": 6700,
+        "unit": "ms"
+      },
+      {
+        "id": 3,
+        "name": "workspace full build",
+        "kind": "full-build",
+        "status": "complete",
+        "value": 12840,
+        "prevValue": 12200,
+        "unit": "ms"
+      },
+      {
+        "id": 4,
+        "name": "cargo llvm-lines (auth_core)",
+        "kind": "llvm-lines",
+        "status": "complete",
+        "value": 48210,
+        "prevValue": 45800,
+        "unit": "lines",
+        "detail": [
+          {
+            "name": "core::ptr::drop_in_place<auth_core::session::Session>",
+            "value": 8420,
+            "prevValue": 6100
+          },
+          {
+            "name": "auth_core::session::SessionManager::validate",
+            "value": 6210,
+            "prevValue": 5900
+          },
+          {
+            "name": "<auth_core::token::Claims as serde::ser::Serialize>::serialize",
+            "value": 5840,
+            "prevValue": 5840
+          },
+          {
+            "name": "auth_core::middleware::extract_bearer",
+            "value": 4100,
+            "prevValue": 4100
+          },
+          {
+            "name": "auth_core::session::SessionManager::refresh",
+            "value": 3980,
+            "prevValue": 3200
+          },
+          {
+            "name": "<auth_core::error::AuthError as core::fmt::Display>::fmt",
+            "value": 3600,
+            "prevValue": 3600
+          },
+          {
+            "name": "auth_core::crypto::hash_password",
+            "value": 3200,
+            "prevValue": 3200
+          },
+          {
+            "name": "auth_core::session::SessionManager::create",
+            "value": 2980,
+            "prevValue": 2980
+          },
+          {
+            "name": "alloc::raw_vec::RawVec<T,A>::grow_amortized",
+            "value": 2400,
+            "prevValue": 2400
+          },
+          {
+            "name": "hashbrown::raw::RawTable<T,A>::resize",
+            "value": 2100,
+            "prevValue": 2100
+          },
+          {
+            "name": "auth_core::session::SessionManager::cleanup_expired",
+            "value": 1890,
+            "prevValue": 1890
+          },
+          { "name": "(other)", "value": 3490, "prevValue": 4490 }
+        ]
+      },
+      {
+        "id": 5,
+        "name": "cargo llvm-lines (workspace)",
+        "kind": "llvm-lines",
+        "status": "complete",
+        "value": 312400,
+        "prevValue": 308900,
+        "unit": "lines",
+        "detail": [
+          {
+            "name": "core::ptr::drop_in_place<various>",
+            "value": 42100,
+            "prevValue": 38600
+          },
+          {
+            "name": "<serde_json::de::Deserializer<R> as serde::de::Deserializer>::deserialize_any",
+            "value": 18400,
+            "prevValue": 18400
+          },
+          {
+            "name": "tokio::runtime::scheduler::multi_thread::worker::Context::run",
+            "value": 15200,
+            "prevValue": 15200
+          },
+          {
+            "name": "<T as tonic::service::interceptor::Interceptor>::call",
+            "value": 12800,
+            "prevValue": 12800
+          },
+          {
+            "name": "alloc::raw_vec::RawVec<T,A>::grow_amortized",
+            "value": 11500,
+            "prevValue": 11500
+          },
+          {
+            "name": "hashbrown::raw::RawTable<T,A>::resize",
+            "value": 9800,
+            "prevValue": 9800
+          },
+          {
+            "name": "auth_core::session::SessionManager::validate",
+            "value": 6210,
+            "prevValue": 5900
+          },
+          {
+            "name": "<diesel::query_builder::insert_statement::InsertStatement<T,U,Op> as diesel::query_builder::QueryFragment<DB>>::walk_ast",
+            "value": 5900,
+            "prevValue": 5900
+          },
+          {
+            "name": "hyper::proto::h1::dispatch::Dispatcher<D,Bs,I,T>::poll_catch",
+            "value": 5400,
+            "prevValue": 5400
+          },
+          { "name": "(other)", "value": 185090, "prevValue": 185400 }
+        ]
+      }
+    ]
+  },
+  {
+    "sha": "b7d2e4901c3f5a8d6b9e0f1a2c4d5e6f7a8b9c0d",
+    "shortSha": "b7d2e49",
+    "author": "bob",
+    "message": "add connection pooling to db_pool",
+    "timestamp": "2024-01-15T14:45:00Z",
+    "status": "complete",
+    "measurements": [
+      {
+        "id": 6,
+        "name": "incremental from db_pool",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 3980,
+        "prevValue": 4100,
+        "unit": "ms"
+      },
+      {
+        "id": 7,
+        "name": "incremental from auth_core",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 4520,
+        "prevValue": 4310,
+        "unit": "ms"
+      },
+      {
+        "id": 8,
+        "name": "workspace full build",
+        "kind": "full-build",
+        "status": "complete",
+        "value": 11900,
+        "prevValue": 12840,
+        "unit": "ms"
+      },
+      {
+        "id": 9,
+        "name": "cargo llvm-lines (workspace)",
+        "kind": "llvm-lines",
+        "status": "complete",
+        "value": 310200,
+        "prevValue": 312400,
+        "unit": "lines",
+        "detail": [
+          {
+            "name": "core::ptr::drop_in_place<various>",
+            "value": 41200,
+            "prevValue": 42100
+          },
+          {
+            "name": "<serde_json::de::Deserializer<R> as serde::de::Deserializer>::deserialize_any",
+            "value": 18400,
+            "prevValue": 18400
+          },
+          {
+            "name": "tokio::runtime::scheduler::multi_thread::worker::Context::run",
+            "value": 15200,
+            "prevValue": 15200
+          },
+          {
+            "name": "<T as tonic::service::interceptor::Interceptor>::call",
+            "value": 12800,
+            "prevValue": 12800
+          },
+          {
+            "name": "alloc::raw_vec::RawVec<T,A>::grow_amortized",
+            "value": 11500,
+            "prevValue": 11500
+          },
+          {
+            "name": "hashbrown::raw::RawTable<T,A>::resize",
+            "value": 9800,
+            "prevValue": 9800
+          },
+          {
+            "name": "auth_core::session::SessionManager::validate",
+            "value": 6210,
+            "prevValue": 6210
+          },
+          {
+            "name": "<diesel::query_builder::insert_statement::InsertStatement<T,U,Op> as diesel::query_builder::QueryFragment<DB>>::walk_ast",
+            "value": 5900,
+            "prevValue": 5900
+          },
+          {
+            "name": "hyper::proto::h1::dispatch::Dispatcher<D,Bs,I,T>::poll_catch",
+            "value": 5400,
+            "prevValue": 5400
+          },
+          { "name": "(other)", "value": 183790, "prevValue": 185090 }
+        ]
+      },
+      {
+        "id": 10,
+        "name": "release build (forager)",
+        "kind": "release-build",
+        "status": "complete",
+        "value": 37100,
+        "prevValue": 38200,
+        "unit": "ms"
+      }
+    ]
+  },
+  {
+    "sha": "c1e5a830f2b4d6e8a0c2d4f6a8b0c2d4e6f8a0b2",
+    "shortSha": "c1e5a83",
+    "author": "alice",
+    "message": "optimize crypto_utils hashing paths",
+    "timestamp": "2024-01-16T09:05:00Z",
+    "status": "complete",
+    "measurements": [
+      {
+        "id": 11,
+        "name": "incremental from crypto_utils",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 5100,
+        "prevValue": 6820,
+        "unit": "ms"
+      },
+      {
+        "id": 12,
+        "name": "incremental from auth_core",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 3890,
+        "prevValue": 4520,
+        "unit": "ms"
+      },
+      {
+        "id": 13,
+        "name": "workspace full build",
+        "kind": "full-build",
+        "status": "complete",
+        "value": 11200,
+        "prevValue": 11900,
+        "unit": "ms"
+      },
+      {
+        "id": 14,
+        "name": "cargo llvm-lines (workspace)",
+        "kind": "llvm-lines",
+        "status": "complete",
+        "value": 295600,
+        "prevValue": 310200,
+        "unit": "lines",
+        "detail": [
+          {
+            "name": "core::ptr::drop_in_place<various>",
+            "value": 40800,
+            "prevValue": 41200
+          },
+          {
+            "name": "<serde_json::de::Deserializer<R> as serde::de::Deserializer>::deserialize_any",
+            "value": 18400,
+            "prevValue": 18400
+          },
+          {
+            "name": "tokio::runtime::scheduler::multi_thread::worker::Context::run",
+            "value": 15200,
+            "prevValue": 15200
+          },
+          {
+            "name": "<T as tonic::service::interceptor::Interceptor>::call",
+            "value": 12800,
+            "prevValue": 12800
+          },
+          {
+            "name": "alloc::raw_vec::RawVec<T,A>::grow_amortized",
+            "value": 11500,
+            "prevValue": 11500
+          },
+          {
+            "name": "hashbrown::raw::RawTable<T,A>::resize",
+            "value": 9800,
+            "prevValue": 9800
+          },
+          {
+            "name": "auth_core::session::SessionManager::validate",
+            "value": 5100,
+            "prevValue": 6210
+          },
+          {
+            "name": "auth_core::crypto::hash_password",
+            "value": 2200,
+            "prevValue": 3200
+          },
+          { "name": "(other)", "value": 179800, "prevValue": 191890 }
+        ]
+      },
+      {
+        "id": 15,
+        "name": "cargo llvm-lines (crypto_utils)",
+        "kind": "llvm-lines",
+        "status": "complete",
+        "value": 18200,
+        "prevValue": 24100,
+        "unit": "lines",
+        "detail": [
+          {
+            "name": "crypto_utils::hashing::sha256_digest",
+            "value": 3100,
+            "prevValue": 5800
+          },
+          {
+            "name": "crypto_utils::hashing::blake3_digest",
+            "value": 2800,
+            "prevValue": 4600
+          },
+          {
+            "name": "crypto_utils::aead::encrypt",
+            "value": 2400,
+            "prevValue": 2400
+          },
+          {
+            "name": "crypto_utils::aead::decrypt",
+            "value": 2300,
+            "prevValue": 2300
+          },
+          {
+            "name": "crypto_utils::kdf::derive_key",
+            "value": 1900,
+            "prevValue": 1900
+          },
+          {
+            "name": "core::ptr::drop_in_place<crypto_utils::key::KeyPair>",
+            "value": 1400,
+            "prevValue": 2100
+          },
+          {
+            "name": "crypto_utils::rand::fill_bytes",
+            "value": 1200,
+            "prevValue": 1200
+          },
+          { "name": "(other)", "value": 3100, "prevValue": 3800 }
+        ]
+      },
+      {
+        "id": 16,
+        "name": "release build (forager)",
+        "kind": "release-build",
+        "status": "complete",
+        "value": 35400,
+        "prevValue": 37100,
+        "unit": "ms"
+      }
+    ]
+  },
+  {
+    "sha": "d4f7b921a3c5e7f9b1d3f5a7c9e1a3b5d7f9a1c3",
+    "shortSha": "d4f7b92",
+    "author": "charlie",
+    "message": "migrate config to toml, update schema",
+    "timestamp": "2024-01-16T16:30:00Z",
+    "status": "complete",
+    "measurements": [
+      {
+        "id": 17,
+        "name": "incremental from config",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 7840,
+        "prevValue": 3200,
+        "unit": "ms"
+      },
+      {
+        "id": 18,
+        "name": "incremental from auth_core",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 4890,
+        "prevValue": 3890,
+        "unit": "ms"
+      },
+      {
+        "id": 19,
+        "name": "workspace full build",
+        "kind": "full-build",
+        "status": "complete",
+        "value": 14100,
+        "prevValue": 11200,
+        "unit": "ms"
+      },
+      {
+        "id": 20,
+        "name": "cargo llvm-lines (workspace)",
+        "kind": "llvm-lines",
+        "status": "complete",
+        "value": 328100,
+        "prevValue": 295600,
+        "unit": "lines",
+        "detail": [
+          {
+            "name": "core::ptr::drop_in_place<various>",
+            "value": 44500,
+            "prevValue": 40800
+          },
+          {
+            "name": "<toml::de::Deserializer as serde::de::Deserializer>::deserialize_any",
+            "value": 22400,
+            "prevValue": 0
+          },
+          {
+            "name": "<serde_json::de::Deserializer<R> as serde::de::Deserializer>::deserialize_any",
+            "value": 18400,
+            "prevValue": 18400
+          },
+          {
+            "name": "tokio::runtime::scheduler::multi_thread::worker::Context::run",
+            "value": 15200,
+            "prevValue": 15200
+          },
+          {
+            "name": "<T as tonic::service::interceptor::Interceptor>::call",
+            "value": 12800,
+            "prevValue": 12800
+          },
+          {
+            "name": "alloc::raw_vec::RawVec<T,A>::grow_amortized",
+            "value": 11500,
+            "prevValue": 11500
+          },
+          {
+            "name": "config::schema::validate_toml",
+            "value": 10200,
+            "prevValue": 0
+          },
+          { "name": "(other)", "value": 193100, "prevValue": 196900 }
+        ]
+      },
+      {
+        "id": 21,
+        "name": "release build (forager)",
+        "kind": "release-build",
+        "status": "complete",
+        "value": 41200,
+        "prevValue": 35400,
+        "unit": "ms"
+      },
+      {
+        "id": 22,
+        "name": "binary size (forager)",
+        "kind": "binary-size",
+        "status": "complete",
+        "value": 14680064,
+        "prevValue": 13942784,
+        "unit": "bytes"
+      }
+    ]
+  },
+  {
+    "sha": "e8a2c461b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5",
+    "shortSha": "e8a2c46",
+    "author": "alice",
+    "message": "revert config changes, fix auth regression",
+    "timestamp": "2024-01-17T10:15:00Z",
+    "status": "complete",
+    "measurements": [
+      {
+        "id": 23,
+        "name": "incremental from config",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 3400,
+        "prevValue": 7840,
+        "unit": "ms"
+      },
+      {
+        "id": 24,
+        "name": "incremental from auth_core",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 3950,
+        "prevValue": 4890,
+        "unit": "ms"
+      },
+      {
+        "id": 25,
+        "name": "workspace full build",
+        "kind": "full-build",
+        "status": "complete",
+        "value": 11500,
+        "prevValue": 14100,
+        "unit": "ms"
+      },
+      {
+        "id": 26,
+        "name": "cargo llvm-lines (workspace)",
+        "kind": "llvm-lines",
+        "status": "complete",
+        "value": 296800,
+        "prevValue": 328100,
+        "unit": "lines",
+        "detail": [
+          {
+            "name": "core::ptr::drop_in_place<various>",
+            "value": 41000,
+            "prevValue": 44500
+          },
+          {
+            "name": "<serde_json::de::Deserializer<R> as serde::de::Deserializer>::deserialize_any",
+            "value": 18400,
+            "prevValue": 18400
+          },
+          {
+            "name": "tokio::runtime::scheduler::multi_thread::worker::Context::run",
+            "value": 15200,
+            "prevValue": 15200
+          },
+          {
+            "name": "<T as tonic::service::interceptor::Interceptor>::call",
+            "value": 12800,
+            "prevValue": 12800
+          },
+          {
+            "name": "alloc::raw_vec::RawVec<T,A>::grow_amortized",
+            "value": 11500,
+            "prevValue": 11500
+          },
+          {
+            "name": "hashbrown::raw::RawTable<T,A>::resize",
+            "value": 9800,
+            "prevValue": 9800
+          },
+          { "name": "(other)", "value": 188100, "prevValue": 215900 }
+        ]
+      },
+      {
+        "id": 27,
+        "name": "release build (forager)",
+        "kind": "release-build",
+        "status": "complete",
+        "value": 36100,
+        "prevValue": 41200,
+        "unit": "ms"
+      },
+      {
+        "id": 28,
+        "name": "binary size (forager)",
+        "kind": "binary-size",
+        "status": "complete",
+        "value": 13950000,
+        "prevValue": 14680064,
+        "unit": "bytes"
+      }
+    ]
+  },
+  {
+    "sha": "f9b3d572c6e8a0b2d4f6a8c0e2b4d6f8a0c2e4b6",
+    "shortSha": "f9b3d57",
+    "author": "bob",
+    "message": "add pheromone filesystem watcher",
+    "timestamp": "2024-01-17T15:40:00Z",
+    "status": "running",
+    "measurements": [
+      {
+        "id": 29,
+        "name": "incremental from pheromone_agent",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 5200,
+        "prevValue": 4800,
+        "unit": "ms"
+      },
+      {
+        "id": 30,
+        "name": "incremental from auth_core",
+        "kind": "incremental-build",
+        "status": "complete",
+        "value": 3980,
+        "prevValue": 3950,
+        "unit": "ms"
+      },
+      {
+        "id": 31,
+        "name": "workspace full build",
+        "kind": "full-build",
+        "status": "running"
+      },
+      {
+        "id": 32,
+        "name": "cargo llvm-lines (workspace)",
+        "kind": "llvm-lines",
+        "status": "pending"
+      },
+      {
+        "id": 33,
+        "name": "release build (forager)",
+        "kind": "release-build",
+        "status": "not-started"
+      },
+      {
+        "id": 34,
+        "name": "binary size (forager)",
+        "kind": "binary-size",
+        "status": "not-started"
+      }
+    ]
+  }
+]

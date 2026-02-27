@@ -1,14 +1,17 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
-import { Workflow } from "lucide-react";
+import { Outlet, Link, useLocation } from "react-router-dom";
+import { Workflow, GitCommit } from "lucide-react";
 import { ThemeCtx, THEMES, THEME_ORDER, type ThemeKey } from "./lib/theme";
 import { MONO, SANS } from "./lib/format";
-import { MOCK_SCENARIOS } from "./lib/data";
+import { MOCK_SCENARIOS, MOCK_COMMITS } from "./lib/data";
 
 export default function Shell() {
   const [themeKey, setThemeKey] = useState<ThemeKey>("warm");
   const theme = THEMES[themeKey];
   const C = theme.C;
+  const location = useLocation();
+  const latestCommit = MOCK_COMMITS[MOCK_COMMITS.length - 1];
+  const onCommitPage = location.pathname.startsWith("/commit");
 
   return (
     <ThemeCtx.Provider value={theme}>
@@ -37,18 +40,72 @@ export default function Shell() {
             justifyContent: "space-between",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Workflow size={18} color={C.accent} strokeWidth={2.5} />
-            <span
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <Link
+              to="/"
               style={{
-                fontSize: 15,
-                fontWeight: 800,
-                color: C.accent,
-                letterSpacing: -0.5,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                textDecoration: "none",
               }}
             >
-              wezel
-            </span>
+              <Workflow size={18} color={C.accent} strokeWidth={2.5} />
+              <span
+                style={{
+                  fontSize: 15,
+                  fontWeight: 800,
+                  color: C.accent,
+                  letterSpacing: -0.5,
+                }}
+              >
+                wezel
+              </span>
+            </Link>
+            <div style={{ width: 1, height: 16, background: C.border }} />
+            <Link
+              to="/"
+              style={{
+                fontSize: 10,
+                fontFamily: MONO,
+                fontWeight: 600,
+                color: !onCommitPage ? C.accent : C.textDim,
+                textDecoration: "none",
+                letterSpacing: 0.3,
+                textTransform: "uppercase",
+              }}
+            >
+              scenarios
+            </Link>
+            <Link
+              to={`/commit/${latestCommit.shortSha}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 10,
+                fontFamily: MONO,
+                fontWeight: 600,
+                color: onCommitPage ? C.accent : C.textDim,
+                textDecoration: "none",
+                letterSpacing: 0.3,
+                textTransform: "uppercase",
+              }}
+            >
+              <GitCommit size={11} />
+              commits
+              {latestCommit.status === "running" && (
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 3,
+                    background: C.amber,
+                    display: "inline-block",
+                  }}
+                />
+              )}
+            </Link>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ fontSize: 10, color: C.textDim, fontFamily: MONO }}>
