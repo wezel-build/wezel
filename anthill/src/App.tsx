@@ -8,6 +8,7 @@ const CommitPage = lazy(() => import("./routes/CommitPage"));
 const MeasurementDetailPage = lazy(
   () => import("./routes/MeasurementDetailPage"),
 );
+const NewProjectPage = lazy(() => import("./routes/NewProjectPage"));
 
 const router = createBrowserRouter([
   {
@@ -43,6 +44,14 @@ const router = createBrowserRouter([
         element: (
           <Suspense>
             <MeasurementDetailPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "projects/create",
+        element: (
+          <Suspense>
+            <NewProjectPage />
           </Suspense>
         ),
       },

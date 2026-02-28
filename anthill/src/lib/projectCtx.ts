@@ -5,7 +5,9 @@ import type { Project } from "./data";
 export interface ProjectCtxValue {
   projects: Project[];
   current: Project | null;
+  loaded: boolean;
   setCurrent: (p: Project) => void;
+  addProject: (name: string, upstream: string) => Promise<Project>;
   pApi: ProjectApi;
 }
 
@@ -23,6 +25,8 @@ export const nullApi: ProjectApi = {
 export const ProjectCtx = createContext<ProjectCtxValue>({
   projects: [],
   current: null,
+  loaded: false,
   setCurrent: () => {},
+  addProject: () => Promise.reject("no provider"),
   pApi: nullApi,
 });

@@ -198,7 +198,25 @@ export default function ScenariosPage() {
                 fontSize: 12,
               }}
             >
-              No commands match filters
+              {scenarios.length === 0 ? (
+                <span>
+                  No scenarios yet. Run{" "}
+                  <code style={{ fontFamily: MONO, color: C.accent }}>
+                    wezel
+                  </code>{" "}
+                  in your project to start tracking builds.{" "}
+                  <a
+                    href="https://github.com/wezel-dev/wezel#readme"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: C.accent }}
+                  >
+                    Docs →
+                  </a>
+                </span>
+              ) : (
+                "No commands match filters"
+              )}
             </div>
           )}
           {filtered.map(({ scenario: s, result }, fi) => {

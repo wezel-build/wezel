@@ -152,6 +152,27 @@ async fn commit_to_json(pool: &SqlitePool, commit_id: i64) -> Result<Value, Stat
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
+async fn create_project(
+    State(pool): State<SqlitePool>,
+    Json(body): Json<Value>,
+) -> Result<(StatusCode, Json<Value>), StatusCode> {
+    let name = body["name"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    let upstream = body["upstream"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+
+    let result = sqlx::query("INSERT INTO projects (name, upstream) VALUES (?, ?)")
+        .bind(name)
+        .bind(upstream)
+        .execute(&pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let id = result.last_insert_rowid();
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "id": id, "name": name, "upstream": upstream })),
+    ))
+}
+
 async fn get_projects(State(pool): State<SqlitePool>) -> Result<Json<Value>, StatusCode> {
     let rows = sqlx::query("SELECT id, name, upstream FROM projects ORDER BY id")
         .fetch_all(&pool)
@@ -324,7 +345,7 @@ async fn main() {
     let pool = db::open(&db_url).await.expect("could not open database");
 
     let app = Router::new()
-        .route("/api/projects", get(get_projects))
+        .route("/api/projects", get(get_projects).post(create_project))
         .route("/api/projects/{project_id}/overview", get(get_overview))
         .route("/api/projects/{project_id}/scenarios", get(get_scenarios))
         .route(

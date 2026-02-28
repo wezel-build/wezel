@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ReactNode } from "react";
 import type { Project } from "./data";
 import { api } from "./api";
@@ -9,6 +9,7 @@ const STORAGE_KEY = "wezel:projectId";
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [current, setCurrentRaw] = useState<Project | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     api.projects().then((list) => {
@@ -18,6 +19,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         ? list.find((p) => String(p.id) === stored)
         : undefined;
       setCurrentRaw(match ?? list[0] ?? null);
+      setLoaded(true);
     });
   }, []);
 
@@ -26,13 +28,25 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     setCurrentRaw(p);
   };
 
+  const addProject = useCallback(
+    async (name: string, upstream: string): Promise<Project> => {
+      const created = await api.createProject(name, upstream);
+      setProjects((prev) => [...prev, created]);
+      setCurrent(created);
+      return created;
+    },
+    [],
+  );
+
   const pApi = useMemo(
     () => (current ? api.forProject(current.id) : nullApi),
     [current],
   );
 
   return (
-    <ProjectCtx.Provider value={{ projects, current, setCurrent, pApi }}>
+    <ProjectCtx.Provider
+      value={{ projects, current, setCurrent, addProject, loaded, pApi }}
+    >
       {children}
     </ProjectCtx.Provider>
   );
