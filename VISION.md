@@ -28,10 +28,10 @@ There are three faces to Wezel:
 - The asynchronous scenario executor (provided by the client) named Forager. It runs the scenarios and gathers the measures (both volatile and non-volatile ones). 
 
 ### Pheromone
-Pheromone is an agent running locally. It consists of a single binary (pheromone-cli) that is invoked via precmd hooks in the shell. The cli delegates to the build-system-specific processes named `pheromone-<build system>` such as `pheromone-cargo` for Rust. The build system-specific process is responsible for identifying the scenario being executed and reporting it back to the pheromone-cli.
+Pheromone is an agent running locally. It consists of a single binary (pheromone_cli) that is invoked via precmd hooks in the shell. The cli delegates to the build-system-specific processes named `pheromone-<build system>` such as `pheromone-cargo` for Rust. The build system-specific process is responsible for identifying the scenario being executed and reporting it back to the pheromone_cli.
 All events are dumped into ~/.wezel/events/.json. As a post-cmd hook (in the background), wezel will flush the events to the currently configured Anthill instance.
 
-Pheromone-cli is thus responsible for:
+pheromone_cli is thus responsible for:
 - shell handling (precmd and postcmd hooks)
 - Alias normalization (cargo build and cargo b are the same)
 - Flushing the events to Anthill

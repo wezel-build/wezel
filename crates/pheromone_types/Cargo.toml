@@ -1,0 +1,8 @@
+[package]
+name = "pheromone_types"
+version = "0.1.0"
+edition = "2024"
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }

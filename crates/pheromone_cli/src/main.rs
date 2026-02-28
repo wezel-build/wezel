@@ -9,11 +9,11 @@ fn hook_block() -> String {
     format!(
         r#"{HOOK_MARKER}
 __wezel_preexec() {{
-  pheromone-cli pre "$1"
+  pheromone_cli pre "$1"
 }}
 
 __wezel_precmd() {{
-  (pheromone-cli post "$?" &) 2>/dev/null
+  (pheromone_cli post "$?" &) 2>/dev/null
 }}
 
 preexec_functions+=(__wezel_preexec)

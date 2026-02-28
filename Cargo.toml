@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pheromone-cli"]
+members = ["crates/pheromone_cli", "crates/pheromone_types"]
 
 [workspace.package]
 repository = "https://github.com/wezel-dev/wezel"
@@ -11,6 +11,9 @@ edition = "2024"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+pheromone_types = { path = "crates/pheromone_types" }
 
 # The profile that 'dist' will build with
 [profile.dist]
