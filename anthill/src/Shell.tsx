@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { Workflow, GitCommit } from "lucide-react";
 import { ThemeCtx, THEMES, THEME_ORDER, type ThemeKey } from "./lib/theme";
 import { MONO, SANS } from "./lib/format";
-import { useScenarios, useCommits } from "./lib/hooks";
+import { useOverview } from "./lib/hooks";
 
 export default function Shell() {
   const [themeKey, setThemeKey] = useState<ThemeKey>(
@@ -20,9 +20,7 @@ export default function Shell() {
   const C = theme.C;
   const location = useLocation();
 
-  const { scenarios } = useScenarios();
-  const { commits } = useCommits();
-  const latestCommit = commits.length > 0 ? commits[commits.length - 1] : null;
+  const { overview } = useOverview();
   const onCommitPage = location.pathname.startsWith("/commit");
 
   return (
@@ -90,7 +88,11 @@ export default function Shell() {
               scenarios
             </Link>
             <Link
-              to={latestCommit ? `/commit/${latestCommit.shortSha}` : "/"}
+              to={
+                overview.latestCommitShortSha
+                  ? `/commit/${overview.latestCommitShortSha}`
+                  : "/"
+              }
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -106,7 +108,7 @@ export default function Shell() {
             >
               <GitCommit size={11} />
               commits
-              {latestCommit?.status === "running" && (
+              {overview.latestCommitStatus === "running" && (
                 <span
                   style={{
                     width: 6,
@@ -121,8 +123,8 @@ export default function Shell() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ fontSize: 10, color: C.textDim, fontFamily: MONO }}>
-              {scenarios.length} commands ·{" "}
-              {scenarios.filter((s) => s.pinned).length} tracked
+              {overview.scenarioCount} commands · {overview.trackedCount}{" "}
+              tracked
             </div>
             <button
               onClick={() =>

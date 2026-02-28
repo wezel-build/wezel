@@ -58,7 +58,31 @@ fn assemble_scenarios() -> Vec<Value> {
 
 async fn get_scenarios(State(state): State<AppState>) -> Json<Value> {
     let scenarios = state.read().await;
-    Json(json!(*scenarios))
+    let slim: Vec<Value> = scenarios
+        .iter()
+        .map(|s| {
+            let mut obj = s.as_object().unwrap().clone();
+            obj.remove("graph");
+            Value::Object(obj)
+        })
+        .collect();
+    Json(json!(slim))
+}
+
+async fn get_overview(State(state): State<AppState>) -> Json<Value> {
+    let scenarios = state.read().await;
+    let tracked = scenarios
+        .iter()
+        .filter(|s| s["pinned"].as_bool() == Some(true))
+        .count();
+    let commits: Vec<Value> = serde_json::from_str(COMMITS_JSON).expect("invalid commits.json");
+    let latest = commits.last();
+    Json(json!({
+        "scenarioCount": scenarios.len(),
+        "trackedCount": tracked,
+        "latestCommitShortSha": latest.and_then(|c| c["shortSha"].as_str()),
+        "latestCommitStatus": latest.and_then(|c| c["status"].as_str()),
+    }))
 }
 
 async fn get_scenario(
@@ -117,6 +141,7 @@ async fn main() {
     let state: AppState = Arc::new(RwLock::new(assemble_scenarios()));
 
     let app = Router::new()
+        .route("/api/overview", get(get_overview))
         .route("/api/scenarios", get(get_scenarios))
         .route("/api/scenarios/{id}", get(get_scenario))
         .route("/api/scenarios/{id}/pin", patch(toggle_pin))

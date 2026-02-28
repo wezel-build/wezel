@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Pin, PinOff } from "lucide-react";
 import { useTheme } from "../lib/theme";
 import { MONO } from "../lib/format";
-import type { Scenario } from "../lib/data";
+import type { ScenarioSummary } from "../lib/api";
 import { useScenarios } from "../lib/hooks";
 import { FilterBar } from "../components/FilterBar";
 import { FreqBar } from "../components/FreqBar";
@@ -36,7 +36,7 @@ export default function ScenariosPage() {
   );
 
   const getFreq = useCallback(
-    (s: Scenario) => {
+    (s: ScenarioSummary) => {
       if (userFilter.length === 0) return s.runs.length;
       return s.runs.filter((r) => userFilter.includes(r.user)).length;
     },
@@ -44,7 +44,7 @@ export default function ScenariosPage() {
   );
 
   const filtered = useMemo(() => {
-    let list: { scenario: Scenario; result: Fuzzysort.Result | null }[];
+    let list: { scenario: ScenarioSummary; result: Fuzzysort.Result | null }[];
     if (search) {
       const results = fuzzysort.go(search, scenarios, {
         key: "name",
@@ -130,23 +130,18 @@ export default function ScenariosPage() {
     if (selectedId == null) setFocusPanel("list");
   }, [selectedId]);
 
-  const selected =
-    selectedId != null
-      ? (scenarios.find((s) => s.id === selectedId) ?? null)
-      : null;
-
   return (
     <>
       {/* Left: command list */}
       <div
         style={{
-          width: selected ? listWidth : "100%",
+          width: selectedId != null ? listWidth : "100%",
           minWidth: 280,
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
           boxShadow:
-            selected && focusPanel === "list"
+            selectedId != null && focusPanel === "list"
               ? `inset 0 0 0 1.5px ${C.accent}88, 0 0 8px ${C.accent}22`
               : "none",
           transition: "box-shadow 0.15s",
@@ -299,12 +294,12 @@ export default function ScenariosPage() {
       </div>
 
       {/* Resize handle + detail */}
-      {selected && (
+      {selectedId != null && (
         <PanelHandle
           onDrag={(d) => setListWidth((w) => Math.max(280, w + d))}
         />
       )}
-      {selected && (
+      {selectedId != null && (
         <div
           style={{
             flex: 1,
@@ -319,8 +314,8 @@ export default function ScenariosPage() {
           }}
         >
           <DetailView
-            key={selected.id}
-            scenario={selected}
+            key={selectedId}
+            scenarioId={selectedId}
             keyboardActive={focusPanel === "runs"}
             userFilter={userFilter}
           />

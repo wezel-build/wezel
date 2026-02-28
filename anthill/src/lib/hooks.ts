@@ -1,10 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { api } from "./api";
+import { api, type Overview, type ScenarioSummary } from "./api";
 import type { Scenario, ForagerCommit } from "./data";
 
-const EMPTY_SCENARIOS: Scenario[] = [];
+const EMPTY_SCENARIOS: ScenarioSummary[] = [];
 const EMPTY_COMMITS: ForagerCommit[] = [];
 const EMPTY_USERS: string[] = [];
+const EMPTY_OVERVIEW: Overview = {
+  scenarioCount: 0,
+  trackedCount: 0,
+  latestCommitShortSha: null,
+  latestCommitStatus: null,
+};
 
 interface AsyncState<T> {
   data: T | null;
@@ -41,6 +47,11 @@ function useAsync<T>(
   return { ...state, refetch };
 }
 
+export function useOverview() {
+  const { data, loading, error } = useAsync(() => api.overview(), []);
+  return { overview: data ?? EMPTY_OVERVIEW, loading, error };
+}
+
 export function useScenarios() {
   const { data, loading, error, refetch } = useAsync(() => api.scenarios(), []);
 
@@ -53,6 +64,18 @@ export function useScenarios() {
   );
 
   return { scenarios: data ?? EMPTY_SCENARIOS, loading, error, togglePin };
+}
+
+export function useScenario(id: number | null) {
+  const { data, loading, error } = useAsync(
+    () => (id != null ? api.scenario(id) : Promise.reject("no id")),
+    [id],
+  );
+  return {
+    scenario: data as Scenario | null,
+    loading: id != null && loading,
+    error,
+  };
 }
 
 export function useCommits() {

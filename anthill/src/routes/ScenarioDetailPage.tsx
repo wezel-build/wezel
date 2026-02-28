@@ -2,7 +2,8 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { useTheme, lightHeat } from "../lib/theme";
 import { MONO } from "../lib/format";
-import { computeHeat, type Scenario } from "../lib/data";
+import { computeHeat } from "../lib/data";
+import { useScenario } from "../lib/hooks";
 import { Badge } from "../components/Badge";
 import { HeatLegend } from "../components/HeatLegend";
 import { PanelHandle } from "../components/PanelHandle";
@@ -11,22 +12,38 @@ import { Summary } from "../components/Summary";
 import { layoutGraph, FitViewGraph } from "../components/Graph";
 import { useKeyboardNav } from "../lib/useKeyboardNav";
 
+const EMPTY_RUNS: {
+  user: string;
+  timestamp: string;
+  commit: string;
+  buildTimeMs: number;
+  dirtyCrates: string[];
+}[] = [];
+const EMPTY_GRAPH: { name: string; deps: string[] }[] = [];
+
 export function DetailView({
-  scenario: rawScenario,
+  scenarioId,
   keyboardActive = false,
   userFilter = [],
 }: {
-  scenario: Scenario;
+  scenarioId: number;
   keyboardActive?: boolean;
   userFilter?: string[];
 }) {
+  const { scenario: rawScenario, loading } = useScenario(scenarioId);
+
   const scenario = useMemo(() => {
+    if (!rawScenario) return null;
     if (userFilter.length === 0) return rawScenario;
     return {
       ...rawScenario,
       runs: rawScenario.runs.filter((r) => userFilter.includes(r.user)),
     };
   }, [rawScenario, userFilter]);
+
+  const runs = scenario?.runs ?? EMPTY_RUNS;
+  const graph = scenario?.graph ?? EMPTY_GRAPH;
+
   const { C, heatColor } = useTheme();
   const [threshold, setThreshold] = useState(0);
   const [runsWidth, setRunsWidth] = useState(280);
@@ -34,8 +51,16 @@ export function DetailView({
   const [crateFilter, setCrateFilter] = useState<string | null>(null);
 
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(
-    () => new Set(scenario.runs.map((_, i) => i)),
+    () => new Set(),
   );
+
+  // Reset selected indices when scenario loads / changes
+  useEffect(() => {
+    if (runs.length > 0) {
+      setSelectedIndices(new Set(runs.map((_, i) => i)));
+    }
+  }, [runs]);
+
   const [hlRunIdx, setHlRunIdx] = useState(-1);
   const hlRunIdxRef = useRef(hlRunIdx);
   hlRunIdxRef.current = hlRunIdx;
@@ -57,24 +82,22 @@ export function DetailView({
   const visibleRunIndices = useMemo(() => {
     if (!crateFilter) return null; // null = show all
     const indices: number[] = [];
-    scenario.runs.forEach((r, i) => {
+    runs.forEach((r, i) => {
       if (r.dirtyCrates.includes(crateFilter)) indices.push(i);
     });
     return new Set(indices);
-  }, [scenario.runs, crateFilter]);
+  }, [runs, crateFilter]);
 
   const displayedRuns = useMemo(() => {
-    if (!visibleRunIndices) return scenario.runs;
-    return scenario.runs.filter((_, i) => visibleRunIndices.has(i));
-  }, [scenario.runs, visibleRunIndices]);
+    if (!visibleRunIndices) return runs;
+    return runs.filter((_, i) => visibleRunIndices.has(i));
+  }, [runs, visibleRunIndices]);
 
   // Map displayed index → original index for selection tracking
   const displayedOriginalIndices = useMemo(() => {
-    if (!visibleRunIndices) return scenario.runs.map((_, i) => i);
-    return scenario.runs
-      .map((_, i) => i)
-      .filter((i) => visibleRunIndices.has(i));
-  }, [scenario.runs, visibleRunIndices]);
+    if (!visibleRunIndices) return runs.map((_, i) => i);
+    return runs.map((_, i) => i).filter((i) => visibleRunIndices.has(i));
+  }, [runs, visibleRunIndices]);
 
   const displayedSelectedIndices = useMemo(() => {
     const s = new Set<number>();
@@ -199,18 +222,15 @@ export function DetailView({
 
   const selectedRuns = useMemo(
     () =>
-      scenario.runs.filter(
+      runs.filter(
         (_, i) =>
           selectedIndices.has(i) &&
           (!visibleRunIndices || visibleRunIndices.has(i)),
       ),
-    [scenario.runs, selectedIndices, visibleRunIndices],
+    [runs, selectedIndices, visibleRunIndices],
   );
 
-  const crateNames = useMemo(
-    () => scenario.graph.map((c) => c.name),
-    [scenario.graph],
-  );
+  const crateNames = useMemo(() => graph.map((c) => c.name), [graph]);
 
   const heat = useMemo(
     () => computeHeat(selectedRuns, crateNames),
@@ -218,16 +238,14 @@ export function DetailView({
   );
 
   const filteredGraph = useMemo(() => {
-    if (threshold <= 0) return scenario.graph;
+    if (threshold <= 0) return graph;
     const kept = new Set(
-      scenario.graph
-        .filter((c) => (heat[c.name] ?? 0) >= threshold)
-        .map((c) => c.name),
+      graph.filter((c) => (heat[c.name] ?? 0) >= threshold).map((c) => c.name),
     );
-    return scenario.graph
+    return graph
       .filter((c) => kept.has(c.name))
       .map((c) => ({ ...c, deps: c.deps.filter((d) => kept.has(d)) }));
-  }, [scenario.graph, heat, threshold]);
+  }, [graph, heat, threshold]);
 
   const highlightedCrates = useMemo(() => {
     if (hlRunIdx < 0 || hlRunIdx >= displayedRuns.length) return undefined;
@@ -243,6 +261,26 @@ export function DetailView({
   const handleNodeClick = useCallback((crateName: string) => {
     setCrateFilter((prev) => (prev === crateName ? null : crateName));
   }, []);
+
+  // ── Loading guard (all hooks are above) ────────────────────────────────────
+
+  if (loading || !scenario) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100%",
+          color: C.textDim,
+          fontSize: 11,
+          fontFamily: MONO,
+        }}
+      >
+        loading…
+      </div>
+    );
+  }
 
   return (
     <div

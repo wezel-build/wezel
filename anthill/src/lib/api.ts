@@ -1,5 +1,15 @@
 import type { Scenario, ForagerCommit } from "./data";
 
+export interface Overview {
+  scenarioCount: number;
+  trackedCount: number;
+  latestCommitShortSha: string | null;
+  latestCommitStatus: string | null;
+}
+
+/** Scenario as returned by the list endpoint (no graph). */
+export type ScenarioSummary = Omit<Scenario, "graph">;
+
 const BASE = import.meta.env.VITE_BURROW_URL ?? "http://localhost:3001";
 
 async function get<T>(path: string): Promise<T> {
@@ -19,7 +29,8 @@ async function patch<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
-  scenarios: () => get<Scenario[]>("/api/scenarios"),
+  overview: () => get<Overview>("/api/overview"),
+  scenarios: () => get<ScenarioSummary[]>("/api/scenarios"),
   scenario: (id: number) => get<Scenario>(`/api/scenarios/${id}`),
   togglePin: (id: number) => patch<Scenario>(`/api/scenarios/${id}/pin`),
   commits: () => get<ForagerCommit[]>("/api/commits"),
