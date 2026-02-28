@@ -1,46 +1,20 @@
 use clap::{Parser, Subcommand};
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 
-const HOOK_MARKER: &str = "# >>> wezel pheromone >>>";
-const HOOK_END: &str = "# <<< wezel pheromone <<<";
 const FLUSH_LOCK: &str = ".flush.lock";
+const SOURCE_MARKER: &str = "# >>> wezel pheromone >>>";
+const SOURCE_END: &str = "# <<< wezel pheromone <<<";
 
-fn hook_block() -> String {
-    format!(
-        r#"{HOOK_MARKER}
-__wezel_preexec() {{
-  pheromone_cli pre "$1"
-}}
-
-__wezel_precmd() {{
-  (pheromone_cli post "$?" &) 2>/dev/null
-}}
-
-preexec_functions+=(__wezel_preexec)
-precmd_functions+=(__wezel_precmd)
-{HOOK_END}"#
-    )
+fn wezel_dir() -> PathBuf {
+    dirs::home_dir()
+        .expect("could not determine home directory")
+        .join(".wezel")
 }
 
-#[derive(Parser)]
-#[command(name = "pheromone", about = "Lightweight build observer")]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Install shell hooks into your .zshrc
-    Init,
-    Post {
-        args: Vec<String>,
-    },
-    Pre {
-        args: Vec<String>,
-    },
-    Update,
+fn init_zsh_path() -> PathBuf {
+    wezel_dir().join("init.zsh")
 }
 
 fn zshrc_path() -> PathBuf {
@@ -59,44 +33,119 @@ fn events_dir() -> PathBuf {
     pheromone_dir().join("events")
 }
 
-fn init() -> anyhow::Result<()> {
-    let path = zshrc_path();
+fn source_block() -> String {
+    let path = init_zsh_path();
+    let path = path.display();
+    format!("{SOURCE_MARKER}\n[[ -f \"{path}\" ]] && source \"{path}\"\n{SOURCE_END}")
+}
 
-    let contents = if path.exists() {
-        fs::read_to_string(&path)?
+fn alias_line(tool: &str) -> String {
+    format!("alias {tool}=\"pheromone_cli exec -- {tool}\"")
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+fn init() -> anyhow::Result<()> {
+    let zshrc = zshrc_path();
+    let contents = if zshrc.exists() {
+        fs::read_to_string(&zshrc)?
     } else {
         String::new()
     };
 
-    if contents.contains(HOOK_MARKER) {
-        println!("Hook already installed in {}", path.display());
+    if contents.contains(SOURCE_MARKER) {
+        println!("Already sourced in {}", zshrc.display());
         return Ok(());
     }
 
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&path)?;
+        .open(&zshrc)?;
 
-    use std::io::Write;
     writeln!(file)?;
-    writeln!(file, "{}", hook_block())?;
+    writeln!(file, "{}", source_block())?;
 
-    println!("Installed hook in {}", path.display());
+    // Ensure ~/.wezel/init.zsh exists.
+    ensure_init_zsh()?;
+
+    println!("Installed source hook in {}", zshrc.display());
     Ok(())
 }
 
-/// Guard that removes the sentinel lock file on drop.
+fn ensure_init_zsh() -> anyhow::Result<()> {
+    let dir = wezel_dir();
+    fs::create_dir_all(&dir)?;
+    let path = init_zsh_path();
+    if !path.exists() {
+        fs::write(
+            &path,
+            "# Managed by pheromone — edit freely, but keep the marker comments.\n",
+        )?;
+    }
+    Ok(())
+}
+
+// ── Alias ────────────────────────────────────────────────────────────────────
+
+fn alias_install(tool: &str) -> anyhow::Result<()> {
+    ensure_init_zsh()?;
+    let path = init_zsh_path();
+    let contents = fs::read_to_string(&path)?;
+    let line = alias_line(tool);
+
+    if contents.contains(&line) {
+        println!("Alias for `{tool}` already present in {}", path.display());
+        return Ok(());
+    }
+
+    let mut file = fs::OpenOptions::new().append(true).open(&path)?;
+    writeln!(file, "{line}")?;
+
+    println!("Added alias for `{tool}` in {}", path.display());
+    Ok(())
+}
+
+fn alias_remove(tool: &str) -> anyhow::Result<()> {
+    let path = init_zsh_path();
+    if !path.exists() {
+        println!("No alias for `{tool}` found (init.zsh does not exist)");
+        return Ok(());
+    }
+
+    let contents = fs::read_to_string(&path)?;
+    let line = alias_line(tool);
+
+    if !contents.contains(&line) {
+        println!("No alias for `{tool}` found in {}", path.display());
+        return Ok(());
+    }
+
+    let output: String = contents
+        .lines()
+        .filter(|l| *l != line)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut final_contents = output.trim_end_matches('\n').to_string();
+    if !final_contents.is_empty() {
+        final_contents.push('\n');
+    }
+
+    fs::write(&path, final_contents)?;
+    println!("Removed alias for `{tool}` from {}", path.display());
+    Ok(())
+}
+
+// ── Flush machinery ──────────────────────────────────────────────────────────
+
 struct FlushLock {
     path: PathBuf,
 }
 
 impl FlushLock {
-    /// Try to acquire the flush lock by atomically creating a sentinel file.
-    /// Returns `None` if another process already holds it.
     fn try_acquire(dir: &std::path::Path) -> Option<Self> {
         let path = dir.join(FLUSH_LOCK);
-        // create_new fails if the file already exists — atomic on the same filesystem.
         match fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -121,11 +170,9 @@ fn flush_events() -> anyhow::Result<()> {
     }
 
     let Some(_lock) = FlushLock::try_acquire(&events_dir) else {
-        // Another process is already flushing.
         return Ok(());
     };
 
-    // Snapshot the event files present right now.
     let entries: Vec<PathBuf> = fs::read_dir(&events_dir)?
         .filter_map(Result::ok)
         .map(|e| e.path())
@@ -142,7 +189,6 @@ fn flush_events() -> anyhow::Result<()> {
             continue;
         };
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) else {
-            // Malformed file — remove it so it doesn't block future flushes.
             let _ = fs::remove_file(path);
             continue;
         };
@@ -168,12 +214,9 @@ fn flush_events() -> anyhow::Result<()> {
                 let _ = fs::remove_file(path);
             }
         }
-        Err(_) => {
-            // Server unreachable — keep events for next flush.
-        }
+        Err(_) => {}
     }
 
-    // _lock dropped here, sentinel removed.
     Ok(())
 }
 
@@ -181,13 +224,48 @@ fn post() -> anyhow::Result<()> {
     flush_events()
 }
 
+// ── CLI ──────────────────────────────────────────────────────────────────────
+
+#[derive(Parser)]
+#[command(name = "pheromone", about = "Lightweight build observer")]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Add source line to .zshrc so ~/.wezel/init.zsh is loaded.
+    Init,
+    /// Manage tool aliases in ~/.wezel/init.zsh.
+    Alias {
+        /// The tool to alias (e.g. cargo, go, npm).
+        tool: String,
+        /// Remove the alias instead of installing it.
+        #[arg(long)]
+        remove: bool,
+    },
+    Post {
+        args: Vec<String>,
+    },
+    Pre {
+        args: Vec<String>,
+    },
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Command::Init => init(),
+        Command::Alias { tool, remove } => {
+            if remove {
+                alias_remove(&tool)
+            } else {
+                alias_install(&tool)
+            }
+        }
         Command::Post { .. } => post(),
-        Command::Pre { .. } => anyhow::Ok(()),
-        _ => anyhow::Ok(()),
+        Command::Pre { .. } => Ok(()),
     }
 }
