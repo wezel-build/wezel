@@ -2,6 +2,7 @@ use std::io::{IsTerminal, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use wezel_types::{CrateTopo, PheromoneOutput, Profile};
 
@@ -217,6 +218,34 @@ fn copy_winsize(from: &OwnedFd, to: &OwnedFd) {
     }
 }
 
+// Global fd used by the SIGWINCH handler to propagate terminal resizes.
+static PTY_CTL_FD: AtomicI32 = AtomicI32::new(-1);
+static STDERR_FD: AtomicI32 = AtomicI32::new(-1);
+
+extern "C" fn handle_sigwinch(_sig: libc::c_int) {
+    let from = STDERR_FD.load(Ordering::Relaxed);
+    let to = PTY_CTL_FD.load(Ordering::Relaxed);
+    if from >= 0 && to >= 0 {
+        unsafe {
+            let mut ws: libc::winsize = std::mem::zeroed();
+            if libc::ioctl(from, libc::TIOCGWINSZ, &mut ws) == 0 {
+                libc::ioctl(to, libc::TIOCSWINSZ, &ws);
+            }
+        }
+    }
+}
+
+fn install_sigwinch_handler(stderr_fd: i32, pty_ctl_fd: i32) {
+    STDERR_FD.store(stderr_fd, Ordering::Relaxed);
+    PTY_CTL_FD.store(pty_ctl_fd, Ordering::Relaxed);
+    unsafe {
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = handle_sigwinch as *const () as usize;
+        sa.sa_flags = libc::SA_RESTART;
+        libc::sigaction(libc::SIGWINCH, &sa, std::ptr::null_mut());
+    }
+}
+
 /// Spawn cargo, forward its stderr to the real stderr, and collect the names
 /// of crates that were (re)compiled.
 ///
@@ -242,6 +271,10 @@ fn run_cargo_tee(
         // Make the PTY the same size as the real terminal.
         let stderr_fd = unsafe { OwnedFd::from_raw_fd(real_stderr.as_raw_fd()) };
         copy_winsize(&stderr_fd, &controller);
+
+        // Forward future terminal resizes to the PTY.
+        install_sigwinch_handler(stderr_fd.as_raw_fd(), controller.as_raw_fd());
+
         // Don't let this drop close the real stderr.
         std::mem::forget(stderr_fd);
 
