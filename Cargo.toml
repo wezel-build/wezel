@@ -1,3 +1,18 @@
 [workspace]
 resolver = "3"
 members = ["crates/pheromone-cli"]
+
+[workspace.package]
+repository = "https://github.com/wezel-dev/wezel"
+publish = false
+edition = "2024"
+
+[workspace.dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+dirs = "6"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

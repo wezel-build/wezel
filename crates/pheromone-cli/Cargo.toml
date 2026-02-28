@@ -2,5 +2,9 @@
 name = "pheromone-cli"
 version = "0.1.0"
 edition = "2024"
+repository.workspace = true
 
 [dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+dirs = { workspace = true }
