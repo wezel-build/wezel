@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useTheme } from "../lib/theme";
 import { MONO } from "../lib/format";
 import { fmtMs, fmtTime } from "../lib/format";
@@ -63,15 +63,29 @@ export function RunList({
   onToggle,
   onSelectAll,
   onSelectNone,
+  hlIdx = -1,
+  markedIndices,
 }: {
   runs: Run[];
   selectedIndices: Set<number>;
   onToggle: (i: number) => void;
   onSelectAll: () => void;
   onSelectNone: () => void;
+  hlIdx?: number;
+  markedIndices?: Set<number>;
 }) {
   const { C } = useTheme();
   const allSelected = selectedIndices.size === runs.length;
+  const runRowsRef = useRef<HTMLDivElement>(null);
+
+  // Scroll highlighted row into view
+  useEffect(() => {
+    if (hlIdx < 0) return;
+    const container = runRowsRef.current;
+    if (!container) return;
+    const row = container.children[hlIdx] as HTMLElement | undefined;
+    row?.scrollIntoView({ block: "nearest" });
+  }, [hlIdx]);
   const { template, onMouseDown } = useResizableColumns(
     RUN_COLS.map((c) => c.init),
   );
@@ -174,9 +188,11 @@ export function RunList({
       </div>
 
       {/* Run rows */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div ref={runRowsRef} style={{ flex: 1, overflowY: "auto" }}>
         {runs.map((run, rowIdx) => {
           const isSel = selectedIndices.has(rowIdx);
+          const isHl = rowIdx === hlIdx;
+          const isMarked = markedIndices?.has(rowIdx) ?? false;
           return (
             <div
               key={rowIdx}
@@ -187,10 +203,22 @@ export function RunList({
                 padding: "3px 10px",
                 alignItems: "center",
                 cursor: "pointer",
-                background: isSel ? C.accent + "10" : "transparent",
-                borderLeft: isSel
+                background: isHl
+                  ? C.accent + "22"
+                  : isMarked
+                    ? C.accent + "33"
+                    : isSel
+                      ? C.accent + "10"
+                      : "transparent",
+                borderLeft: isHl
                   ? `2px solid ${C.accent}`
-                  : "2px solid transparent",
+                  : isMarked
+                    ? `2px solid ${C.accent}`
+                    : isSel
+                      ? `2px solid ${C.accent}55`
+                      : "2px solid transparent",
+                outline: isHl ? `1px solid ${C.accent}44` : "none",
+                outlineOffset: -1,
                 fontSize: 10,
                 fontFamily: MONO,
               }}
@@ -198,7 +226,10 @@ export function RunList({
                 if (!isSel) e.currentTarget.style.background = C.surface2;
               }}
               onMouseLeave={(e) => {
-                if (!isSel) e.currentTarget.style.background = "transparent";
+                if (!isSel)
+                  e.currentTarget.style.background = isHl
+                    ? C.surface2
+                    : "transparent";
               }}
             >
               {/* Checkbox */}

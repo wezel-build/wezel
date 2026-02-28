@@ -31,6 +31,8 @@ export function layoutGraph(
   topo: CrateTopo[],
   heat: Record<string, number>,
   heatColor: HeatFn,
+  highlightedCrates?: Set<string>,
+  accentColor?: string,
 ): { nodes: Node[]; edges: Edge[] } {
   const items: LayoutNode[] = topo.map((c) => ({
     ...c,
@@ -80,7 +82,13 @@ export function layoutGraph(
         id: name,
         type: "crate",
         position: { x: -w / 2 + ci * (NW + GX), y: ly * (NH + GY) },
-        data: { label: name, heat: item.heat, colors },
+        data: {
+          label: name,
+          heat: item.heat,
+          colors,
+          highlighted: highlightedCrates?.has(name) ?? false,
+          accentColor,
+        },
       });
     });
   });
@@ -115,7 +123,10 @@ function CrateNodeComponent({ data }: NodeProps) {
     label: string;
     heat: number;
     colors: { border: string; bg: string; text: string };
+    highlighted?: boolean;
+    accentColor?: string;
   };
+  const hl = d.highlighted && d.accentColor;
   return (
     <div
       style={{
@@ -130,6 +141,9 @@ function CrateNodeComponent({ data }: NodeProps) {
         minWidth: 100,
         textAlign: "center",
         boxShadow: `0 0 8px ${d.colors.border}22`,
+        outline: hl ? `2.5px solid ${d.accentColor}` : "none",
+        outlineOffset: 2,
+        transition: "outline 0.15s",
       }}
     >
       <Handle

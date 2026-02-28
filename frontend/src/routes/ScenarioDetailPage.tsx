@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { useTheme, lightHeat } from "../lib/theme";
 import { MONO } from "../lib/format";
@@ -9,16 +9,31 @@ import { PanelHandle } from "../components/PanelHandle";
 import { RunList } from "../components/RunList";
 import { Summary } from "../components/Summary";
 import { layoutGraph, FitViewGraph } from "../components/Graph";
+import { useKeyboardNav } from "../lib/useKeyboardNav";
 
-export function DetailView({ scenario }: { scenario: Scenario }) {
+export function DetailView({
+  scenario,
+  keyboardActive = false,
+}: {
+  scenario: Scenario;
+  keyboardActive?: boolean;
+}) {
   const { C, heatColor } = useTheme();
   const [threshold, setThreshold] = useState(0);
   const [runsWidth, setRunsWidth] = useState(280);
   const [summaryWidth, setSummaryWidth] = useState(190);
   const [crateFilter, setCrateFilter] = useState<string | null>(null);
+
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(
     () => new Set(scenario.runs.map((_, i) => i)),
   );
+  const [hlRunIdx, setHlRunIdx] = useState(-1);
+  const hlRunIdxRef = useRef(hlRunIdx);
+  hlRunIdxRef.current = hlRunIdx;
+  const [markedRunIndices, setMarkedRunIndices] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const prevDisplayedOriginalIndices = useRef<number[]>([]);
 
   const toggleRun = useCallback((i: number) => {
     setSelectedIndices((prev) => {
@@ -77,6 +92,94 @@ export function DetailView({ scenario }: { scenario: Scenario }) {
     });
   }, [displayedOriginalIndices]);
 
+  // Keyboard nav for runs when this panel is active
+  const runKeyMap = useMemo(() => {
+    if (!keyboardActive) return {};
+    const moveDown = (e: KeyboardEvent) => {
+      if (e.shiftKey) {
+        setMarkedRunIndices((prev) => {
+          const next = new Set(prev);
+          next.add(hlRunIdxRef.current >= 0 ? hlRunIdxRef.current : 0);
+          const target =
+            hlRunIdxRef.current >= displayedRuns.length - 1
+              ? 0
+              : hlRunIdxRef.current + 1;
+          next.add(target);
+          return next;
+        });
+      } else {
+        setMarkedRunIndices(new Set());
+      }
+      setHlRunIdx((i) => (i >= displayedRuns.length - 1 ? 0 : i + 1));
+    };
+    const moveUp = (e: KeyboardEvent) => {
+      if (e.shiftKey) {
+        setMarkedRunIndices((prev) => {
+          const next = new Set(prev);
+          next.add(hlRunIdxRef.current >= 0 ? hlRunIdxRef.current : 0);
+          const target =
+            hlRunIdxRef.current <= 0
+              ? displayedRuns.length - 1
+              : hlRunIdxRef.current - 1;
+          next.add(target);
+          return next;
+        });
+      } else {
+        setMarkedRunIndices(new Set());
+      }
+      setHlRunIdx((i) => (i <= 0 ? displayedRuns.length - 1 : i - 1));
+    };
+    const toggle = () => {
+      const marked = markedRunIndices.size > 0 ? markedRunIndices : null;
+      if (marked) {
+        for (const idx of marked) {
+          if (idx >= 0 && idx < displayedRuns.length)
+            handleToggleDisplayed(idx);
+        }
+        setMarkedRunIndices(new Set());
+      } else {
+        const i = hlRunIdxRef.current;
+        if (i >= 0 && i < displayedRuns.length) handleToggleDisplayed(i);
+      }
+    };
+    return {
+      ArrowDown: moveDown,
+      j: moveDown,
+      ArrowUp: moveUp,
+      k: moveUp,
+      Enter: toggle,
+      " ": toggle,
+    } as Record<string, (e: KeyboardEvent) => void>;
+  }, [
+    keyboardActive,
+    displayedRuns.length,
+    handleToggleDisplayed,
+    markedRunIndices,
+  ]);
+
+  useKeyboardNav(runKeyMap);
+
+  // Reset run highlight and marks when keyboard focus leaves
+  useEffect(() => {
+    if (!keyboardActive) {
+      setHlRunIdx(-1);
+      setMarkedRunIndices(new Set());
+    }
+  }, [keyboardActive]);
+
+  // Preserve highlight across crate filter changes
+  useEffect(() => {
+    const prev = prevDisplayedOriginalIndices.current;
+    prevDisplayedOriginalIndices.current = displayedOriginalIndices;
+    setHlRunIdx((oldIdx) => {
+      if (oldIdx < 0) return -1;
+      const origIdx = prev[oldIdx];
+      if (origIdx == null) return -1;
+      const newIdx = displayedOriginalIndices.indexOf(origIdx);
+      return newIdx;
+    });
+  }, [displayedOriginalIndices]);
+
   const handleSelectNoneDisplayed = useCallback(() => {
     setSelectedIndices((prev) => {
       const next = new Set(prev);
@@ -117,9 +220,15 @@ export function DetailView({ scenario }: { scenario: Scenario }) {
       .map((c) => ({ ...c, deps: c.deps.filter((d) => kept.has(d)) }));
   }, [scenario.graph, heat, threshold]);
 
+  const highlightedCrates = useMemo(() => {
+    if (hlRunIdx < 0 || hlRunIdx >= displayedRuns.length) return undefined;
+    return new Set(displayedRuns[hlRunIdx].dirtyCrates);
+  }, [hlRunIdx, displayedRuns]);
+
   const { nodes, edges } = useMemo(
-    () => layoutGraph(filteredGraph, heat, heatColor),
-    [filteredGraph, heat, heatColor],
+    () =>
+      layoutGraph(filteredGraph, heat, heatColor, highlightedCrates, C.accent),
+    [filteredGraph, heat, heatColor, highlightedCrates, C.accent],
   );
 
   const handleNodeClick = useCallback((crateName: string) => {
@@ -304,6 +413,8 @@ export function DetailView({ scenario }: { scenario: Scenario }) {
               onToggle={handleToggleDisplayed}
               onSelectAll={handleSelectAllDisplayed}
               onSelectNone={handleSelectNoneDisplayed}
+              hlIdx={hlRunIdx}
+              markedIndices={markedRunIndices}
             />
           </div>
         </div>

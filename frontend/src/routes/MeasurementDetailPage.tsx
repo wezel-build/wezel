@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useKeyboardNav } from "../lib/useKeyboardNav";
 import { ArrowLeft, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useTheme } from "../lib/theme";
 import { MONO, fmtValue } from "../lib/format";
@@ -169,6 +170,15 @@ export default function MeasurementDetailPage() {
       setSortDir("desc");
     }
   };
+
+  const navKeyMap = useMemo(
+    () => ({
+      Escape: () => navigate(commit ? `/commit/${commit.shortSha}` : "/"),
+    }),
+    [commit, navigate],
+  );
+
+  useKeyboardNav(navKeyMap);
 
   const sorted = useMemo(
     () =>

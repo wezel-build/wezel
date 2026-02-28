@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Pin, PinOff } from "lucide-react";
 import { useTheme } from "../lib/theme";
@@ -9,6 +9,7 @@ import { FreqBar } from "../components/FreqBar";
 import { Badge } from "../components/Badge";
 import { PanelHandle } from "../components/PanelHandle";
 import { DetailView } from "./ScenarioDetailPage";
+import { useKeyboardNav } from "../lib/useKeyboardNav";
 
 export default function ScenariosPage() {
   const { C } = useTheme();
@@ -21,6 +22,9 @@ export default function ScenariosPage() {
   const [userFilter, setUserFilter] = useState<string[]>([]);
   const [profileFilter, setProfileFilter] = useState<string | null>(null);
   const [listWidth, setListWidth] = useState(380);
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const [hlIdx, setHlIdx] = useState(-1);
+  const [focusPanel, setFocusPanel] = useState<"list" | "runs">("list");
 
   const togglePin = useCallback((sid: number) => {
     setScenarios((prev) =>
@@ -52,6 +56,71 @@ export default function ScenariosPage() {
     [filtered, getFreq],
   );
 
+  // Reset highlight when filter changes
+  useMemo(() => setHlIdx(-1), [filtered]);
+
+  const scrollToHl = useCallback((idx: number) => {
+    const container = rowsRef.current;
+    if (!container) return;
+    const row = container.children[idx] as HTMLElement | undefined;
+    row?.scrollIntoView({ block: "nearest" });
+  }, []);
+
+  const keyMap = useMemo(() => {
+    const shared: Record<string, () => void> = {
+      Escape: () => {
+        if (focusPanel === "runs") setFocusPanel("list");
+        else if (selectedId != null) navigate("/");
+      },
+      ArrowLeft: () => setFocusPanel("list"),
+      ArrowRight: () => {
+        if (selectedId != null) setFocusPanel("runs");
+      },
+      "/": () => {
+        const el = document.getElementById(
+          "scenario-search",
+        ) as HTMLInputElement | null;
+        el?.focus();
+      },
+    };
+
+    if (focusPanel === "list") {
+      const moveDown = () =>
+        setHlIdx((i) => {
+          const next = i >= filtered.length - 1 ? 0 : i + 1;
+          scrollToHl(next);
+          return next;
+        });
+      const moveUp = () =>
+        setHlIdx((i) => {
+          const next = i <= 0 ? filtered.length - 1 : i - 1;
+          scrollToHl(next);
+          return next;
+        });
+      Object.assign(shared, {
+        ArrowDown: moveDown,
+        j: moveDown,
+        ArrowUp: moveUp,
+        k: moveUp,
+        Enter: () => {
+          if (hlIdx >= 0 && hlIdx < filtered.length) {
+            const s = filtered[hlIdx];
+            navigate(s.id === selectedId ? "/" : `/scenario/${s.id}`);
+          }
+        },
+      });
+    }
+
+    return shared;
+  }, [focusPanel, filtered, hlIdx, selectedId, navigate, scrollToHl]);
+
+  useKeyboardNav(keyMap);
+
+  // Reset focus panel when detail closes
+  useMemo(() => {
+    if (selectedId == null) setFocusPanel("list");
+  }, [selectedId]);
+
   const selected =
     selectedId != null
       ? (scenarios.find((s) => s.id === selectedId) ?? null)
@@ -67,6 +136,11 @@ export default function ScenariosPage() {
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
+          boxShadow:
+            selected && focusPanel === "list"
+              ? `inset 0 0 0 1.5px ${C.accent}88, 0 0 8px ${C.accent}22`
+              : "none",
+          transition: "box-shadow 0.15s",
         }}
       >
         {/* Filters */}
@@ -110,7 +184,7 @@ export default function ScenariosPage() {
         </div>
 
         {/* Rows */}
-        <div style={{ flex: 1, overflowY: "auto" }}>
+        <div ref={rowsRef} style={{ flex: 1, overflowY: "auto" }}>
           {filtered.length === 0 && (
             <div
               style={{
@@ -123,7 +197,7 @@ export default function ScenariosPage() {
               No commands match filters
             </div>
           )}
-          {filtered.map((s) => {
+          {filtered.map((s, fi) => {
             const isSel = s.id === selectedId;
             const freq = getFreq(s);
             return (
@@ -138,7 +212,11 @@ export default function ScenariosPage() {
                   padding: "6px 12px",
                   alignItems: "center",
                   cursor: "pointer",
-                  background: isSel ? C.accent + "10" : "transparent",
+                  background: isSel
+                    ? C.accent + "10"
+                    : fi === hlIdx
+                      ? C.surface2
+                      : "transparent",
                   borderLeft: isSel
                     ? `2px solid ${C.accent}`
                     : "2px solid transparent",
@@ -148,7 +226,9 @@ export default function ScenariosPage() {
                   if (!isSel) e.currentTarget.style.background = C.surface2;
                 }}
                 onMouseLeave={(e) => {
-                  if (!isSel) e.currentTarget.style.background = "transparent";
+                  if (!isSel)
+                    e.currentTarget.style.background =
+                      fi === hlIdx ? C.surface2 : "transparent";
                 }}
               >
                 <span
@@ -209,9 +289,18 @@ export default function ScenariosPage() {
             padding: 12,
             overflow: "hidden",
             background: C.bg,
+            boxShadow:
+              focusPanel === "runs"
+                ? `inset 0 0 0 1.5px ${C.accent}88, 0 0 8px ${C.accent}22`
+                : "none",
+            transition: "box-shadow 0.15s",
           }}
         >
-          <DetailView key={selected.id} scenario={selected} />
+          <DetailView
+            key={selected.id}
+            scenario={selected}
+            keyboardActive={focusPanel === "runs"}
+          />
         </div>
       )}
     </>

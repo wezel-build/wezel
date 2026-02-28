@@ -45,6 +45,7 @@ export function FilterBar({
       >
         <Search size={12} color={C.textDim} />
         <input
+          id="scenario-search"
           value={search}
           onChange={(e) => onSearch(e.target.value)}
           placeholder="filter commands…"

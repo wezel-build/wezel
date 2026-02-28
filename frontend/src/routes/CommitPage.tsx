@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useKeyboardNav } from "../lib/useKeyboardNav";
 import {
   useParams,
   Link,
@@ -521,6 +522,27 @@ export default function CommitPage() {
   const prevCommit = commitIdx > 0 ? MOCK_COMMITS[commitIdx - 1] : null;
   const nextCommit =
     commitIdx < MOCK_COMMITS.length - 1 ? MOCK_COMMITS[commitIdx + 1] : null;
+
+  const keyMap = useMemo(
+    () => ({
+      ArrowLeft: () => {
+        if (prevCommit) navigate(`/commit/${prevCommit.shortSha}`);
+      },
+      h: () => {
+        if (prevCommit) navigate(`/commit/${prevCommit.shortSha}`);
+      },
+      ArrowRight: () => {
+        if (nextCommit) navigate(`/commit/${nextCommit.shortSha}`);
+      },
+      l: () => {
+        if (nextCommit) navigate(`/commit/${nextCommit.shortSha}`);
+      },
+      Escape: () => navigate("/"),
+    }),
+    [prevCommit, nextCommit, navigate],
+  );
+
+  useKeyboardNav(keyMap);
 
   // Group measurements by kind for visual separation
   const grouped = useMemo(() => {
