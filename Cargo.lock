@@ -1379,6 +1379,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "guppy",
+ "libc",
  "serde_json",
  "wezel_types",
  "which",

@@ -1,4 +1,5 @@
-use std::io::{BufRead, BufReader, IsTerminal, Write};
+use std::io::{IsTerminal, Read, Write};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
 
@@ -98,10 +99,32 @@ fn parse_args(args: &[String]) -> Option<ParsedArgs> {
     })
 }
 
+/// Strip ANSI escape sequences from a string so we can pattern-match on the
+/// plain text content of cargo's stderr lines.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // Consume until the terminating letter of the escape sequence.
+            for c in chars.by_ref() {
+                if c.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// Extract a crate name from a cargo stderr line like:
 ///   `   Compiling foo v0.1.0 (/path/to/foo)`
+/// Handles lines with or without ANSI color codes.
 fn parse_compiling_line(line: &str) -> Option<String> {
-    let trimmed = line.trim();
+    let clean = strip_ansi(line);
+    let trimmed = clean.trim();
     let rest = trimmed.strip_prefix("Compiling ")?;
     let name = rest.split_whitespace().next()?;
     Some(name.to_string())
@@ -162,53 +185,124 @@ fn extract_graph(cargo: &Path) -> Vec<CrateTopo> {
         .collect()
 }
 
-/// Returns true if the user already passed `--color` in their args.
-fn has_color_flag(args: &[String]) -> bool {
-    args.iter()
-        .any(|a| a == "--color" || a.starts_with("--color="))
+// ── PTY helpers ──────────────────────────────────────────────────────────────
+
+/// Create a pseudo-terminal pair, returning (controller, user) file descriptors.
+fn open_pty() -> std::io::Result<(OwnedFd, OwnedFd)> {
+    let mut controller: libc::c_int = 0;
+    let mut user: libc::c_int = 0;
+    if unsafe {
+        libc::openpty(
+            &mut controller,
+            &mut user,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    } != 0
+    {
+        return Err(std::io::Error::last_os_error());
+    }
+    unsafe { Ok((OwnedFd::from_raw_fd(controller), OwnedFd::from_raw_fd(user))) }
 }
 
-/// Spawn cargo with stderr piped. Forward every line to real stderr while
-/// collecting the names of crates that were (re)compiled.
-/// Injects `--color=always` when real stderr is a terminal so colors survive the pipe.
+/// Copy the terminal window size from one fd to another so that cargo's
+/// progress bar renders at the correct width.
+fn copy_winsize(from: &OwnedFd, to: &OwnedFd) {
+    unsafe {
+        let mut ws: libc::winsize = std::mem::zeroed();
+        if libc::ioctl(from.as_raw_fd(), libc::TIOCGWINSZ, &mut ws) == 0 {
+            libc::ioctl(to.as_raw_fd(), libc::TIOCSWINSZ, &ws);
+        }
+    }
+}
+
+/// Spawn cargo, forward its stderr to the real stderr, and collect the names
+/// of crates that were (re)compiled.
+///
+/// When our stderr is a terminal we give cargo a PTY as its stderr so it sees a
+/// real terminal — this preserves colors, the progress bar, and \r overwrites
+/// without any flag hacking.  When stderr is *not* a terminal we fall back to a
+/// plain pipe.
 fn run_cargo_tee(
     cargo: &Path,
     args: &[String],
 ) -> anyhow::Result<(std::process::ExitStatus, Vec<String>)> {
+    let real_stderr = std::io::stderr();
+    let is_tty = real_stderr.is_terminal();
+
     let mut cmd = std::process::Command::new(cargo);
+    cmd.args(args);
+    cmd.stdout(Stdio::inherit());
 
-    let inject_color = !has_color_flag(args) && std::io::stderr().is_terminal();
+    // Set up the child's stderr: PTY when interactive, pipe otherwise.
+    let pty_ctl: Option<OwnedFd>;
+    if is_tty {
+        let (controller, user_end) = open_pty()?;
+        // Make the PTY the same size as the real terminal.
+        let stderr_fd = unsafe { OwnedFd::from_raw_fd(real_stderr.as_raw_fd()) };
+        copy_winsize(&stderr_fd, &controller);
+        // Don't let this drop close the real stderr.
+        std::mem::forget(stderr_fd);
 
-    // Insert --color=always after the subcommand so it's recognized by
-    // subcommands like `clippy` that don't accept top-level flags before them.
-    let mut color_injected = false;
-    for arg in args {
-        cmd.arg(arg);
-        if inject_color && !color_injected && !arg.starts_with('-') {
-            // First positional arg is the subcommand; inject right after it.
-            cmd.arg("--color=always");
-            color_injected = true;
+        cmd.stderr(Stdio::from(user_end)); // consumed → closed in parent after spawn
+        pty_ctl = Some(controller);
+    } else {
+        cmd.stderr(Stdio::piped());
+        pty_ctl = None;
+    }
+
+    let mut child = cmd.spawn()?;
+    drop(cmd); // Close the parent's copy of the user fd so the controller gets EIO when the child exits.
+
+    // Obtain the readable end of whichever mechanism we chose.
+    let mut reader: Box<dyn Read> = if let Some(ctl) = pty_ctl {
+        Box::new(std::fs::File::from(ctl))
+    } else {
+        Box::new(child.stderr.take().expect("stderr was piped"))
+    };
+
+    let mut dirty_crates = Vec::new();
+    let mut err = std::io::stderr();
+    let mut line_buf = Vec::new();
+    let mut buf = [0u8; 8192];
+
+    loop {
+        let n = match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            // PTY controller returns EIO once the user side is closed.
+            Err(e) if e.raw_os_error() == Some(libc::EIO) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e.into()),
+        };
+
+        let chunk = &buf[..n];
+        let _ = err.write_all(chunk);
+
+        // Accumulate bytes and extract lines (split on \n or \r) for parsing.
+        for &byte in chunk {
+            if byte == b'\n' || byte == b'\r' {
+                if !line_buf.is_empty() {
+                    if let Ok(line) = std::str::from_utf8(&line_buf) {
+                        if let Some(name) = parse_compiling_line(line) {
+                            dirty_crates.push(name);
+                        }
+                    }
+                    line_buf.clear();
+                }
+            } else {
+                line_buf.push(byte);
+            }
         }
     }
 
-    let mut child = cmd
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::piped())
-        .spawn()?;
-
-    let stderr_pipe = child.stderr.take().expect("stderr was piped");
-    let reader = BufReader::new(stderr_pipe);
-    let mut dirty_crates = Vec::new();
-    let real_stderr = std::io::stderr();
-
-    for line in reader.lines() {
-        let line = line?;
-        {
-            let mut err = real_stderr.lock();
-            let _ = writeln!(err, "{}", line);
-        }
-        if let Some(name) = parse_compiling_line(&line) {
-            dirty_crates.push(name);
+    // Trailing content without a final newline.
+    if !line_buf.is_empty() {
+        if let Ok(line) = std::str::from_utf8(&line_buf) {
+            if let Some(name) = parse_compiling_line(line) {
+                dirty_crates.push(name);
+            }
         }
     }
 
@@ -362,9 +456,28 @@ mod tests {
     }
 
     #[test]
+    fn compiling_line_with_ansi() {
+        let line = "\x1b[0m\x1b[0;32m   Compiling\x1b[0m serde v1.0.228 (/some/path)";
+        assert_eq!(parse_compiling_line(line), Some("serde".into()));
+    }
+
+    #[test]
     fn compiling_line_no_match() {
         assert_eq!(parse_compiling_line("   Downloading foo v1.0"), None);
         assert_eq!(parse_compiling_line("   Fresh bar v0.1.0"), None);
         assert_eq!(parse_compiling_line("warning: unused variable"), None);
+    }
+
+    #[test]
+    fn strip_ansi_plain() {
+        assert_eq!(strip_ansi("hello world"), "hello world");
+    }
+
+    #[test]
+    fn strip_ansi_colored() {
+        assert_eq!(
+            strip_ansi("\x1b[0;32mCompiling\x1b[0m foo"),
+            "Compiling foo"
+        );
     }
 }
