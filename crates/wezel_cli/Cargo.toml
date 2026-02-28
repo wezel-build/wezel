@@ -20,3 +20,4 @@ ureq = { version = "2", features = ["json"] }
 wezel_types = { workspace = true }
 uuid = { workspace = true }
 whoami = { workspace = true }
+dialoguer = "0.11"

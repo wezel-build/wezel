@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
 
-use cmd::alias_cmd;
+use cmd::{alias_cmd, setup_cmd};
 use flush::flush_events;
 use wezel_types::{BuildEvent, PheromoneOutput};
 
@@ -191,6 +191,15 @@ enum Command {
         #[arg(long)]
         remove: bool,
     },
+    /// Initialize wezel in the current project.
+    ///
+    /// Creates `.wezel/config.toml` in the current directory.
+    /// Options not passed on the command line are prompted interactively.
+    Setup {
+        /// Burrow API URL to push build timings to.
+        #[arg(long)]
+        burrow_url: Option<String>,
+    },
     /// Run a tool, recording pre/post build events.
     Exec {
         /// The tool and its arguments (use `--` before them).
@@ -208,6 +217,13 @@ fn main() -> ExitCode {
             handler,
             remove,
         } => match alias_cmd(name.as_deref(), handler.as_deref(), remove) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("wezel: {e}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::Setup { burrow_url } => match setup_cmd(burrow_url.as_deref()) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("wezel: {e}");
