@@ -9,6 +9,7 @@ use axum::{
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 
 // Embed all JSON at compile time
 static SCENARIOS_JSON: &str = include_str!("../data/scenarios.json");
@@ -111,6 +112,8 @@ async fn toggle_pin(
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
+
     let state: AppState = Arc::new(RwLock::new(assemble_scenarios()));
 
     let app = Router::new()
@@ -121,6 +124,7 @@ async fn main() {
         .route("/api/commits/{sha}", get(get_commit))
         .route("/api/users", get(get_users))
         .layer(CorsLayer::permissive())
+        .layer(TraceLayer::new_for_http())
         .with_state(state);
 
     let addr = "0.0.0.0:3001";
