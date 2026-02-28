@@ -265,8 +265,7 @@ fn run_cargo_tee(
     cmd.stdout(Stdio::inherit());
 
     // Set up the child's stderr: PTY when interactive, pipe otherwise.
-    let pty_ctl: Option<OwnedFd>;
-    if is_tty {
+    let pty_ctl: Option<OwnedFd> = if is_tty {
         let (controller, user_end) = open_pty()?;
         // Make the PTY the same size as the real terminal.
         let stderr_fd = unsafe { OwnedFd::from_raw_fd(real_stderr.as_raw_fd()) };
@@ -279,11 +278,11 @@ fn run_cargo_tee(
         std::mem::forget(stderr_fd);
 
         cmd.stderr(Stdio::from(user_end)); // consumed → closed in parent after spawn
-        pty_ctl = Some(controller);
+        Some(controller)
     } else {
         cmd.stderr(Stdio::piped());
-        pty_ctl = None;
-    }
+        None
+    };
 
     let mut child = cmd.spawn()?;
     drop(cmd); // Close the parent's copy of the user fd so the controller gets EIO when the child exits.
@@ -316,14 +315,13 @@ fn run_cargo_tee(
         // Accumulate bytes and extract lines (split on \n or \r) for parsing.
         for &byte in chunk {
             if byte == b'\n' || byte == b'\r' {
-                if !line_buf.is_empty() {
-                    if let Ok(line) = std::str::from_utf8(&line_buf) {
-                        if let Some(name) = parse_compiling_line(line) {
-                            dirty_crates.push(name);
-                        }
-                    }
-                    line_buf.clear();
+                if !line_buf.is_empty()
+                    && let Ok(line) = std::str::from_utf8(&line_buf)
+                    && let Some(name) = parse_compiling_line(line)
+                {
+                    dirty_crates.push(name);
                 }
+                line_buf.clear();
             } else {
                 line_buf.push(byte);
             }
@@ -331,12 +329,12 @@ fn run_cargo_tee(
     }
 
     // Trailing content without a final newline.
-    if !line_buf.is_empty() {
-        if let Ok(line) = std::str::from_utf8(&line_buf) {
-            if let Some(name) = parse_compiling_line(line) {
-                dirty_crates.push(name);
-            }
-        }
+
+    if !line_buf.is_empty()
+        && let Ok(line) = std::str::from_utf8(&line_buf)
+        && let Some(name) = parse_compiling_line(line)
+    {
+        dirty_crates.push(name);
     }
 
     let status = child.wait()?;
