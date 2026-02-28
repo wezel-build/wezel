@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
 
-use pheromone_types::{CrateTopo, PheromoneOutput, Profile};
+use wezel_types::{CrateTopo, PheromoneOutput, Profile};
 
 /// Cargo subcommands that trigger a build.
 const BUILD_COMMANDS: &[&str] = &[

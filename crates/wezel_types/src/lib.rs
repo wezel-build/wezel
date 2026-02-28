@@ -1,4 +1,4 @@
-//! Shared types for the pheromone ecosystem.
+//! Shared types for the wezel ecosystem.
 //!
 //! These mirror the data model consumed by the Anthill frontend.
 

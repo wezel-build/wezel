@@ -927,33 +927,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "guppy",
- "pheromone_types",
  "serde_json",
+ "wezel_types",
  "which",
-]
-
-[[package]]
-name = "pheromone_cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "dirs",
- "pheromone_types",
- "serde",
- "serde_json",
- "toml",
- "ureq",
- "uuid",
- "whoami",
-]
-
-[[package]]
-name = "pheromone_types"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1755,6 +1731,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22cfaf3c063993ff62e73cb4311efde4db1efb31ab78a3e5c457939ad5cc0bed"
 dependencies = [
  "rustls-pki-types",
+]
+
+[[package]]
+name = "wezel_cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dirs",
+ "serde",
+ "serde_json",
+ "toml",
+ "ureq",
+ "uuid",
+ "wezel_types",
+ "whoami",
+]
+
+[[package]]
+name = "wezel_types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

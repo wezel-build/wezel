@@ -11,6 +11,6 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 guppy = "0.17"
-pheromone_types = { workspace = true }
+wezel_types = { workspace = true }
 serde_json = { workspace = true }
 which = "7"

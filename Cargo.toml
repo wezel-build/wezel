@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pheromone_cli", "crates/pheromone_types", "crates/pheromone_cargo", "crates/burrow"]
+members = ["crates/wezel_cli", "crates/wezel_types", "crates/pheromone_cargo", "crates/burrow"]
 
 [workspace.package]
 repository = "https://github.com/wezel-dev/wezel"
@@ -14,7 +14,7 @@ dirs = "6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
-pheromone_types = { path = "crates/pheromone_types" }
+wezel_types = { path = "crates/wezel_types" }
 uuid = { version = "1", features = ["v4"] }
 whoami = "1"
 ureq = "2"

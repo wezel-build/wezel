@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use cmd::alias_cmd;
 use flush::flush_events;
-use pheromone_types::{BuildEvent, PheromoneOutput};
+use wezel_types::{BuildEvent, PheromoneOutput};
 
 pub(crate) fn wezel_dir() -> PathBuf {
     dirs::home_dir()
