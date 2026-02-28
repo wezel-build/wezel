@@ -27,7 +27,7 @@ export function fmtMs(ms: number): string {
 }
 
 export function fmtTime(ts: string): string {
-  const d = new Date(ts);
+  const d = /^\d+$/.test(ts) ? new Date(Number(ts) * 1000) : new Date(ts);
   const mon = (d.getMonth() + 1).toString().padStart(2, "0");
   const day = d.getDate().toString().padStart(2, "0");
   const h = d.getHours().toString().padStart(2, "0");
