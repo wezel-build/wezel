@@ -15,8 +15,16 @@ pub(crate) fn wezel_dir() -> PathBuf {
         .join(".wezel")
 }
 
+pub(crate) fn pheromones_dir() -> PathBuf {
+    let exe = std::env::current_exe().expect("could not determine wezel executable path");
+    let bin_dir = exe
+        .parent()
+        .expect("wezel executable has no parent directory");
+    bin_dir.join("pheromones")
+}
+
 fn handler_path(handler: &str) -> PathBuf {
-    wezel_dir().join("bin").join(format!("pheromone-{handler}"))
+    pheromones_dir().join(format!("pheromone-{handler}"))
 }
 
 fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
@@ -31,6 +39,10 @@ fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
     let (program, program_args): (&std::ffi::OsStr, &[String]) = if handler.is_file() {
         (handler.as_os_str(), tool_args)
     } else {
+        eprintln!(
+            "wezel warning: pheromone-{tool} not found in {}, passing through to `{tool}`",
+            pheromones_dir().display()
+        );
         (std::ffi::OsStr::new(tool.as_str()), tool_args)
     };
 

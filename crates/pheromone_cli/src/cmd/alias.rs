@@ -3,8 +3,19 @@ use std::fs;
 
 use serde::{Deserialize, Serialize};
 
+use crate::pheromones_dir;
 use crate::shell::{Shell, ensure_shell_hook, sync_init_script};
 use crate::wezel_dir;
+
+fn warn_missing_handler(handler: &str) {
+    let path = pheromones_dir().join(format!("pheromone-{handler}"));
+    if !path.is_file() {
+        eprintln!(
+            "warning: pheromone-{handler} not found in {}",
+            pheromones_dir().display()
+        );
+    }
+}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AliasesFile {
@@ -67,6 +78,7 @@ pub fn alias_cmd(name: Option<&str>, handler: Option<&str>, remove: bool) -> any
                 }
             } else {
                 let handler = handler.unwrap_or(name);
+                warn_missing_handler(handler);
                 ensure_shell_hook(shell)?;
                 aliases
                     .aliases
