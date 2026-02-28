@@ -119,3 +119,45 @@ pub struct ForagerCommit {
     pub status: CommitStatus,
     pub measurements: Vec<Measurement>,
 }
+
+/// Written by a `pheromone-<tool>` process to the path in `PHEROMONE_OUT`.
+/// This is how pheromone handlers communicate back to `pheromone_cli`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PheromoneOutput {
+    /// The build tool (e.g. "cargo").
+    pub tool: String,
+    /// The normalized subcommand (e.g. "build", "test", "check").
+    pub command: String,
+    /// The detected profile, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
+    /// Packages / crates targeted by this invocation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub packages: Vec<String>,
+    /// Any extra tool-specific metadata.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub extra: serde_json::Value,
+}
+
+/// A complete build event persisted by the CLI to `~/.wezel/events/`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildEvent {
+    /// Upstream project identifier (e.g. "github.com/user/repo").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream: Option<String>,
+    /// Local working directory where the build ran.
+    pub cwd: String,
+    /// OS user who ran the build.
+    pub user: String,
+    /// ISO-8601 timestamp of when the build started.
+    pub timestamp: String,
+    /// Wall-clock duration of the build in milliseconds.
+    pub duration_ms: u64,
+    /// Exit code of the build process.
+    pub exit_code: i32,
+    /// Output from the pheromone handler, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pheromone: Option<PheromoneOutput>,
+}
