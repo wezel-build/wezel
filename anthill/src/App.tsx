@@ -1,9 +1,9 @@
 import { lazy, Suspense } from "react";
+import ScenariosPage from "./routes/ScenariosPage";
 import { ProjectProvider } from "./lib/ProjectContext";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import Shell from "./Shell";
 
-const ScenariosPage = lazy(() => import("./routes/ScenariosPage"));
 const CommitPage = lazy(() => import("./routes/CommitPage"));
 const MeasurementDetailPage = lazy(
   () => import("./routes/MeasurementDetailPage"),
@@ -17,19 +17,11 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: (
-          <Suspense>
-            <ScenariosPage />
-          </Suspense>
-        ),
+        element: <ScenariosPage />,
       },
       {
         path: "scenario/:id",
-        element: (
-          <Suspense>
-            <ScenariosPage />
-          </Suspense>
-        ),
+        element: <ScenariosPage />,
       },
       {
         path: "commit/:sha",

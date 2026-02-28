@@ -14,7 +14,7 @@ trap cleanup EXIT INT TERM
 
 echo "Starting burrow API server..."
 cd "$REPO_ROOT"
-cargo run -p burrow --bin burrow -- --port 3001 &
+cargo run -p burrow --bin burrow --release -- --port 3001 &
 BURROW_PID=$!
 
 echo "Starting anthill dev server..."
