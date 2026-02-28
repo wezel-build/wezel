@@ -15,8 +15,8 @@ pub(crate) fn wezel_dir() -> PathBuf {
         .join(".wezel")
 }
 
-fn handler_path(tool: &str) -> PathBuf {
-    wezel_dir().join("bin").join(format!("pheromone-{tool}"))
+fn handler_path(handler: &str) -> PathBuf {
+    wezel_dir().join("bin").join(format!("pheromone-{handler}"))
 }
 
 fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
@@ -61,10 +61,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Manage tool aliases. Without arguments, ensures the shell hook is installed.
+    /// Manage tool aliases.
+    ///
+    /// Without arguments, ensures the shell hook is installed and shows status.
+    /// `wezel alias cargo`              — alias cargo → pheromone-cargo
+    /// `wezel alias cargo-nightly cargo` — alias cargo-nightly → pheromone-cargo
+    /// `wezel alias cargo --remove`     — remove the cargo alias
     Alias {
-        /// The tool to alias (e.g. cargo, go, npm). Omit to just set up the shell hook.
-        tool: Option<String>,
+        /// Shell alias name (e.g. cargo, cargo-nightly).
+        name: Option<String>,
+        /// Pheromone handler to route to (defaults to the alias name).
+        handler: Option<String>,
         /// Remove the alias instead of installing it.
         #[arg(long)]
         remove: bool,
@@ -81,7 +88,11 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Alias { tool, remove } => match alias_cmd(tool.as_deref(), remove) {
+        Command::Alias {
+            name,
+            handler,
+            remove,
+        } => match alias_cmd(name.as_deref(), handler.as_deref(), remove) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("wezel: {e}");

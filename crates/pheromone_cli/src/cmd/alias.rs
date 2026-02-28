@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::fs;
 
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use crate::wezel_dir;
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AliasesFile {
     #[serde(default)]
-    pub aliases: BTreeSet<String>,
+    pub aliases: BTreeMap<String, String>,
 }
 
 fn aliases_toml_path() -> std::path::PathBuf {
@@ -34,13 +34,13 @@ fn save_aliases(file: &AliasesFile) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn alias_cmd(tool: Option<&str>, remove: bool) -> anyhow::Result<()> {
+pub fn alias_cmd(name: Option<&str>, handler: Option<&str>, remove: bool) -> anyhow::Result<()> {
     let shell = Shell::detect()
         .ok_or_else(|| anyhow::anyhow!("Could not detect shell from $SHELL env var"))?;
 
     let mut aliases = load_aliases()?;
 
-    match tool {
+    match name {
         None => {
             ensure_shell_hook(shell)?;
             sync_init_script(shell, &aliases.aliases)?;
@@ -48,36 +48,32 @@ pub fn alias_cmd(tool: Option<&str>, remove: bool) -> anyhow::Result<()> {
                 println!("Shell hook is set up. No aliases configured yet.");
             } else {
                 println!(
-                    "Shell hook is set up. {} alias(es) active: {}",
-                    aliases.aliases.len(),
-                    aliases
-                        .aliases
-                        .iter()
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                    "Shell hook is set up. {} alias(es) active:",
+                    aliases.aliases.len()
                 );
+                for (k, v) in &aliases.aliases {
+                    println!("  {k} -> pheromone-{v}");
+                }
             }
         }
-        Some(tool) => {
+        Some(name) => {
             if remove {
-                if aliases.aliases.remove(tool) {
+                if aliases.aliases.remove(name).is_some() {
                     save_aliases(&aliases)?;
                     sync_init_script(shell, &aliases.aliases)?;
-                    println!("Removed alias for `{tool}`.");
+                    println!("Removed alias `{name}`.");
                 } else {
-                    println!("No alias for `{tool}` found.");
+                    println!("No alias `{name}` found.");
                 }
             } else {
+                let handler = handler.unwrap_or(name);
                 ensure_shell_hook(shell)?;
-                if aliases.aliases.insert(tool.to_string()) {
-                    save_aliases(&aliases)?;
-                    sync_init_script(shell, &aliases.aliases)?;
-                    println!("Added alias for `{tool}`.");
-                } else {
-                    sync_init_script(shell, &aliases.aliases)?;
-                    println!("Alias for `{tool}` already present.");
-                }
+                aliases
+                    .aliases
+                    .insert(name.to_string(), handler.to_string());
+                save_aliases(&aliases)?;
+                sync_init_script(shell, &aliases.aliases)?;
+                println!("Alias `{name}` -> pheromone-{handler}");
             }
         }
     }

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -69,18 +69,18 @@ impl Shell {
         }
     }
 
-    pub fn alias_line(self, tool: &str) -> String {
+    pub fn alias_line(self, name: &str, handler: &str) -> String {
         match self {
-            Shell::Zsh | Shell::Bash => format!("alias {tool}=\"wezel exec -- {tool}\""),
-            Shell::Fish => format!("alias {tool} \"wezel exec -- {tool}\""),
+            Shell::Zsh | Shell::Bash => format!("alias {name}=\"wezel exec -- {handler}\""),
+            Shell::Fish => format!("alias {name} \"wezel exec -- {handler}\""),
         }
     }
 
-    pub fn render_init_script(self, aliases: &BTreeSet<String>) -> String {
+    pub fn render_init_script(self, aliases: &BTreeMap<String, String>) -> String {
         let mut out =
             String::from("# Managed by wezel — do not edit, aliases are stored in aliases.toml\n");
-        for tool in aliases {
-            out.push_str(&self.alias_line(tool));
+        for (name, handler) in aliases {
+            out.push_str(&self.alias_line(name, handler));
             out.push('\n');
         }
         out
@@ -115,7 +115,7 @@ pub fn ensure_shell_hook(shell: Shell) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn sync_init_script(shell: Shell, aliases: &BTreeSet<String>) -> anyhow::Result<()> {
+pub fn sync_init_script(shell: Shell, aliases: &BTreeMap<String, String>) -> anyhow::Result<()> {
     let dir = wezel_dir();
     fs::create_dir_all(&dir)?;
     let script = shell.render_init_script(aliases);
