@@ -14,7 +14,7 @@ axum = { workspace = true }
 clap = { workspace = true }
 dirs = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sqlx = { workspace = true }
 tokio = { workspace = true }
 tower-http = { workspace = true }
-tracing-subscriber = "0.3"
+tracing-subscriber = { workspace = true }
