@@ -5,15 +5,15 @@ use std::path::PathBuf;
 const HOOK_MARKER: &str = "# >>> wezel pheromone >>>";
 const HOOK_END: &str = "# <<< wezel pheromone <<<";
 
-fn hook_block(bin: &str) -> String {
+fn hook_block() -> String {
     format!(
         r#"{HOOK_MARKER}
 __wezel_preexec() {{
-  "{bin}" pre "$1"
+  pheromone-cli pre "$1"
 }}
 
 __wezel_precmd() {{
-  ("{bin}" post "$?" &) 2>/dev/null
+  (pheromone-cli post "$?" &) 2>/dev/null
 }}
 
 preexec_functions+=(__wezel_preexec)
@@ -39,6 +39,7 @@ enum Command {
     Pre {
         args: Vec<String>,
     },
+    Update,
 }
 
 fn zshrc_path() -> PathBuf {
@@ -48,10 +49,6 @@ fn zshrc_path() -> PathBuf {
 }
 
 fn init() -> anyhow::Result<()> {
-    let bin = std::env::current_exe()?
-        .canonicalize()?
-        .display()
-        .to_string();
     let path = zshrc_path();
 
     let contents = if path.exists() {
@@ -72,7 +69,7 @@ fn init() -> anyhow::Result<()> {
 
     use std::io::Write;
     writeln!(file)?;
-    writeln!(file, "{}", hook_block(&bin))?;
+    writeln!(file, "{}", hook_block())?;
 
     println!("Installed hook in {}", path.display());
     Ok(())
@@ -83,13 +80,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Init => init(),
-        Command::Pre { args } => {
-            dbg!(&args);
-            if args.contains(&"cargo".to_owned()) {
-                println!("Whoops");
-            }
-            anyhow::Ok(())
-        }
+        Command::Pre { .. } => anyhow::Ok(()),
         _ => anyhow::Ok(()),
     }
 }
