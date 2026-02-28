@@ -1,0 +1,121 @@
+[
+  {
+    "user": "carol",
+    "timestamp": "2024-01-15T08:12:00Z",
+    "commit": "a3f8c12",
+    "buildTimeMs": 41200,
+    "dirtyCrates": ["forager", "scenario_runner", "measure_collect", "ipc"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-15T14:45:00Z",
+    "commit": "b7d2e49",
+    "buildTimeMs": 44800,
+    "dirtyCrates": ["forager", "measure_collect", "llvm_lines_parser"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-16T09:30:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 39600,
+    "dirtyCrates": ["forager", "scenario_runner", "cargo_metadata"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-16T11:18:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 43100,
+    "dirtyCrates": ["forager", "ipc", "measure_collect", "time_utils"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-16T16:02:00Z",
+    "commit": "d4f9b26",
+    "buildTimeMs": 42700,
+    "dirtyCrates": ["forager", "scenario_runner", "measure_collect"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-17T07:55:00Z",
+    "commit": "e8c3d71",
+    "buildTimeMs": 38900,
+    "dirtyCrates": ["forager"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-17T10:40:00Z",
+    "commit": "e8c3d71",
+    "buildTimeMs": 46200,
+    "dirtyCrates": [
+      "forager",
+      "scenario_runner",
+      "measure_collect",
+      "ipc",
+      "llvm_lines_parser",
+      "cargo_metadata"
+    ]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-17T15:22:00Z",
+    "commit": "f2a6e05",
+    "buildTimeMs": 41800,
+    "dirtyCrates": ["forager", "measure_collect", "time_utils"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-18T08:50:00Z",
+    "commit": "71b4f98",
+    "buildTimeMs": 44300,
+    "dirtyCrates": ["forager", "ipc", "serde"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-18T13:15:00Z",
+    "commit": "84c7a3d",
+    "buildTimeMs": 40500,
+    "dirtyCrates": ["forager", "scenario_runner"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-19T09:05:00Z",
+    "commit": "96e2b5f",
+    "buildTimeMs": 43600,
+    "dirtyCrates": ["forager", "measure_collect", "llvm_lines_parser", "regex"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-19T11:48:00Z",
+    "commit": "96e2b5f",
+    "buildTimeMs": 42100,
+    "dirtyCrates": ["forager", "scenario_runner", "ipc"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-19T16:30:00Z",
+    "commit": "a9d1c84",
+    "buildTimeMs": 45500,
+    "dirtyCrates": [
+      "forager",
+      "measure_collect",
+      "scenario_runner",
+      "ipc",
+      "cargo_metadata",
+      "tempfile"
+    ]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-20T10:12:00Z",
+    "commit": "bc3e7f2",
+    "buildTimeMs": 39800,
+    "dirtyCrates": ["forager", "ipc"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-20T14:55:00Z",
+    "commit": "d5f0a67",
+    "buildTimeMs": 41400,
+    "dirtyCrates": ["forager", "scenario_runner", "measure_collect"]
+  }
+]

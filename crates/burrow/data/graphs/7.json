@@ -1,0 +1,22 @@
+[
+  {
+    "name": "db_migrations",
+    "deps": ["sqlx", "config"]
+  },
+  {
+    "name": "config",
+    "deps": ["serde", "toml"]
+  },
+  {
+    "name": "sqlx",
+    "deps": []
+  },
+  {
+    "name": "serde",
+    "deps": []
+  },
+  {
+    "name": "toml",
+    "deps": []
+  }
+]

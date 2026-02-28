@@ -1,0 +1,50 @@
+[
+  {
+    "name": "forager",
+    "deps": ["scenario_runner", "measure_collect", "ipc"]
+  },
+  {
+    "name": "scenario_runner",
+    "deps": ["cargo_metadata", "tempfile"]
+  },
+  {
+    "name": "measure_collect",
+    "deps": ["time_utils", "llvm_lines_parser"]
+  },
+  {
+    "name": "ipc",
+    "deps": ["serde", "bincode"]
+  },
+  {
+    "name": "cargo_metadata",
+    "deps": ["serde_json"]
+  },
+  {
+    "name": "tempfile",
+    "deps": []
+  },
+  {
+    "name": "time_utils",
+    "deps": []
+  },
+  {
+    "name": "llvm_lines_parser",
+    "deps": ["regex"]
+  },
+  {
+    "name": "serde",
+    "deps": []
+  },
+  {
+    "name": "bincode",
+    "deps": []
+  },
+  {
+    "name": "serde_json",
+    "deps": []
+  },
+  {
+    "name": "regex",
+    "deps": []
+  }
+]

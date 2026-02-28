@@ -4,11 +4,8 @@ import { useKeyboardNav } from "../lib/useKeyboardNav";
 import { ArrowLeft, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useTheme } from "../lib/theme";
 import { MONO, fmtValue } from "../lib/format";
-import {
-  MOCK_COMMITS,
-  type Measurement,
-  type MeasurementDetail,
-} from "../lib/data";
+import { type Measurement, type MeasurementDetail } from "../lib/data";
+import { useCommits } from "../lib/hooks";
 
 // ── Sort logic ───────────────────────────────────────────────────────────────
 
@@ -152,9 +149,11 @@ export default function MeasurementDetailPage() {
   const [sortKey, setSortKey] = useState<SortKey>("value");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
+  const { commits } = useCommits();
+
   const commit = useMemo(
-    () => MOCK_COMMITS.find((c) => c.shortSha === sha || c.sha === sha) ?? null,
-    [sha],
+    () => commits.find((c) => c.shortSha === sha || c.sha === sha) ?? null,
+    [sha, commits],
   );
 
   const measurement: Measurement | null = useMemo(

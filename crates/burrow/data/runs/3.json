@@ -1,0 +1,99 @@
+[
+  {
+    "user": "alice",
+    "timestamp": "2024-01-15T08:12:00Z",
+    "commit": "a3f8c12",
+    "buildTimeMs": 5820,
+    "dirtyCrates": ["pheromone_agent"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-15T10:45:00Z",
+    "commit": "a3f8c12",
+    "buildTimeMs": 6290,
+    "dirtyCrates": ["pheromone_agent", "fs_watcher", "ipc"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-15T14:22:00Z",
+    "commit": "b7d2e49",
+    "buildTimeMs": 6410,
+    "dirtyCrates": ["pheromone_agent", "cargo_metadata", "fs_watcher"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-16T09:05:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 5680,
+    "dirtyCrates": ["pheromone_agent", "ipc"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-16T11:33:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 6550,
+    "dirtyCrates": ["pheromone_agent", "fs_watcher", "cargo_metadata", "ipc"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-16T16:18:00Z",
+    "commit": "d4f9b26",
+    "buildTimeMs": 5950,
+    "dirtyCrates": ["pheromone_agent", "fs_watcher"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-17T08:40:00Z",
+    "commit": "e8c3d71",
+    "buildTimeMs": 6180,
+    "dirtyCrates": ["pheromone_agent", "cargo_metadata"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-17T13:55:00Z",
+    "commit": "f2a6e05",
+    "buildTimeMs": 6720,
+    "dirtyCrates": [
+      "pheromone_agent",
+      "fs_watcher",
+      "ipc",
+      "cargo_metadata",
+      "serde_json"
+    ]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-18T09:28:00Z",
+    "commit": "71b4f98",
+    "buildTimeMs": 5590,
+    "dirtyCrates": ["pheromone_agent"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-18T14:10:00Z",
+    "commit": "84c7a3d",
+    "buildTimeMs": 6050,
+    "dirtyCrates": ["pheromone_agent", "ipc", "serde"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-19T10:02:00Z",
+    "commit": "96e2b5f",
+    "buildTimeMs": 6340,
+    "dirtyCrates": ["pheromone_agent", "fs_watcher", "cargo_metadata"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-19T15:47:00Z",
+    "commit": "a9d1c84",
+    "buildTimeMs": 5770,
+    "dirtyCrates": ["pheromone_agent", "ipc"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-20T11:30:00Z",
+    "commit": "bc3e7f2",
+    "buildTimeMs": 6480,
+    "dirtyCrates": ["pheromone_agent", "fs_watcher", "ipc", "notify"]
+  }
+]

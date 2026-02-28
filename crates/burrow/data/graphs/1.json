@@ -1,0 +1,38 @@
+[
+  {
+    "name": "auth_core",
+    "deps": ["crypto_utils", "db_pool", "config"]
+  },
+  {
+    "name": "crypto_utils",
+    "deps": ["ring", "base64"]
+  },
+  {
+    "name": "db_pool",
+    "deps": ["sqlx", "config"]
+  },
+  {
+    "name": "config",
+    "deps": ["serde", "toml"]
+  },
+  {
+    "name": "ring",
+    "deps": []
+  },
+  {
+    "name": "base64",
+    "deps": []
+  },
+  {
+    "name": "sqlx",
+    "deps": []
+  },
+  {
+    "name": "serde",
+    "deps": []
+  },
+  {
+    "name": "toml",
+    "deps": []
+  }
+]

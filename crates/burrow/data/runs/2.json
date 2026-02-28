@@ -1,0 +1,145 @@
+[
+  {
+    "user": "bob",
+    "timestamp": "2024-01-15T08:12:00Z",
+    "commit": "a3f8c12",
+    "buildTimeMs": 18340,
+    "dirtyCrates": [
+      "wezel_app",
+      "api_server",
+      "auth_core",
+      "wezel_ui",
+      "api_client",
+      "proto_gen"
+    ]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-15T11:45:00Z",
+    "commit": "a3f8c12",
+    "buildTimeMs": 19100,
+    "dirtyCrates": ["wezel_app", "auth_core", "crypto_utils"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-15T14:30:00Z",
+    "commit": "b7d2e49",
+    "buildTimeMs": 17890,
+    "dirtyCrates": ["wezel_app", "api_server", "db_pool"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-16T09:05:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 20150,
+    "dirtyCrates": [
+      "wezel_app",
+      "wezel_ui",
+      "api_client",
+      "api_server",
+      "auth_core",
+      "proto_gen",
+      "db_pool"
+    ]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-16T13:22:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 18720,
+    "dirtyCrates": ["wezel_app", "api_server"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-17T07:50:00Z",
+    "commit": "e8c3d71",
+    "buildTimeMs": 21400,
+    "dirtyCrates": [
+      "wezel_app",
+      "auth_core",
+      "api_server",
+      "wezel_ui",
+      "crypto_utils",
+      "api_client",
+      "proto_gen",
+      "db_pool",
+      "sqlx"
+    ]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-17T10:18:00Z",
+    "commit": "e8c3d71",
+    "buildTimeMs": 17600,
+    "dirtyCrates": ["wezel_app", "wezel_ui"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-17T16:40:00Z",
+    "commit": "f2a6e05",
+    "buildTimeMs": 18950,
+    "dirtyCrates": ["wezel_app", "api_server", "auth_core", "db_pool"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-18T08:33:00Z",
+    "commit": "71b4f98",
+    "buildTimeMs": 19500,
+    "dirtyCrates": [
+      "wezel_app",
+      "auth_core",
+      "api_server",
+      "wezel_ui",
+      "api_client"
+    ]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-18T12:15:00Z",
+    "commit": "84c7a3d",
+    "buildTimeMs": 16800,
+    "dirtyCrates": ["wezel_app"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-19T09:10:00Z",
+    "commit": "96e2b5f",
+    "buildTimeMs": 18200,
+    "dirtyCrates": ["wezel_app", "api_server", "proto_gen"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-19T14:55:00Z",
+    "commit": "a9d1c84",
+    "buildTimeMs": 19800,
+    "dirtyCrates": [
+      "wezel_app",
+      "auth_core",
+      "crypto_utils",
+      "api_server",
+      "db_pool"
+    ]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-20T10:05:00Z",
+    "commit": "bc3e7f2",
+    "buildTimeMs": 17300,
+    "dirtyCrates": ["wezel_app", "wezel_ui", "api_client", "proto_gen"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-20T15:42:00Z",
+    "commit": "d5f0a67",
+    "buildTimeMs": 20600,
+    "dirtyCrates": [
+      "wezel_app",
+      "auth_core",
+      "api_server",
+      "wezel_ui",
+      "crypto_utils",
+      "db_pool",
+      "api_client"
+    ]
+  }
+]

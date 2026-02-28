@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation } from "react-router-dom";
 import { Workflow, GitCommit } from "lucide-react";
 import { ThemeCtx, THEMES, THEME_ORDER, type ThemeKey } from "./lib/theme";
 import { MONO, SANS } from "./lib/format";
-import { MOCK_SCENARIOS, MOCK_COMMITS } from "./lib/data";
+import { useScenarios, useCommits } from "./lib/hooks";
 
 export default function Shell() {
   const [themeKey, setThemeKey] = useState<ThemeKey>(
@@ -19,7 +19,10 @@ export default function Shell() {
   const theme = THEMES[themeKey];
   const C = theme.C;
   const location = useLocation();
-  const latestCommit = MOCK_COMMITS[MOCK_COMMITS.length - 1];
+
+  const { scenarios } = useScenarios();
+  const { commits } = useCommits();
+  const latestCommit = commits.length > 0 ? commits[commits.length - 1] : null;
   const onCommitPage = location.pathname.startsWith("/commit");
 
   return (
@@ -87,7 +90,7 @@ export default function Shell() {
               scenarios
             </Link>
             <Link
-              to={`/commit/${latestCommit.shortSha}`}
+              to={latestCommit ? `/commit/${latestCommit.shortSha}` : "/"}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -103,7 +106,7 @@ export default function Shell() {
             >
               <GitCommit size={11} />
               commits
-              {latestCommit.status === "running" && (
+              {latestCommit?.status === "running" && (
                 <span
                   style={{
                     width: 6,
@@ -118,8 +121,8 @@ export default function Shell() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ fontSize: 10, color: C.textDim, fontFamily: MONO }}>
-              {MOCK_SCENARIOS.length} commands ·{" "}
-              {MOCK_SCENARIOS.filter((s) => s.pinned).length} tracked
+              {scenarios.length} commands ·{" "}
+              {scenarios.filter((s) => s.pinned).length} tracked
             </div>
             <button
               onClick={() =>

@@ -1,0 +1,93 @@
+[
+  {
+    "user": "carol",
+    "timestamp": "2024-01-15T08:12:00Z",
+    "commit": "a3f8c12",
+    "buildTimeMs": 3040,
+    "dirtyCrates": ["db_migrations", "config"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-15T11:45:00Z",
+    "commit": "a3f8c12",
+    "buildTimeMs": 3280,
+    "dirtyCrates": ["db_migrations"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-15T14:30:00Z",
+    "commit": "b7d2e49",
+    "buildTimeMs": 3150,
+    "dirtyCrates": ["db_migrations", "config"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-16T09:05:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 2890,
+    "dirtyCrates": ["db_migrations"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-16T13:22:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 3410,
+    "dirtyCrates": ["db_migrations", "config", "sqlx"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-17T07:50:00Z",
+    "commit": "e8c3d71",
+    "buildTimeMs": 3100,
+    "dirtyCrates": ["db_migrations"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-17T15:18:00Z",
+    "commit": "f2a6e05",
+    "buildTimeMs": 3360,
+    "dirtyCrates": ["db_migrations", "config"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-18T10:40:00Z",
+    "commit": "71b4f98",
+    "buildTimeMs": 2950,
+    "dirtyCrates": ["db_migrations"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-18T16:05:00Z",
+    "commit": "84c7a3d",
+    "buildTimeMs": 3200,
+    "dirtyCrates": ["db_migrations", "config"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-19T09:30:00Z",
+    "commit": "96e2b5f",
+    "buildTimeMs": 3520,
+    "dirtyCrates": ["db_migrations", "config", "serde"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-19T14:12:00Z",
+    "commit": "a9d1c84",
+    "buildTimeMs": 2980,
+    "dirtyCrates": ["db_migrations"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-20T11:00:00Z",
+    "commit": "bc3e7f2",
+    "buildTimeMs": 3190,
+    "dirtyCrates": ["db_migrations", "config"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-21T08:35:00Z",
+    "commit": "e7b2c91",
+    "buildTimeMs": 3070,
+    "dirtyCrates": ["db_migrations"]
+  }
+]

@@ -1,0 +1,99 @@
+[
+  {
+    "user": "bob",
+    "timestamp": "2024-01-15T08:12:00Z",
+    "commit": "a3f8c12",
+    "buildTimeMs": 51200,
+    "dirtyCrates": [
+      "wezel_app",
+      "auth_core",
+      "api_server",
+      "crypto_utils",
+      "db_pool"
+    ]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-15T14:45:00Z",
+    "commit": "b7d2e49",
+    "buildTimeMs": 55800,
+    "dirtyCrates": ["wezel_app", "api_server"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-16T09:30:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 49700,
+    "dirtyCrates": ["wezel_app", "auth_core", "api_server", "db_pool"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-16T16:20:00Z",
+    "commit": "d4f9b26",
+    "buildTimeMs": 53100,
+    "dirtyCrates": ["wezel_app", "api_server", "auth_core"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-17T10:05:00Z",
+    "commit": "e8c3d71",
+    "buildTimeMs": 48300,
+    "dirtyCrates": ["wezel_app"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-17T13:42:00Z",
+    "commit": "f2a6e05",
+    "buildTimeMs": 58900,
+    "dirtyCrates": [
+      "wezel_app",
+      "auth_core",
+      "api_server",
+      "crypto_utils",
+      "db_pool",
+      "ring"
+    ]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-18T07:55:00Z",
+    "commit": "71b4f98",
+    "buildTimeMs": 52400,
+    "dirtyCrates": ["wezel_app", "auth_core", "crypto_utils"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-18T11:30:00Z",
+    "commit": "84c7a3d",
+    "buildTimeMs": 50100,
+    "dirtyCrates": ["wezel_app", "api_server", "db_pool"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-19T09:15:00Z",
+    "commit": "96e2b5f",
+    "buildTimeMs": 54600,
+    "dirtyCrates": ["wezel_app", "auth_core", "api_server", "crypto_utils"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-19T15:08:00Z",
+    "commit": "a9d1c84",
+    "buildTimeMs": 47200,
+    "dirtyCrates": ["wezel_app", "api_server"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-20T10:40:00Z",
+    "commit": "bc3e7f2",
+    "buildTimeMs": 56300,
+    "dirtyCrates": ["wezel_app", "auth_core", "api_server", "db_pool", "sqlx"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-20T17:22:00Z",
+    "commit": "d5f0a67",
+    "buildTimeMs": 49800,
+    "dirtyCrates": ["wezel_app", "auth_core"]
+  }
+]

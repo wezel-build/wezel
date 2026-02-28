@@ -3,7 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Pin, PinOff } from "lucide-react";
 import { useTheme } from "../lib/theme";
 import { MONO } from "../lib/format";
-import { MOCK_SCENARIOS, type Scenario } from "../lib/data";
+import type { Scenario } from "../lib/data";
+import { useScenarios } from "../lib/hooks";
 import { FilterBar } from "../components/FilterBar";
 import { FreqBar } from "../components/FreqBar";
 import { Badge } from "../components/Badge";
@@ -18,7 +19,7 @@ export default function ScenariosPage() {
   const { id } = useParams();
   const selectedId = id ? Number(id) : null;
 
-  const [scenarios, setScenarios] = useState(MOCK_SCENARIOS);
+  const { scenarios, togglePin: apiTogglePin } = useScenarios();
   const [search, setSearch] = useState("");
   const [userFilter, setUserFilter] = useState<string[]>([]);
   const [profileFilter, setProfileFilter] = useState<string | null>(null);
@@ -27,11 +28,12 @@ export default function ScenariosPage() {
   const [hlIdx, setHlIdx] = useState(-1);
   const [focusPanel, setFocusPanel] = useState<"list" | "runs">("list");
 
-  const togglePin = useCallback((sid: number) => {
-    setScenarios((prev) =>
-      prev.map((s) => (s.id === sid ? { ...s, pinned: !s.pinned } : s)),
-    );
-  }, []);
+  const togglePin = useCallback(
+    (sid: number) => {
+      apiTogglePin(sid);
+    },
+    [apiTogglePin],
+  );
 
   const getFreq = useCallback(
     (s: Scenario) => {

@@ -1,0 +1,86 @@
+[
+  {
+    "user": "alice",
+    "timestamp": "2024-01-15T08:12:00Z",
+    "commit": "a3f8c12",
+    "buildTimeMs": 4310,
+    "dirtyCrates": ["auth_core", "crypto_utils", "db_pool"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-15T10:23:00Z",
+    "commit": "a3f8c12",
+    "buildTimeMs": 4210,
+    "dirtyCrates": ["auth_core", "crypto_utils"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-15T14:45:00Z",
+    "commit": "b7d2e49",
+    "buildTimeMs": 4520,
+    "dirtyCrates": ["auth_core", "db_pool", "config"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-16T09:05:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 3890,
+    "dirtyCrates": ["auth_core"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-16T11:30:00Z",
+    "commit": "c1e5a83",
+    "buildTimeMs": 4680,
+    "dirtyCrates": ["auth_core", "crypto_utils", "db_pool", "config"]
+  },
+  {
+    "user": "dave",
+    "timestamp": "2024-01-16T16:18:00Z",
+    "commit": "d4f9b26",
+    "buildTimeMs": 4150,
+    "dirtyCrates": ["auth_core", "config"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-17T08:47:00Z",
+    "commit": "e8c3d71",
+    "buildTimeMs": 4410,
+    "dirtyCrates": ["auth_core", "crypto_utils"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-17T13:22:00Z",
+    "commit": "f2a6e05",
+    "buildTimeMs": 5010,
+    "dirtyCrates": ["auth_core", "crypto_utils", "db_pool", "config", "base64"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-18T09:33:00Z",
+    "commit": "71b4f98",
+    "buildTimeMs": 3950,
+    "dirtyCrates": ["auth_core"]
+  },
+  {
+    "user": "carol",
+    "timestamp": "2024-01-18T15:10:00Z",
+    "commit": "84c7a3d",
+    "buildTimeMs": 4280,
+    "dirtyCrates": ["auth_core", "db_pool"]
+  },
+  {
+    "user": "alice",
+    "timestamp": "2024-01-19T10:02:00Z",
+    "commit": "96e2b5f",
+    "buildTimeMs": 4590,
+    "dirtyCrates": ["auth_core", "crypto_utils", "config"]
+  },
+  {
+    "user": "bob",
+    "timestamp": "2024-01-19T14:55:00Z",
+    "commit": "a9d1c84",
+    "buildTimeMs": 4070,
+    "dirtyCrates": ["auth_core", "crypto_utils"]
+  }
+]

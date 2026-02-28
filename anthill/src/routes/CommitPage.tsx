@@ -20,11 +20,11 @@ import {
 import { useTheme } from "../lib/theme";
 import { MONO, fmtValue, fmtTime } from "../lib/format";
 import {
-  MOCK_COMMITS,
   type ForagerCommit,
   type Measurement,
   type MeasurementStatus,
 } from "../lib/data";
+import { useCommits } from "../lib/hooks";
 import { Badge } from "../components/Badge";
 
 // ── Small pieces ─────────────────────────────────────────────────────────────
@@ -509,19 +509,20 @@ export default function CommitPage() {
   const { sha } = useParams();
   const { C } = useTheme();
   const navigate = useNavigate();
+  const { commits } = useCommits();
 
   const commit = useMemo(
-    () => MOCK_COMMITS.find((c) => c.shortSha === sha || c.sha === sha) ?? null,
-    [sha],
+    () => commits.find((c) => c.shortSha === sha || c.sha === sha) ?? null,
+    [sha, commits],
   );
 
   const commitIdx = useMemo(
-    () => (commit ? MOCK_COMMITS.indexOf(commit) : -1),
-    [commit],
+    () => (commit ? commits.indexOf(commit) : -1),
+    [commit, commits],
   );
-  const prevCommit = commitIdx > 0 ? MOCK_COMMITS[commitIdx - 1] : null;
+  const prevCommit = commitIdx > 0 ? commits[commitIdx - 1] : null;
   const nextCommit =
-    commitIdx < MOCK_COMMITS.length - 1 ? MOCK_COMMITS[commitIdx + 1] : null;
+    commitIdx < commits.length - 1 ? commits[commitIdx + 1] : null;
 
   const keyMap = useMemo(
     () => ({

@@ -22,10 +22,14 @@ Non-volatile measures can be gathered as an asynchronous CI step (since it doesn
 ### Wezel's approach
 Wezel places emphasis on highlighting the scenarios that get executed the most often. It associates *builds* with their *scenarios* (what code gets built - tests/non tests) and *configurations* (how it is built). 
 
-There are three faces to Wezel:
+There are four faces to Wezel:
 - Ligthweight agent running locally (Pheromone) - that identifies what code-changes developers make locally. 
 - The dashboard (Anthill), showcasing which scenarios get executed the most often. It lets the user make the decision as to which scenarios should be tracked by..
+- The backend (Burrow) - the infrastructure beneath Anthill. It ingests events from Pheromone, stores them, and serves data to the dashboard.
 - The asynchronous scenario executor (provided by the client) named Forager. It runs the scenarios and gathers the measures (both volatile and non-volatile ones). 
+
+### Burrow
+Burrow is Anthill's backend. It receives events flushed by Pheromone, persists them, and exposes the data Anthill needs to render scenarios, configurations, and their measures.
 
 ### Pheromone
 Pheromone is an agent running locally. It consists of a single binary (pheromone_cli) that is invoked via precmd hooks in the shell. The cli delegates to the build-system-specific processes named `pheromone-<build system>` such as `pheromone-cargo` for Rust. The build system-specific process is responsible for identifying the scenario being executed and reporting it back to the pheromone_cli.

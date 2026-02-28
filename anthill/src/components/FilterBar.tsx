@@ -1,7 +1,7 @@
 import { Search, X } from "lucide-react";
 import { useTheme } from "../lib/theme";
 import { MONO } from "../lib/format";
-import { USERS } from "../lib/data";
+import { useUsers } from "../lib/hooks";
 
 export function FilterBar({
   search,
@@ -19,6 +19,7 @@ export function FilterBar({
   onProfileFilter: (v: string | null) => void;
 }) {
   const { C } = useTheme();
+  const { users } = useUsers();
   return (
     <div
       style={{
@@ -87,7 +88,7 @@ export function FilterBar({
         >
           USER
         </span>
-        {USERS.map((u) => (
+        {users.map((u) => (
           <button
             key={u}
             onClick={() =>

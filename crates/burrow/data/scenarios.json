@@ -1,0 +1,50 @@
+[
+  {
+    "id": 1,
+    "name": "cargo test -p auth_core",
+    "profile": "dev",
+    "pinned": true
+  },
+  {
+    "id": 2,
+    "name": "cargo build --workspace",
+    "profile": "dev",
+    "pinned": true
+  },
+  {
+    "id": 3,
+    "name": "cargo test -p pheromone_agent",
+    "profile": "dev",
+    "pinned": false
+  },
+  {
+    "id": 4,
+    "name": "cargo build -p forager --release",
+    "profile": "release",
+    "pinned": true
+  },
+  {
+    "id": 5,
+    "name": "cargo clippy -p wezel_ui",
+    "profile": "dev",
+    "pinned": false
+  },
+  {
+    "id": 6,
+    "name": "cargo test --workspace --release",
+    "profile": "release",
+    "pinned": false
+  },
+  {
+    "id": 7,
+    "name": "cargo build -p db_migrations",
+    "profile": "dev",
+    "pinned": false
+  },
+  {
+    "id": 8,
+    "name": "cargo test -p proto_gen",
+    "profile": "dev",
+    "pinned": false
+  }
+]

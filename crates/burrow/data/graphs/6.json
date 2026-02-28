@@ -1,0 +1,30 @@
+[
+  {
+    "name": "wezel_app",
+    "deps": ["auth_core", "api_server"]
+  },
+  {
+    "name": "auth_core",
+    "deps": ["crypto_utils"]
+  },
+  {
+    "name": "api_server",
+    "deps": ["auth_core", "db_pool"]
+  },
+  {
+    "name": "crypto_utils",
+    "deps": ["ring"]
+  },
+  {
+    "name": "db_pool",
+    "deps": ["sqlx"]
+  },
+  {
+    "name": "ring",
+    "deps": []
+  },
+  {
+    "name": "sqlx",
+    "deps": []
+  }
+]
