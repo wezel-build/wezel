@@ -9,10 +9,6 @@ publish.workspace = true
 name = "burrow"
 path = "src/main.rs"
 
-[[bin]]
-name = "burrow-seed"
-path = "src/seed.rs"
-
 [dependencies]
 axum = { workspace = true }
 clap = { workspace = true }
