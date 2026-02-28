@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pheromone_cli", "crates/pheromone_types", "crates/burrow"]
+members = ["crates/pheromone_cli", "crates/pheromone_types", "crates/pheromone_cargo", "crates/burrow"]
 
 [workspace.package]
 repository = "https://github.com/wezel-dev/wezel"

@@ -1,0 +1,16 @@
+[package]
+name = "pheromone_cargo"
+version = "0.1.0"
+edition = "2024"
+repository.workspace = true
+
+[[bin]]
+name = "pheromone-cargo"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+guppy = "0.17"
+pheromone_types = { workspace = true }
+serde_json = { workspace = true }
+which = "7"

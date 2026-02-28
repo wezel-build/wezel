@@ -135,6 +135,12 @@ pub struct PheromoneOutput {
     /// Packages / crates targeted by this invocation.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub packages: Vec<String>,
+    /// Crates that were (re)compiled during this build.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dirty_crates: Vec<String>,
+    /// Dependency graph of the workspace.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graph: Vec<CrateTopo>,
     /// Any extra tool-specific metadata.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub extra: serde_json::Value,
