@@ -371,6 +371,66 @@ export function FitViewGraph({
   accentColor?: string;
   onNodeClick?: (crateName: string) => void;
 }) {
+  const [hoveredCrate, setHoveredCrate] = useState<string | null>(null);
+
+  // Build reverse-dep map: for each crate, which crates depend on it?
+  // Also collect all ancestors (transitive dependants) for hover highlighting.
+  const dependantsMap = useMemo(() => {
+    const rev = new Map<string, Set<string>>();
+    for (const e of edges) {
+      let s = rev.get(e.target);
+      if (!s) {
+        s = new Set();
+        rev.set(e.target, s);
+      }
+      s.add(e.source);
+    }
+    return rev;
+  }, [edges]);
+
+  // On hover: the hovered node + all transitive dependants
+  const hoverSet = useMemo(() => {
+    if (!hoveredCrate) return null;
+    const set = new Set<string>();
+    const queue = [hoveredCrate];
+    while (queue.length > 0) {
+      const name = queue.pop()!;
+      if (set.has(name)) continue;
+      set.add(name);
+      const parents = dependantsMap.get(name);
+      if (parents) {
+        for (const p of parents) queue.push(p);
+      }
+    }
+    return set;
+  }, [hoveredCrate, dependantsMap]);
+
+  // Edges that connect hovered nodes
+  const hoverEdgeSet = useMemo(() => {
+    if (!hoverSet) return null;
+    const set = new Set<string>();
+    for (const e of edges) {
+      if (hoverSet.has(e.source) && hoverSet.has(e.target)) {
+        set.add(`${e.source}->${e.target}`);
+      }
+    }
+    return set;
+  }, [hoverSet, edges]);
+
+  const handleMouseEnter = useCallback((e: React.MouseEvent) => {
+    const target = (e.target as HTMLElement).closest("[data-crate]");
+    if (target) {
+      setHoveredCrate((target as HTMLElement).dataset.crate ?? null);
+    }
+  }, []);
+
+  const handleMouseLeave = useCallback((e: React.MouseEvent) => {
+    const target = (e.target as HTMLElement).closest("[data-crate]");
+    if (target) {
+      setHoveredCrate(null);
+    }
+  }, []);
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { transform, onWheel, onMouseDown, onMouseMove, onMouseUp, fitView } =
     usePanZoom(containerRef);
@@ -418,6 +478,8 @@ export function FitViewGraph({
   );
 
   const svgContent = useMemo(() => {
+    const dimmed = hoverSet !== null;
+
     const edgeEls: React.ReactNode[] = [];
     for (let i = 0; i < edges.length; i++) {
       const edge = edges[i];
@@ -428,16 +490,18 @@ export function FitViewGraph({
       const y1 = sp.y + NH;
       const x2 = tp.x + NW / 2;
       const y2 = tp.y;
+      const edgeKey = `${edge.source}->${edge.target}`;
+      const active = !dimmed || hoverEdgeSet?.has(edgeKey);
       edgeEls.push(
         <line
-          key={`${edge.source}->${edge.target}`}
+          key={edgeKey}
           x1={x1}
           y1={y1}
           x2={x2}
           y2={y2}
-          stroke={edge.color}
-          strokeWidth={1.5}
-          opacity={0.3}
+          stroke={active ? edge.color : edge.color}
+          strokeWidth={active && dimmed ? 2 : 1.5}
+          opacity={active ? (dimmed ? 0.6 : 0.3) : 0.06}
           markerEnd="url(#arrow)"
         />,
       );
@@ -446,12 +510,14 @@ export function FitViewGraph({
     const nodeEls: React.ReactNode[] = [];
     for (const n of nodes) {
       const hl = n.highlighted && accentColor;
+      const active = !dimmed || hoverSet?.has(n.name);
+      const nodeOpacity = active ? 1 : 0.15;
       nodeEls.push(
         <g
           key={n.name}
           data-crate={n.name}
           transform={`translate(${n.x},${n.y})`}
-          style={{ cursor: "pointer" }}
+          style={{ cursor: "pointer", opacity: nodeOpacity }}
         >
           <rect
             width={NW}
@@ -504,7 +570,7 @@ export function FitViewGraph({
     }
 
     return { edgeEls, nodeEls };
-  }, [nodes, edges, posMap, accentColor]);
+  }, [nodes, edges, posMap, accentColor, hoverSet, hoverEdgeSet]);
 
   return (
     <div
@@ -513,8 +579,14 @@ export function FitViewGraph({
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
+      onMouseLeave={(e) => {
+        onMouseUp();
+        setHoveredCrate(null);
+        void e;
+      }}
       onClick={handleClick}
+      onMouseOver={handleMouseEnter}
+      onMouseOut={handleMouseLeave}
       style={{
         width: "100%",
         height: "100%",
