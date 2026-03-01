@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { X } from "lucide-react";
-import { useTheme, lightHeat } from "../lib/theme";
+import { useTheme } from "../lib/theme";
 import { MONO } from "../lib/format";
 import { computeHeat } from "../lib/data";
 import { useScenario } from "../lib/hooks";
@@ -274,9 +274,8 @@ export function DetailView({
   }, [hlRunIdx, displayedRuns]);
 
   const { nodes, edges } = useMemo(
-    () =>
-      layoutGraph(filteredGraph, heat, heatColor, highlightedCrates, C.accent),
-    [filteredGraph, heat, heatColor, highlightedCrates, C.accent],
+    () => layoutGraph(filteredGraph, heat, heatColor, highlightedCrates),
+    [filteredGraph, heat, heatColor, highlightedCrates],
   );
 
   const handleNodeClick = useCallback((crateName: string) => {
@@ -502,10 +501,9 @@ export function DetailView({
           <FitViewGraph
             nodes={nodes}
             edges={edges}
-            colorMode={heatColor === lightHeat ? "light" : "dark"}
             bg={C.surface2}
-            surface={C.surface}
             border={C.border}
+            accentColor={C.accent}
             onNodeClick={handleNodeClick}
           />
         </div>

@@ -10,8 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@xyflow/react": "^12.10.1",
-    "elkjs": "^0.11.0",
     "fuzzysort": "^3.1.0",
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",

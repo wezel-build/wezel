@@ -9,8 +9,6 @@ export default defineConfig({
       "react",
       "react-dom",
       "react-router-dom",
-      "@xyflow/react",
-      "elkjs",
       "lucide-react",
       "fuzzysort",
     ],
@@ -20,7 +18,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           "vendor-react": ["react", "react-dom", "react-router-dom"],
-          "vendor-graph": ["@xyflow/react", "elkjs"],
         },
       },
     },
