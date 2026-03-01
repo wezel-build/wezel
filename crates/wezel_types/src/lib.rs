@@ -26,6 +26,8 @@ pub struct Project {
 pub struct CrateTopo {
     pub name: String,
     pub deps: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub external: bool,
 }
 
 // ── Build runs ───────────────────────────────────────────────────────────────

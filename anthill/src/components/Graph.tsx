@@ -25,6 +25,7 @@ interface LayoutNode {
   name: string;
   deps: string[];
   heat: number;
+  external?: boolean;
 }
 
 export function layoutGraph(
@@ -78,6 +79,7 @@ export function layoutGraph(
     const w = layer.length * NW + (layer.length - 1) * GX;
     layer.forEach((name, ci) => {
       const item = items.find((c) => c.name === name)!;
+      const isExternal = item.external ?? false;
       const colors = heatColor(item.heat);
       nodes.push({
         id: name,
@@ -89,6 +91,7 @@ export function layoutGraph(
           colors,
           highlighted: highlightedCrates?.has(name) ?? false,
           accentColor,
+          external: isExternal,
         },
       });
     });
@@ -102,7 +105,7 @@ export function layoutGraph(
           id: `${crate.name}->${dep}`,
           source: crate.name,
           target: dep,
-          style: { stroke: col.border, strokeWidth: 1.5, opacity: 0.45 },
+          style: { stroke: col.border, strokeWidth: 1.5, opacity: 0.3 },
           markerEnd: {
             type: MarkerType.ArrowClosed,
             color: col.border,
@@ -126,6 +129,7 @@ function CrateNodeComponent({ data }: NodeProps) {
     colors: { border: string; bg: string; text: string };
     highlighted?: boolean;
     accentColor?: string;
+    external?: boolean;
   };
   const hl = d.highlighted && d.accentColor;
   return (
@@ -157,17 +161,22 @@ function CrateNodeComponent({ data }: NodeProps) {
           border: "none",
         }}
       />
-      <div
-        style={{
-          fontSize: 8,
-          color: d.colors.border,
-          letterSpacing: 0.8,
-          marginBottom: 1,
-        }}
-      >
-        {d.heat}%
+      {!d.external && (
+        <div
+          style={{
+            fontSize: 8,
+            color: d.colors.border,
+            letterSpacing: 0.8,
+            marginBottom: 1,
+          }}
+        >
+          {d.heat}%
+        </div>
+      )}
+      <div>
+        {d.external ? "📦 " : ""}
+        {d.label}
       </div>
-      <div>{d.label}</div>
       <Handle
         type="source"
         position={Position.Bottom}

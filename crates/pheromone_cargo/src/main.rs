@@ -170,20 +170,47 @@ fn extract_graph(cargo: &Path) -> Vec<CrateTopo> {
         Err(_) => return Vec::new(),
     };
 
-    graph
-        .workspace()
-        .iter()
-        .map(|pkg| {
-            let deps: Vec<String> = pkg
-                .direct_links()
-                .map(|link| link.to().name().to_string())
-                .collect();
-            CrateTopo {
-                name: pkg.name().to_string(),
-                deps,
+    let workspace_names: std::collections::HashSet<&str> =
+        graph.workspace().iter().map(|pkg| pkg.name()).collect();
+
+    // Walk transitively from workspace members to collect all reachable packages.
+    let mut visited = std::collections::HashSet::new();
+    let mut queue: std::collections::VecDeque<guppy::graph::PackageMetadata> =
+        graph.workspace().iter().collect();
+
+    while let Some(pkg) = queue.pop_front() {
+        if !visited.insert(pkg.name().to_string()) {
+            continue;
+        }
+        for link in pkg.direct_links() {
+            let dep_name = link.to().name().to_string();
+            if !visited.contains(&dep_name) {
+                queue.push_back(link.to());
             }
-        })
-        .collect()
+        }
+    }
+
+    // Build CrateTopo for every visited package.
+    let mut result = Vec::with_capacity(visited.len());
+    for pkg_name in &visited {
+        let pkg = match graph.packages().find(|p| p.name() == pkg_name.as_str()) {
+            Some(p) => p,
+            None => continue,
+        };
+        // Only include deps that are themselves in our visited set.
+        let deps: Vec<String> = pkg
+            .direct_links()
+            .filter(|link| visited.contains(link.to().name()))
+            .map(|link| link.to().name().to_string())
+            .collect();
+        result.push(CrateTopo {
+            name: pkg_name.clone(),
+            deps,
+            external: !workspace_names.contains(pkg_name.as_str()),
+        });
+    }
+
+    result
 }
 
 // ── PTY helpers ──────────────────────────────────────────────────────────────

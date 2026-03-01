@@ -11,6 +11,7 @@ export interface Project {
 export interface CrateTopo {
   name: string;
   deps: string[];
+  external?: boolean;
 }
 
 export interface Run {
