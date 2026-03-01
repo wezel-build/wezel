@@ -51,7 +51,7 @@ fn detect_upstream() -> Option<String> {
 
 fn detect_commit() -> Option<String> {
     let output = std::process::Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
+        .args(["rev-parse", "HEAD"])
         .stderr(std::process::Stdio::null())
         .output()
         .ok()?;

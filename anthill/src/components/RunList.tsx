@@ -274,7 +274,7 @@ export function RunList({
                   (e.currentTarget.style.textDecoration = "none")
                 }
               >
-                {run.commit}
+                {run.commit ? run.commit.slice(0, 7) : ""}
               </div>
               {/* Timestamp */}
               <div style={{ ...colStyle(3), color: C.textDim }}>
