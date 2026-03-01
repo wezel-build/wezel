@@ -82,11 +82,82 @@ export function layoutGraph(
 
   for (const c of items) getDepth(c.name);
 
-  const maxDepth = items.length > 0 ? Math.max(...depths.values()) : 0;
-  const layers: string[][] = Array.from({ length: maxDepth + 1 }, () => []);
+  // Two-tier layout:
+  // Primary tier (top): workspace crates + external crates that depend on a workspace crate
+  // Secondary tier (bottom): pure external crates
+  const workspaceNames = new Set<string>();
   for (const c of items) {
-    layers[maxDepth - (depths.get(c.name) ?? 0)].push(c.name);
+    if (!c.external) workspaceNames.add(c.name);
   }
+
+  const primaryNames = new Set<string>();
+  for (const c of items) {
+    if (!c.external) {
+      primaryNames.add(c.name);
+    } else {
+      // External that depends on at least one workspace crate
+      for (const dep of c.deps) {
+        if (workspaceNames.has(dep)) {
+          primaryNames.add(c.name);
+          break;
+        }
+      }
+    }
+  }
+
+  const primaryItems = items.filter((c) => primaryNames.has(c.name));
+  const secondaryItems = items.filter((c) => !primaryNames.has(c.name));
+
+  // Compute depths within each tier independently
+  function buildLayers(tier: Item[]): string[][] {
+    if (tier.length === 0) return [];
+    const tierSet = new Set(tier.map((c) => c.name));
+    const tierDepths = new Map<string, number>();
+    const tierVisiting = new Set<string>();
+
+    function getTierDepth(name: string): number {
+      if (tierDepths.has(name)) return tierDepths.get(name)!;
+      if (tierVisiting.has(name)) return 0;
+      tierVisiting.add(name);
+      const node = nameToItem.get(name);
+      if (!node) {
+        tierDepths.set(name, 0);
+        tierVisiting.delete(name);
+        return 0;
+      }
+      let maxChild = -1;
+      for (const d of node.deps) {
+        if (tierSet.has(d)) {
+          const cd = getTierDepth(d);
+          if (cd > maxChild) maxChild = cd;
+        }
+      }
+      const depth = maxChild >= 0 ? 1 + maxChild : 0;
+      tierDepths.set(name, depth);
+      tierVisiting.delete(name);
+      return depth;
+    }
+    for (const c of tier) getTierDepth(c.name);
+
+    const md = Math.max(...tierDepths.values());
+    const ls: string[][] = Array.from({ length: md + 1 }, () => []);
+    for (const c of tier) {
+      ls[md - (tierDepths.get(c.name) ?? 0)].push(c.name);
+    }
+    // Workspace crates first in each layer
+    for (const l of ls) {
+      l.sort((a, b) => {
+        const ae = nameToItem.get(a)?.external ? 1 : 0;
+        const be = nameToItem.get(b)?.external ? 1 : 0;
+        return ae - be;
+      });
+    }
+    return ls;
+  }
+
+  const primaryLayers = buildLayers(primaryItems);
+  const secondaryLayers = buildLayers(secondaryItems);
+  const layers = [...primaryLayers, ...secondaryLayers];
 
   // Color cache
   const colorCache = new Map<number, ReturnType<HeatFn>>();
@@ -390,6 +461,20 @@ export function FitViewGraph({
             stroke={hl ? accentColor : n.colors.border}
             strokeWidth={hl ? 2.5 : 1.5}
           />
+          {n.external && (
+            <>
+              <rect
+                width={NW}
+                height={NH}
+                rx={6}
+                fill="url(#ext-checker)"
+                style={{ color: n.colors.border }}
+              />
+              <text x={NW - 6} y={12} textAnchor="end" fontSize={10}>
+                📦
+              </text>
+            </>
+          )}
           {!n.external && (
             <text
               x={NW / 2}
@@ -412,7 +497,6 @@ export function FitViewGraph({
             fontFamily={MONO}
             fontWeight={500}
           >
-            {n.external ? "📦 " : ""}
             {n.name}
           </text>
         </g>,
@@ -455,6 +539,23 @@ export function FitViewGraph({
           >
             <path d="M 0 0 L 10 5 L 0 10 z" fill="#888" opacity={0.5} />
           </marker>
+          <pattern
+            id="ext-checker"
+            width={12}
+            height={12}
+            patternUnits="userSpaceOnUse"
+          >
+            <rect width={12} height={12} fill="transparent" />
+            <rect width={6} height={6} fill="currentColor" opacity={0.1} />
+            <rect
+              x={6}
+              y={6}
+              width={6}
+              height={6}
+              fill="currentColor"
+              opacity={0.1}
+            />
+          </pattern>
         </defs>
         <g
           transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}
