@@ -304,7 +304,11 @@ export function FitViewGraph({
   const { transform, onWheel, onMouseDown, onMouseMove, onMouseUp, fitView } =
     usePanZoom(containerRef);
 
-  // Fit on mount and when nodes change
+  // Keep a ref to the latest nodes so resize/fitView don't use stale data
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
+  // Only fit when the graph topology actually changes (set of node names)
   const nodeKeyRef = useRef("");
   useEffect(() => {
     const key = nodes.map((n) => n.name).join(",");
@@ -312,16 +316,17 @@ export function FitViewGraph({
       nodeKeyRef.current = key;
       fitView(nodes);
     }
-  }, [nodes, fitView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes.length, fitView]);
 
-  // Fit on container resize
+  // Fit on container resize (stable effect, reads ref)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => fitView(nodes));
+    const ro = new ResizeObserver(() => fitView(nodesRef.current));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [nodes, fitView]);
+  }, [fitView]);
 
   // Build position lookup for edges
   const posMap = useMemo(() => {
