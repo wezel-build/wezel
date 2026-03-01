@@ -635,22 +635,20 @@ export function FitViewGraph({
               </text>
             </>
           )}
-          {!n.external && (
-            <text
-              x={NW / 2}
-              y={14}
-              textAnchor="middle"
-              fill={n.colors.border}
-              fontSize={8}
-              fontFamily={MONO}
-              letterSpacing={0.8}
-            >
-              {n.heat}%
-            </text>
-          )}
           <text
             x={NW / 2}
-            y={n.external ? NH / 2 + 4 : NH / 2 + 8}
+            y={14}
+            textAnchor="middle"
+            fill={n.colors.border}
+            fontSize={8}
+            fontFamily={MONO}
+            letterSpacing={0.8}
+          >
+            {n.heat}%
+          </text>
+          <text
+            x={NW / 2}
+            y={NH / 2 + 8}
             textAnchor="middle"
             fill={n.colors.text}
             fontSize={11}
