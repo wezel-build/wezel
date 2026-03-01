@@ -53,111 +53,128 @@ export function layoutGraph(
     nameSet.add(c.name);
   }
 
-  // Depths (cycle-safe)
-  const depths = new Map<string, number>();
-  const visiting = new Set<string>();
-
-  function getDepth(name: string): number {
-    if (depths.has(name)) return depths.get(name)!;
-    if (visiting.has(name)) return 0;
-    visiting.add(name);
-    const node = nameToItem.get(name);
-    if (!node || node.deps.length === 0) {
-      depths.set(name, 0);
-      visiting.delete(name);
-      return 0;
-    }
-    let maxChild = -1;
-    for (const d of node.deps) {
-      if (nameSet.has(d)) {
-        const cd = getDepth(d);
-        if (cd > maxChild) maxChild = cd;
-      }
-    }
-    const depth = maxChild >= 0 ? 1 + maxChild : 0;
-    depths.set(name, depth);
-    visiting.delete(name);
-    return depth;
-  }
-
-  for (const c of items) getDepth(c.name);
-
-  // Two-tier layout:
-  // Primary tier (top): workspace crates + external crates that depend on a workspace crate
-  // Secondary tier (bottom): pure external crates
-  const workspaceNames = new Set<string>();
+  // Kahn's BFS: layer by dependant count (things that depend on me).
+  // Layer 0 = nodes nothing depends on (top-level consumers).
+  // Edges always flow downward.
+  const inDegree = new Map<string, number>();
+  for (const c of items) inDegree.set(c.name, 0);
   for (const c of items) {
-    if (!c.external) workspaceNames.add(c.name);
+    for (const dep of c.deps) {
+      if (nameSet.has(dep)) {
+        inDegree.set(dep, (inDegree.get(dep) ?? 0) + 1);
+      }
+    }
   }
 
-  const primaryNames = new Set<string>();
+  const layers: string[][] = [];
+  const placed = new Set<string>();
+  let queue = items
+    .filter((c) => inDegree.get(c.name) === 0)
+    .map((c) => c.name);
+
+  while (queue.length > 0) {
+    // Workspace crates first within each layer
+    queue.sort((a, b) => {
+      const ae = nameToItem.get(a)?.external ? 1 : 0;
+      const be = nameToItem.get(b)?.external ? 1 : 0;
+      return ae - be;
+    });
+    layers.push(queue);
+    for (const name of queue) placed.add(name);
+
+    const next: string[] = [];
+    for (const name of queue) {
+      const node = nameToItem.get(name)!;
+      for (const dep of node.deps) {
+        if (!nameSet.has(dep) || placed.has(dep)) continue;
+        const newDeg = (inDegree.get(dep) ?? 1) - 1;
+        inDegree.set(dep, newDeg);
+        if (newDeg === 0) next.push(dep);
+      }
+    }
+    queue = next;
+  }
+
+  // Barycenter crossing minimization: reorder nodes within each layer
+  // based on the average position of their connected nodes in the adjacent layer.
+  // Run a few passes (down then up) for convergence.
+  const layerIndex = new Map<string, number>();
+  for (let li = 0; li < layers.length; li++) {
+    for (let ni = 0; ni < layers[li].length; ni++) {
+      layerIndex.set(layers[li][ni], ni);
+    }
+  }
+
+  // Build both directions: dependants (up) and deps (down)
+  const depsOf = new Map<string, string[]>();
+  const dependantsOf = new Map<string, string[]>();
   for (const c of items) {
-    if (!c.external) {
-      primaryNames.add(c.name);
-    } else {
-      // External that depends on at least one workspace crate
-      for (const dep of c.deps) {
-        if (workspaceNames.has(dep)) {
-          primaryNames.add(c.name);
-          break;
-        }
+    const filtered = c.deps.filter((d) => nameSet.has(d));
+    depsOf.set(c.name, filtered);
+    for (const dep of filtered) {
+      let arr = dependantsOf.get(dep);
+      if (!arr) {
+        arr = [];
+        dependantsOf.set(dep, arr);
       }
+      arr.push(c.name);
     }
   }
 
-  const primaryItems = items.filter((c) => primaryNames.has(c.name));
-  const secondaryItems = items.filter((c) => !primaryNames.has(c.name));
+  function barycenter(
+    layer: string[],
+    neighborLayer: string[],
+    getNeighbors: (name: string) => string[],
+  ) {
+    const posInNeighbor = new Map<string, number>();
+    for (let i = 0; i < neighborLayer.length; i++) {
+      posInNeighbor.set(neighborLayer[i], i);
+    }
 
-  // Compute depths within each tier independently
-  function buildLayers(tier: Item[]): string[][] {
-    if (tier.length === 0) return [];
-    const tierSet = new Set(tier.map((c) => c.name));
-    const tierDepths = new Map<string, number>();
-    const tierVisiting = new Set<string>();
-
-    function getTierDepth(name: string): number {
-      if (tierDepths.has(name)) return tierDepths.get(name)!;
-      if (tierVisiting.has(name)) return 0;
-      tierVisiting.add(name);
-      const node = nameToItem.get(name);
-      if (!node) {
-        tierDepths.set(name, 0);
-        tierVisiting.delete(name);
-        return 0;
+    const bary = new Map<string, number>();
+    for (const name of layer) {
+      const neighbors = getNeighbors(name).filter((n) => posInNeighbor.has(n));
+      if (neighbors.length === 0) {
+        // Keep current position as fallback
+        bary.set(name, layerIndex.get(name) ?? 0);
+      } else {
+        const avg =
+          neighbors.reduce((s, n) => s + posInNeighbor.get(n)!, 0) /
+          neighbors.length;
+        bary.set(name, avg);
       }
-      let maxChild = -1;
-      for (const d of node.deps) {
-        if (tierSet.has(d)) {
-          const cd = getTierDepth(d);
-          if (cd > maxChild) maxChild = cd;
-        }
-      }
-      const depth = maxChild >= 0 ? 1 + maxChild : 0;
-      tierDepths.set(name, depth);
-      tierVisiting.delete(name);
-      return depth;
     }
-    for (const c of tier) getTierDepth(c.name);
 
-    const md = Math.max(...tierDepths.values());
-    const ls: string[][] = Array.from({ length: md + 1 }, () => []);
-    for (const c of tier) {
-      ls[md - (tierDepths.get(c.name) ?? 0)].push(c.name);
+    layer.sort((a, b) => bary.get(a)! - bary.get(b)!);
+    // Update layerIndex
+    for (let i = 0; i < layer.length; i++) {
+      layerIndex.set(layer[i], i);
     }
-    // Workspace crates first in each layer
-    for (const l of ls) {
-      l.sort((a, b) => {
-        const ae = nameToItem.get(a)?.external ? 1 : 0;
-        const be = nameToItem.get(b)?.external ? 1 : 0;
-        return ae - be;
-      });
-    }
-    return ls;
   }
 
-  const primaryLayers = buildLayers(primaryItems);
-  const secondaryLayers = buildLayers(secondaryItems);
-  const layers = [...primaryLayers, ...secondaryLayers];
+  const SWEEPS = 4;
+  for (let sweep = 0; sweep < SWEEPS; sweep++) {
+    // Down sweep: reorder each layer based on dependants in the layer above
+    for (let li = 1; li < layers.length; li++) {
+      barycenter(
+        layers[li],
+        layers[li - 1],
+        (name) => dependantsOf.get(name) ?? [],
+      );
+    }
+    // Up sweep: reorder each layer based on deps in the layer below
+    for (let li = layers.length - 2; li >= 0; li--) {
+      barycenter(layers[li], layers[li + 1], (name) => depsOf.get(name) ?? []);
+    }
+  }
+
+  // Handle cycles: any remaining nodes go in a final layer
+  if (placed.size < items.length) {
+    const remaining = items
+      .filter((c) => !placed.has(c.name))
+      .map((c) => c.name);
+    layers.push(remaining);
+  }
 
   // Color cache
   const colorCache = new Map<number, ReturnType<HeatFn>>();
@@ -170,19 +187,96 @@ export function layoutGraph(
     return c;
   }
 
-  // Position nodes
-  const nodePositions = new Map<string, { x: number; y: number }>();
-  const nodes: GraphNode[] = [];
+  // Initial grid positions
+  const posX = new Map<string, number>();
+  const posY = new Map<string, number>();
 
   for (let ly = 0; ly < layers.length; ly++) {
     const layer = layers[ly];
     const w = layer.length * NW + (layer.length - 1) * GX;
     for (let ci = 0; ci < layer.length; ci++) {
-      const name = layer[ci];
+      posX.set(layer[ci], -w / 2 + ci * (NW + GX));
+      posY.set(layer[ci], ly * (NH + GY));
+    }
+  }
+
+  // Node positioning: shift each node toward the average x of its neighbors
+  // (deps below + dependants above) while respecting ordering constraints.
+  const POS_SWEEPS = 8;
+  for (let pass = 0; pass < POS_SWEEPS; pass++) {
+    // Down sweep
+    for (let li = 1; li < layers.length; li++) {
+      nudgeLayer(layers[li], (name) => dependantsOf.get(name) ?? []);
+    }
+    // Up sweep
+    for (let li = layers.length - 2; li >= 0; li--) {
+      nudgeLayer(layers[li], (name) => depsOf.get(name) ?? []);
+    }
+  }
+
+  function nudgeLayer(
+    layer: string[],
+    getNeighbors: (name: string) => string[],
+  ) {
+    if (layer.length === 0) return;
+
+    // Compute ideal x for each node (average of neighbor center x)
+    const ideal = new Map<string, number>();
+    for (const name of layer) {
+      const nbrs = getNeighbors(name).filter((n) => posX.has(n));
+      if (nbrs.length > 0) {
+        const avg =
+          nbrs.reduce((s, n) => s + posX.get(n)! + NW / 2, 0) / nbrs.length -
+          NW / 2;
+        ideal.set(name, avg);
+      } else {
+        ideal.set(name, posX.get(name) ?? 0);
+      }
+    }
+
+    // Nudge left-to-right: each node goes to its ideal x but can't overlap previous
+    let left = -Infinity;
+    for (const name of layer) {
+      const x = Math.max(ideal.get(name)!, left);
+      posX.set(name, x);
+      left = x + NW + GX;
+    }
+
+    // Nudge right-to-left: same but from the right, then average both passes
+    const rightPass = new Map<string, number>();
+    let right = Infinity;
+    for (let i = layer.length - 1; i >= 0; i--) {
+      const name = layer[i];
+      const x = Math.min(ideal.get(name)!, right - NW);
+      rightPass.set(name, x);
+      right = x - GX;
+    }
+
+    // Average both passes for balanced result
+    for (const name of layer) {
+      posX.set(name, (posX.get(name)! + rightPass.get(name)!) / 2);
+    }
+
+    // Re-center the layer around x=0
+    let sumX = 0;
+    for (const name of layer) sumX += posX.get(name)!;
+    const center = sumX / layer.length + NW / 2;
+    for (const name of layer) {
+      posX.set(name, posX.get(name)! - center);
+    }
+  }
+
+  // Build final node list
+  const nodePositions = new Map<string, { x: number; y: number }>();
+  const nodes: GraphNode[] = [];
+
+  for (let ly = 0; ly < layers.length; ly++) {
+    const layer = layers[ly];
+    for (const name of layer) {
       const item = nameToItem.get(name)!;
       const colors = getCachedColor(item.heat);
-      const x = -w / 2 + ci * (NW + GX);
-      const y = ly * (NH + GY);
+      const x = posX.get(name)!;
+      const y = posY.get(name)!;
       nodePositions.set(name, { x, y });
       nodes.push({
         name,
