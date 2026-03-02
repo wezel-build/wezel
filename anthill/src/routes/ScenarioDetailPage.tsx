@@ -54,6 +54,7 @@ export function DetailView({
   const [runsWidth, setRunsWidth] = useState(280);
   const [summaryWidth, setSummaryWidth] = useState(190);
   const [crateFilter, setCrateFilter] = useState<string | null>(null);
+  const [focusedCrate, setFocusedCrate] = useState<string | null>(null);
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
     () => new Set(),
@@ -212,6 +213,20 @@ export function DetailView({
 
   useKeyboardNav(runKeyMap);
 
+  // Capture-phase Escape: fires before the parent's bubble-phase listener.
+  // If there's a focused crate, consume the event and just clear focus.
+  useEffect(() => {
+    if (!focusedCrate) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      setFocusedCrate(null);
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [focusedCrate]);
+
   // Reset run highlight and marks when keyboard focus leaves
   useEffect(() => {
     if (!keyboardActive) {
@@ -281,6 +296,10 @@ export function DetailView({
 
   const handleNodeClick = useCallback((crateName: string) => {
     setCrateFilter((prev) => (prev === crateName ? null : crateName));
+  }, []);
+
+  const handleNodeFocus = useCallback((crateName: string | null) => {
+    setFocusedCrate((prev) => (prev === crateName ? null : crateName));
   }, []);
 
   // ── Loading guard (all hooks are above) ────────────────────────────────────
@@ -511,6 +530,8 @@ export function DetailView({
             border={C.border}
             accentColor={C.accent}
             onNodeClick={handleNodeClick}
+            onNodeFocus={handleNodeFocus}
+            focusedCrate={focusedCrate}
           />
         </div>
 

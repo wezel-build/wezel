@@ -455,6 +455,8 @@ export function FitViewGraph({
   border,
   accentColor,
   onNodeClick,
+  onNodeFocus,
+  focusedCrate,
 }: {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -464,6 +466,8 @@ export function FitViewGraph({
   border: string;
   accentColor?: string;
   onNodeClick?: (crateName: string) => void;
+  onNodeFocus?: (crateName: string | null) => void;
+  focusedCrate?: string | null;
 }) {
   const [hoveredCrate, setHoveredCrate] = useState<string | null>(null);
 
@@ -510,6 +514,38 @@ export function FitViewGraph({
     }
     return set;
   }, [hoverSet, edges]);
+
+  // Focused crate: same transitive highlighting as hover, but sticky
+  const focusSet = useMemo(() => {
+    if (!focusedCrate) return null;
+    const set = new Set<string>();
+    const queue = [focusedCrate];
+    while (queue.length > 0) {
+      const name = queue.pop()!;
+      if (set.has(name)) continue;
+      set.add(name);
+      const parents = dependantsMap.get(name);
+      if (parents) {
+        for (const p of parents) queue.push(p);
+      }
+    }
+    return set;
+  }, [focusedCrate, dependantsMap]);
+
+  const focusEdgeSet = useMemo(() => {
+    if (!focusSet) return null;
+    const set = new Set<string>();
+    for (const e of edges) {
+      if (focusSet.has(e.source) && focusSet.has(e.target)) {
+        set.add(`${e.source}->${e.target}`);
+      }
+    }
+    return set;
+  }, [focusSet, edges]);
+
+  // Hover takes priority over focus
+  const activeSet = hoverSet ?? focusSet;
+  const activeEdgeSet = hoverEdgeSet ?? focusEdgeSet;
 
   const handleMouseEnter = useCallback((e: React.MouseEvent) => {
     const target = (e.target as HTMLElement).closest("[data-crate]");
@@ -562,17 +598,30 @@ export function FitViewGraph({
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
-      if (!onNodeClick) return;
       const target = (e.target as HTMLElement).closest("[data-crate]");
       if (!target) return;
       const name = (target as HTMLElement).dataset.crate;
-      if (name) onNodeClick(name);
+      if (!name) return;
+      if (e.ctrlKey || e.metaKey) {
+        if (onNodeClick) onNodeClick(name);
+      } else {
+        if (onNodeFocus) onNodeFocus(name);
+      }
     },
-    [onNodeClick],
+    [onNodeClick, onNodeFocus],
+  );
+
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const target = (e.target as HTMLElement).closest("[data-crate]");
+      if (target) return;
+      if (onNodeFocus) onNodeFocus(null);
+    },
+    [onNodeFocus],
   );
 
   const svgContent = useMemo(() => {
-    const dimmed = hoverSet !== null;
+    const dimmed = activeSet !== null;
 
     const edgeEls: React.ReactNode[] = [];
     for (let i = 0; i < edges.length; i++) {
@@ -585,7 +634,7 @@ export function FitViewGraph({
       const x2 = tp.x + NW / 2;
       const y2 = tp.y;
       const edgeKey = `${edge.source}->${edge.target}`;
-      const active = !dimmed || hoverEdgeSet?.has(edgeKey);
+      const active = !dimmed || activeEdgeSet?.has(edgeKey);
       edgeEls.push(
         <line
           key={edgeKey}
@@ -604,7 +653,7 @@ export function FitViewGraph({
     const nodeEls: React.ReactNode[] = [];
     for (const n of nodes) {
       const hl = n.highlighted && accentColor;
-      const active = !dimmed || hoverSet?.has(n.name);
+      const active = !dimmed || activeSet?.has(n.name);
       const nodeOpacity = active ? 1 : 0.15;
       nodeEls.push(
         <g
@@ -662,7 +711,7 @@ export function FitViewGraph({
     }
 
     return { edgeEls, nodeEls };
-  }, [nodes, edges, posMap, accentColor, hoverSet, hoverEdgeSet]);
+  }, [nodes, edges, posMap, accentColor, activeSet, activeEdgeSet]);
 
   return (
     <div
@@ -677,6 +726,7 @@ export function FitViewGraph({
         void e;
       }}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onMouseOver={handleMouseEnter}
       onMouseOut={handleMouseLeave}
       style={{
