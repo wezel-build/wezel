@@ -10,8 +10,11 @@ use wezel_types::{CrateTopo, PheromoneOutput, Profile};
 /// Cargo subcommands that trigger a build.
 const BUILD_COMMANDS: &[&str] = &[
     "build", "b", "check", "c", "test", "t", "bench", "run", "r", "clippy", "doc", "d", "rustc",
-    "rustdoc",
+    "rustdoc", "install",
 ];
+
+/// Commands that default to the release profile.
+const RELEASE_DEFAULT_COMMANDS: &[&str] = &["install"];
 
 /// Normalize short aliases to their canonical form.
 fn normalize_command(cmd: &str) -> &str {
@@ -39,7 +42,8 @@ struct ParsedArgs {
 fn parse_args(args: &[String]) -> Option<ParsedArgs> {
     let mut iter = args.iter();
     let mut command: Option<String> = None;
-    let mut profile = Profile::Dev;
+    let mut profile: Option<Profile> = None;
+    let mut explicit_debug = false;
     let mut packages: Vec<String> = Vec::new();
 
     // Skip leading global flags to find the subcommand.
@@ -63,13 +67,14 @@ fn parse_args(args: &[String]) -> Option<ParsedArgs> {
     while let Some(arg) = iter.next() {
         let s = arg.as_str();
         match s {
-            "--release" => profile = Profile::Release,
+            "--release" => profile = Some(Profile::Release),
+            "--debug" => explicit_debug = true,
             "--profile" => {
                 if let Some(val) = iter.next() {
-                    profile = match val.as_str() {
+                    profile = Some(match val.as_str() {
                         "release" | "bench" => Profile::Release,
                         _ => Profile::Dev,
-                    };
+                    });
                 }
             }
             "-p" | "--package" => {
@@ -84,19 +89,30 @@ fn parse_args(args: &[String]) -> Option<ParsedArgs> {
             }
             _ if s.starts_with("--profile=") => {
                 if let Some(val) = s.strip_prefix("--profile=") {
-                    profile = match val {
+                    profile = Some(match val {
                         "release" | "bench" => Profile::Release,
                         _ => Profile::Dev,
-                    };
+                    });
                 }
             }
             _ => {}
         }
     }
 
+    let canonical = normalize_command(&command);
+    let resolved_profile = if explicit_debug {
+        Profile::Dev
+    } else if let Some(p) = profile {
+        p
+    } else if RELEASE_DEFAULT_COMMANDS.contains(&canonical) {
+        Profile::Release
+    } else {
+        Profile::Dev
+    };
+
     Some(ParsedArgs {
-        command: normalize_command(&command).to_string(),
-        profile,
+        command: canonical.to_string(),
+        profile: resolved_profile,
         packages,
     })
 }
