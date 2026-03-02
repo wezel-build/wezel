@@ -241,7 +241,7 @@ fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
         upstream: detect_upstream(),
         commit: detect_commit(),
         cwd: cwd.display().to_string(),
-        user: whoami::username(),
+        user: config.username.clone(),
         platform: detect_platform(),
         timestamp,
         duration_ms,

@@ -24,3 +24,4 @@ dialoguer = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 url = { workspace = true }
+figment = { version = "0.10", features = ["toml"] }

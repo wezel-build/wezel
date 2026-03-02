@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::config::Config;
+use crate::config::ProjectConfig;
 
 fn dot_wezel() -> PathBuf {
     std::env::current_dir()
@@ -28,7 +28,10 @@ pub fn setup_cmd(burrow_url: Option<&str>) -> anyhow::Result<()> {
         None => prompt_burrow_url()?,
     };
 
-    let config = Config { burrow_url };
+    let config = ProjectConfig {
+        burrow_url: Some(burrow_url),
+        username: None,
+    };
 
     let contents = toml::to_string_pretty(&config)?;
     fs::create_dir_all(dot_wezel())?;
