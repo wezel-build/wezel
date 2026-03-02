@@ -29,19 +29,19 @@ impl Shell {
         }
     }
 
-    pub fn rc_path(self) -> PathBuf {
+    pub fn rc_paths(self) -> Vec<PathBuf> {
         let home = dirs::home_dir().expect("could not determine home directory");
         match self {
-            Shell::Zsh => home.join(".zshrc"),
+            Shell::Zsh => vec![home.join(".zshenv"), home.join(".zshrc")],
             Shell::Bash => {
                 let bashrc = home.join(".bashrc");
                 if bashrc.exists() {
-                    bashrc
+                    vec![bashrc]
                 } else {
-                    home.join(".bash_profile")
+                    vec![home.join(".bash_profile")]
                 }
             }
-            Shell::Fish => home.join(".config/fish/conf.d/wezel.fish"),
+            Shell::Fish => vec![home.join(".config/fish/conf.d/wezel.fish")],
         }
     }
 
@@ -92,30 +92,30 @@ impl Shell {
 }
 
 pub fn ensure_shell_hook(shell: Shell) -> anyhow::Result<()> {
-    let rc = shell.rc_path();
+    for rc in shell.rc_paths() {
+        if shell == Shell::Fish {
+            if let Some(parent) = rc.parent() {
+                fs::create_dir_all(parent)?;
+            }
+        }
 
-    if shell == Shell::Fish
-        && let Some(parent) = rc.parent()
-    {
-        fs::create_dir_all(parent)?;
+        let contents = if rc.exists() {
+            fs::read_to_string(&rc)?
+        } else {
+            String::new()
+        };
+
+        if contents.contains(SOURCE_MARKER) {
+            continue;
+        }
+
+        let mut file = fs::OpenOptions::new().create(true).append(true).open(&rc)?;
+
+        writeln!(file)?;
+        writeln!(file, "{}", shell.source_block())?;
+
+        println!("Installed source hook in {}", rc.display());
     }
-
-    let contents = if rc.exists() {
-        fs::read_to_string(&rc)?
-    } else {
-        String::new()
-    };
-
-    if contents.contains(SOURCE_MARKER) {
-        return Ok(());
-    }
-
-    let mut file = fs::OpenOptions::new().create(true).append(true).open(&rc)?;
-
-    writeln!(file)?;
-    writeln!(file, "{}", shell.source_block())?;
-
-    println!("Installed source hook in {}", rc.display());
     Ok(())
 }
 
