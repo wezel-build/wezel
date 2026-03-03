@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io::{IsTerminal, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
@@ -146,6 +147,71 @@ fn parse_compiling_line(line: &str) -> Option<String> {
     let rest = trimmed.strip_prefix("Compiling ")?;
     let name = rest.split_whitespace().next()?;
     Some(name.to_string())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MessageFormat {
+    Human,
+    Json,
+}
+
+fn detect_message_format(args: &[String]) -> MessageFormat {
+    let mut iter = args.iter();
+    let mut format = MessageFormat::Human;
+
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--message-format" => {
+                if let Some(val) = iter.next() {
+                    format = if val
+                        .split(',')
+                        .any(|part| part.trim().eq_ignore_ascii_case("json"))
+                    {
+                        MessageFormat::Json
+                    } else {
+                        MessageFormat::Human
+                    };
+                }
+            }
+            _ if arg.starts_with("--message-format=") => {
+                if let Some(val) = arg.strip_prefix("--message-format=") {
+                    format = if val
+                        .split(',')
+                        .any(|part| part.trim().eq_ignore_ascii_case("json"))
+                    {
+                        MessageFormat::Json
+                    } else {
+                        MessageFormat::Human
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+
+    format
+}
+
+fn parse_json_message_dirty_crate(line: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    let reason = v.get("reason")?.as_str()?;
+    match reason {
+        "compiler-artifact" | "build-script-executed" => {}
+        _ => return None,
+    }
+
+    let package_id = v.get("package_id")?.as_str()?;
+    let pkg_and_version = package_id.split_once('#')?.1;
+    let name = pkg_and_version
+        .split_once('@')
+        .map(|(pkg, _)| pkg)
+        .unwrap_or(pkg_and_version);
+
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
 }
 
 /// Find the real `cargo` binary, skipping ourselves.
@@ -320,6 +386,7 @@ fn install_sigwinch_handler(stderr_fd: i32, pty_ctl_fd: i32) {
 fn run_cargo_tee(
     cargo: &Path,
     args: &[String],
+    message_format: MessageFormat,
 ) -> anyhow::Result<(std::process::ExitStatus, Vec<String>)> {
     let real_stderr = std::io::stderr();
     let is_tty = real_stderr.is_terminal();
@@ -359,6 +426,7 @@ fn run_cargo_tee(
     };
 
     let mut dirty_crates = Vec::new();
+    let mut seen_dirty = HashSet::new();
     let mut err = std::io::stderr();
     let mut line_buf = Vec::new();
     let mut buf = [0u8; 8192];
@@ -381,9 +449,16 @@ fn run_cargo_tee(
             if byte == b'\n' || byte == b'\r' {
                 if !line_buf.is_empty()
                     && let Ok(line) = std::str::from_utf8(&line_buf)
-                    && let Some(name) = parse_compiling_line(line)
                 {
-                    dirty_crates.push(name);
+                    let maybe_name = match message_format {
+                        MessageFormat::Human => parse_compiling_line(line),
+                        MessageFormat::Json => parse_json_message_dirty_crate(line),
+                    };
+                    if let Some(name) = maybe_name
+                        && seen_dirty.insert(name.clone())
+                    {
+                        dirty_crates.push(name);
+                    }
                 }
                 line_buf.clear();
             } else {
@@ -396,9 +471,16 @@ fn run_cargo_tee(
 
     if !line_buf.is_empty()
         && let Ok(line) = std::str::from_utf8(&line_buf)
-        && let Some(name) = parse_compiling_line(line)
     {
-        dirty_crates.push(name);
+        let maybe_name = match message_format {
+            MessageFormat::Human => parse_compiling_line(line),
+            MessageFormat::Json => parse_json_message_dirty_crate(line),
+        };
+        if let Some(name) = maybe_name
+            && seen_dirty.insert(name.clone())
+        {
+            dirty_crates.push(name);
+        }
     }
 
     let status = child.wait()?;
@@ -439,8 +521,9 @@ fn run() -> anyhow::Result<ExitCode> {
         return Ok(ExitCode::from(code));
     };
 
+    let message_format = detect_message_format(&args);
     let graph = extract_graph(&cargo);
-    let (status, dirty_crates) = run_cargo_tee(&cargo, &args)?;
+    let (status, dirty_crates) = run_cargo_tee(&cargo, &args, message_format)?;
 
     emit_output(&parsed, dirty_crates, graph);
 
@@ -599,5 +682,51 @@ mod tests {
         let parsed = parse_args(&args).unwrap();
         assert_eq!(parsed.command, "install");
         assert_eq!(parsed.profile, Profile::Dev);
+    }
+
+    #[test]
+    fn detect_message_format_human_default() {
+        let args: Vec<String> = vec!["build".into()];
+        assert_eq!(detect_message_format(&args), MessageFormat::Human);
+    }
+
+    #[test]
+    fn detect_message_format_json_eq() {
+        let args: Vec<String> = vec!["build".into(), "--message-format=json".into()];
+        assert_eq!(detect_message_format(&args), MessageFormat::Json);
+    }
+
+    #[test]
+    fn detect_message_format_json_split() {
+        let args: Vec<String> = vec![
+            "build".into(),
+            "--message-format".into(),
+            "json-diagnostic-rendered-ansi,json".into(),
+        ];
+        assert_eq!(detect_message_format(&args), MessageFormat::Json);
+    }
+
+    #[test]
+    fn parse_json_compiler_artifact_dirty_crate() {
+        let line = r#"{"reason":"compiler-artifact","package_id":"path+file:///tmp/ws/foo#foo@0.1.0","target":{"name":"foo","kind":["lib"],"crate_types":["lib"]}}"#;
+        assert_eq!(
+            parse_json_message_dirty_crate(line),
+            Some("foo".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_json_build_script_executed_dirty_crate() {
+        let line = r#"{"reason":"build-script-executed","package_id":"registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.133"}"#;
+        assert_eq!(
+            parse_json_message_dirty_crate(line),
+            Some("serde_json".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_json_non_dirty_reason() {
+        let line = r#"{"reason":"build-finished","success":true}"#;
+        assert_eq!(parse_json_message_dirty_crate(line), None);
     }
 }
