@@ -1026,11 +1026,11 @@ async fn ingest_events(
                 };
                 if let Some(deps) = entry.get("deps").and_then(|v| v.as_array()) {
                     for dep in deps {
-                        if let Some(dep_name) = dep.as_str() {
-                            if let Some(&tgt_id) = node_ids.get(dep_name) {
-                                source_ids.push(src_id);
-                                target_ids.push(tgt_id);
-                            }
+                        if let Some(dep_name) = dep.as_str()
+                            && let Some(&tgt_id) = node_ids.get(dep_name)
+                        {
+                            source_ids.push(src_id);
+                            target_ids.push(tgt_id);
                         }
                     }
                 }
