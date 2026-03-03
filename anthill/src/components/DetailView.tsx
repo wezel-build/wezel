@@ -9,7 +9,7 @@ import { HeatLegend } from "./HeatLegend";
 import { PanelHandle } from "./PanelHandle";
 import { RunList } from "./RunList";
 import { Summary } from "./Summary";
-import { layoutGraph, FitViewGraph } from "./Graph";
+import { BuildTimingsChart } from "./BuildTimingsChart";
 import { useKeyboardNav } from "../lib/useKeyboardNav";
 
 const EMPTY_RUNS: {
@@ -292,11 +292,6 @@ export function DetailView({
     return new Set(displayedRuns[hlRunIdx].dirtyCrates);
   }, [hlRunIdx, displayedRuns]);
 
-  const { nodes, edges } = useMemo(
-    () => layoutGraph(filteredGraph, heat, heatColor, highlightedCrates),
-    [filteredGraph, heat, heatColor, highlightedCrates],
-  );
-
   const handleNodeClick = useCallback((crateName: string) => {
     setCrateFilter((prev) => (prev === crateName ? null : crateName));
   }, []);
@@ -545,15 +540,17 @@ export function DetailView({
             background: C.bg,
           }}
         >
-          <FitViewGraph
-            nodes={nodes}
-            edges={edges}
+          <BuildTimingsChart
+            topo={filteredGraph}
+            heat={heat}
+            heatColor={heatColor}
+            highlightedCrates={highlightedCrates}
+            focusedCrate={focusedCrate}
+            onNodeClick={handleNodeClick}
+            onNodeFocus={handleNodeFocus}
             bg={C.surface2}
             border={C.border}
             accentColor={C.accent}
-            onNodeClick={handleNodeClick}
-            onNodeFocus={handleNodeFocus}
-            focusedCrate={focusedCrate}
           />
         </div>
 
