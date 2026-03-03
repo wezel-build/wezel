@@ -14,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - run: rustup toolchain install stable --profile minimal -c rustfmt
       - run: cargo fmt --all -- --check
 
   rust-clippy:
@@ -22,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - run: rustup toolchain install stable --profile minimal -c clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -31,7 +29,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - run: rustup toolchain install stable --profile minimal
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
 
