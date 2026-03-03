@@ -4,22 +4,32 @@ import { useCommits } from "../lib/hooks";
 import { useTheme } from "../lib/theme";
 import { MONO, fmtTime } from "../lib/format";
 import { Badge } from "../components/Badge";
+import { useProject } from "../lib/useProject";
 
-function statusDot(status: "not-started" | "running" | "complete", C: ReturnType<typeof useTheme>["C"]) {
+function statusDot(
+  status: "not-started" | "running" | "complete",
+  C: ReturnType<typeof useTheme>["C"],
+) {
   if (status === "complete") return C.green;
   if (status === "running") return C.amber;
   return C.textDim;
 }
 
-function statusBadge(status: "not-started" | "running" | "complete", C: ReturnType<typeof useTheme>["C"]) {
-  if (status === "complete") return { color: C.green, bg: C.green + "18", label: "complete" };
-  if (status === "running") return { color: C.amber, bg: C.amber + "18", label: "running" };
+function statusBadge(
+  status: "not-started" | "running" | "complete",
+  C: ReturnType<typeof useTheme>["C"],
+) {
+  if (status === "complete")
+    return { color: C.green, bg: C.green + "18", label: "complete" };
+  if (status === "running")
+    return { color: C.amber, bg: C.amber + "18", label: "running" };
   return { color: C.textDim, bg: C.surface3, label: "not started" };
 }
 
 export default function CommitsListPage() {
   const { C } = useTheme();
   const { commits, loading, error } = useCommits();
+  const { current } = useProject();
 
   return (
     <div
@@ -148,7 +158,11 @@ export default function CommitsListPage() {
               return (
                 <Link
                   key={c.sha}
-                  to={`/commit/${c.shortSha}`}
+                  to={
+                    current
+                      ? `/project/${current.id}/commit/${c.shortSha}`
+                      : "/"
+                  }
                   style={{
                     display: "grid",
                     gridTemplateColumns: "16px 74px 1fr 130px 86px 78px 104px",
@@ -202,7 +216,9 @@ export default function CommitsListPage() {
                   >
                     {c.author}
                   </span>
-                  <span style={{ fontSize: 10, color: C.textDim, fontFamily: MONO }}>
+                  <span
+                    style={{ fontSize: 10, color: C.textDim, fontFamily: MONO }}
+                  >
                     {fmtTime(c.timestamp)}
                   </span>
                   <span style={{ display: "flex", justifyContent: "flex-end" }}>

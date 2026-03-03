@@ -1102,37 +1102,34 @@ async fn main() {
         .expect("could not connect to database");
 
     let app = Router::new()
-        .route("/api/projects", get(get_projects).post(create_project))
-        .route("/api/projects/{project_id}/overview", get(get_overview))
-        .route("/api/projects/{project_id}/scenarios", get(get_scenarios))
+        .route("/api/project", get(get_projects).post(create_project))
+        .route("/api/project/{project_id}/overview", get(get_overview))
+        .route("/api/project/{project_id}/scenario", get(get_scenarios))
         .route(
-            "/api/projects/{project_id}/scenarios/{id}",
+            "/api/project/{project_id}/scenario/{id}",
             get(get_scenario_p),
         )
         .route(
-            "/api/projects/{project_id}/scenarios/{id}/pin",
+            "/api/project/{project_id}/scenario/{id}/pin",
             patch(toggle_pin_p),
         )
         .route(
-            "/api/projects/{project_id}/commits",
+            "/api/project/{project_id}/commit",
             get(get_commits_p).post(schedule_commit_p),
         )
+        .route("/api/project/{project_id}/commit/{sha}", get(get_commit_p))
         .route(
-            "/api/projects/{project_id}/commits/{sha}",
-            get(get_commit_p),
-        )
-        .route(
-            "/api/projects/{project_id}/github/commits/{sha}",
+            "/api/project/{project_id}/github/commit/{sha}",
             get(get_github_commit_p),
         )
-        .route("/api/projects/{project_id}/users", get(get_users))
+        .route("/api/project/{project_id}/user", get(get_users))
         .route("/api/overview", get(get_overview))
-        .route("/api/scenarios", get(get_scenarios))
-        .route("/api/scenarios/{id}", get(get_scenario))
-        .route("/api/scenarios/{id}/pin", patch(toggle_pin))
-        .route("/api/commits", get(get_commits))
-        .route("/api/commits/{sha}", get(get_commit))
-        .route("/api/users", get(get_users))
+        .route("/api/scenario", get(get_scenarios))
+        .route("/api/scenario/{id}", get(get_scenario))
+        .route("/api/scenario/{id}/pin", patch(toggle_pin))
+        .route("/api/commit", get(get_commits))
+        .route("/api/commit/{sha}", get(get_commit))
+        .route("/api/user", get(get_users))
         .route("/api/events", post(ingest_events))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useProject } from "../lib/useProject";
 import { useTheme } from "../lib/theme";
 import { MONO } from "../lib/format";
 import { fmtMs, fmtTime } from "../lib/format";
@@ -76,6 +77,7 @@ export function RunList({
 }) {
   const { C } = useTheme();
   const navigate = useNavigate();
+  const { current } = useProject();
   const allSelected = selectedIndices.size === runs.length;
   const runRowsRef = useRef<HTMLDivElement>(null);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
@@ -269,7 +271,7 @@ export function RunList({
                 onClick={(e) => {
                   if (!run.commit) return;
                   e.stopPropagation();
-                  navigate(`/commit/${run.commit}`);
+                  navigate(`/project/${current?.id}/commit/${run.commit}`);
                 }}
                 onMouseEnter={() => {
                   if (run.commit) setHoveredCommit(rowIdx);

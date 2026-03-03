@@ -12,12 +12,14 @@ import { PanelHandle } from "../components/PanelHandle";
 import { DetailView } from "../components/DetailView";
 import { useKeyboardNav } from "../lib/useKeyboardNav";
 import fuzzysort from "fuzzysort";
+import { useProject } from "../lib/useProject";
 
 export default function ScenariosPage() {
   const { C } = useTheme();
   const navigate = useNavigate();
   const { id } = useParams();
   const selectedId = id ? Number(id) : null;
+  const { current } = useProject();
 
   const { scenarios, error, togglePin: apiTogglePin } = useScenarios();
   const [search, setSearch] = useState("");
@@ -82,7 +84,8 @@ export default function ScenariosPage() {
     const shared: Record<string, () => void> = {
       Escape: () => {
         if (focusPanel === "runs") setFocusPanel("list");
-        else if (selectedId != null) navigate("/");
+        else if (selectedId != null && current?.id != null)
+          navigate(`/project/${current.id}`);
       },
       ArrowLeft: () => setFocusPanel("list"),
       ArrowRight: () => {
@@ -118,14 +121,19 @@ export default function ScenariosPage() {
         Enter: () => {
           if (hlIdx >= 0 && hlIdx < filtered.length) {
             const s = filtered[hlIdx].scenario;
-            navigate(s.id === selectedId ? "/" : `/scenario/${s.id}`);
+            if (current?.id == null) return;
+            navigate(
+              s.id === selectedId
+                ? `/project/${current.id}`
+                : `/project/${current.id}/scenario/${s.id}`,
+            );
           }
         },
       });
     }
 
     return shared;
-  }, [focusPanel, filtered, hlIdx, selectedId, navigate, scrollToHl]);
+  }, [focusPanel, filtered, hlIdx, selectedId, navigate, scrollToHl, current]);
 
   useKeyboardNav(keyMap);
 
@@ -234,7 +242,14 @@ export default function ScenariosPage() {
             return (
               <div
                 key={s.id}
-                onClick={() => navigate(isSel ? "/" : `/scenario/${s.id}`)}
+                onClick={() => {
+                  if (current?.id == null) return;
+                  navigate(
+                    isSel
+                      ? `/project/${current.id}`
+                      : `/project/${current.id}/scenario/${s.id}`,
+                  );
+                }}
                 style={{
                   display: "grid",
                   gridTemplateColumns: GRID_COLS,

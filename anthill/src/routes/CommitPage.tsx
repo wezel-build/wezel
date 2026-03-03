@@ -76,6 +76,7 @@ function ProgressBar({
 }) {
   const total = measurements.length;
   if (total === 0) return null;
+
   const complete = measurements.filter((m) => m.status === "complete").length;
   const running = measurements.filter((m) => m.status === "running").length;
   const failed = measurements.filter((m) => m.status === "failed").length;
@@ -83,6 +84,7 @@ function ProgressBar({
   const notStarted = measurements.filter(
     (m) => m.status === "not-started",
   ).length;
+
   const pct = (n: number) => `${(n / total) * 100}%`;
 
   return (
@@ -146,11 +148,13 @@ function ProgressBar({
 function MeasurementRow({
   m,
   C,
+  projectId,
   commitSha,
   navigate,
 }: {
   m: Measurement;
   C: ReturnType<typeof useTheme>["C"];
+  projectId: number;
   commitSha: string;
   navigate: NavigateFunction;
 }) {
@@ -162,7 +166,10 @@ function MeasurementRow({
   return (
     <div
       onClick={
-        hasDetail ? () => navigate(`/commit/${commitSha}/m/${m.id}`) : undefined
+        hasDetail
+          ? () =>
+              navigate(`/project/${projectId}/commit/${commitSha}/m/${m.id}`)
+          : undefined
       }
       style={{
         display: "grid",
@@ -184,7 +191,6 @@ function MeasurementRow({
     >
       <StatusIcon status={m.status} C={C} />
 
-      {/* Name */}
       <div
         style={{
           display: "flex",
@@ -208,19 +214,16 @@ function MeasurementRow({
         </Badge>
       </div>
 
-      {/* Value */}
       <span
         style={{ color: isDone ? C.textMid : C.textDim, textAlign: "right" }}
       >
         {isDone ? fmtValue(m.value!, m.unit) : statusLabel(m.status)}
       </span>
 
-      {/* Unit */}
       <span style={{ color: C.textDim, fontSize: 9 }}>
         {isDone && m.unit ? m.unit : ""}
       </span>
 
-      {/* Delta */}
       <span>
         {hasDelta ? (
           <DeltaBadge
@@ -251,10 +254,12 @@ function CommitHeader({
   const completedMs = commit.measurements.filter(
     (m) => m.status === "complete" && m.value != null && m.unit === "ms",
   );
+
   const totalMs =
     completedMs.length > 0
       ? completedMs.reduce((s, m) => s + (m.value ?? 0), 0)
       : null;
+
   const totalPrevMs =
     completedMs.length > 0 && completedMs.every((m) => m.prevValue != null)
       ? completedMs.reduce((s, m) => s + (m.prevValue ?? 0), 0)
@@ -288,7 +293,6 @@ function CommitHeader({
         borderRadius: "6px 6px 0 0",
       }}
     >
-      {/* Top row */}
       <div
         style={{
           display: "flex",
@@ -331,7 +335,6 @@ function CommitHeader({
         </span>
       </div>
 
-      {/* Message + author */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>
           {commit.message}
@@ -341,10 +344,8 @@ function CommitHeader({
         </span>
       </div>
 
-      {/* Progress if in-flight */}
       {isRunning && <ProgressBar measurements={commit.measurements} C={C} />}
 
-      {/* Summary stats if complete */}
       {commit.status === "complete" && (
         <div
           style={{
@@ -388,6 +389,7 @@ function CommitHeader({
               </div>
             </div>
           )}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
             <span
               style={{
@@ -411,6 +413,7 @@ function CommitHeader({
               {commit.measurements.length}
             </span>
           </div>
+
           {regressions > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <span
@@ -436,6 +439,7 @@ function CommitHeader({
               </span>
             </div>
           )}
+
           {improvements > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <span
@@ -470,11 +474,15 @@ function CommitHeader({
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CommitPage() {
-  const { sha } = useParams();
+  const { projectId: projectIdParam, sha } = useParams();
+  const projectId = Number(projectIdParam);
+  const hasProjectId = Number.isFinite(projectId);
+
   const { C } = useTheme();
   const navigate = useNavigate();
   const { pApi } = useProject();
   const { commits } = useCommits();
+
   const [scheduling, setScheduling] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
 
@@ -498,23 +506,27 @@ export default function CommitPage() {
   const nextCommit =
     commitIdx < commits.length - 1 ? commits[commitIdx + 1] : null;
 
+  const toProjectHome = hasProjectId ? `/project/${projectId}` : "/";
+  const toCommit = (s: string) =>
+    hasProjectId ? `/project/${projectId}/commit/${s}` : `/commit/${s}`;
+
   const keyMap = useMemo(
     () => ({
       ArrowLeft: () => {
-        if (prevCommit) navigate(`/commit/${prevCommit.shortSha}`);
+        if (prevCommit) navigate(toCommit(prevCommit.shortSha));
       },
       h: () => {
-        if (prevCommit) navigate(`/commit/${prevCommit.shortSha}`);
+        if (prevCommit) navigate(toCommit(prevCommit.shortSha));
       },
       ArrowRight: () => {
-        if (nextCommit) navigate(`/commit/${nextCommit.shortSha}`);
+        if (nextCommit) navigate(toCommit(nextCommit.shortSha));
       },
       l: () => {
-        if (nextCommit) navigate(`/commit/${nextCommit.shortSha}`);
+        if (nextCommit) navigate(toCommit(nextCommit.shortSha));
       },
-      Escape: () => navigate("/"),
+      Escape: () => navigate(toProjectHome),
     }),
-    [prevCommit, nextCommit, navigate],
+    [prevCommit, nextCommit, navigate, toProjectHome, toCommit],
   );
 
   useKeyboardNav(keyMap);
@@ -535,6 +547,7 @@ export default function CommitPage() {
   const ghBody = ghMessage.includes("\n")
     ? ghMessage.slice(ghMessage.indexOf("\n") + 1).trim()
     : "";
+
   const messageTitle =
     ghTitle || commit?.message || (sha ? `commit ${sha}` : "commit");
   const messageBody = ghBody || (!ghTitle ? (commit?.message ?? "") : "");
@@ -549,7 +562,7 @@ export default function CommitPage() {
     setScheduleError(null);
     try {
       const created = await pApi.scheduleCommit(targetSha);
-      navigate(`/commit/${created.shortSha}`);
+      navigate(toCommit(created.shortSha));
     } catch (e) {
       setScheduleError(String(e));
     } finally {
@@ -574,7 +587,7 @@ export default function CommitPage() {
           commit <span style={{ color: C.red }}>{sha}</span> not found
         </span>
         <Link
-          to="/"
+          to={toProjectHome}
           style={{
             color: C.accent,
             fontSize: 11,
@@ -597,7 +610,6 @@ export default function CommitPage() {
         overflow: "hidden",
       }}
     >
-      {/* Nav bar */}
       <div
         style={{
           display: "flex",
@@ -609,7 +621,7 @@ export default function CommitPage() {
         }}
       >
         <button
-          onClick={() => navigate("/")}
+          onClick={() => navigate(toProjectHome)}
           style={{
             display: "flex",
             alignItems: "center",
@@ -631,7 +643,7 @@ export default function CommitPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {prevCommit && (
             <button
-              onClick={() => navigate(`/commit/${prevCommit.shortSha}`)}
+              onClick={() => navigate(toCommit(prevCommit.shortSha))}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -651,7 +663,7 @@ export default function CommitPage() {
           )}
           {nextCommit && (
             <button
-              onClick={() => navigate(`/commit/${nextCommit.shortSha}`)}
+              onClick={() => navigate(toCommit(nextCommit.shortSha))}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -672,7 +684,6 @@ export default function CommitPage() {
         </div>
       </div>
 
-      {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
         <div
           style={{
@@ -683,7 +694,6 @@ export default function CommitPage() {
             gap: 10,
           }}
         >
-          {/* GitHub metadata panel */}
           <div
             style={{
               border: `1px solid ${C.border}`,
@@ -708,9 +718,11 @@ export default function CommitPage() {
                 {githubCommit?.shortSha ?? commit?.shortSha ?? sha}
               </span>
             </div>
+
             <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
               {messageTitle}
             </div>
+
             {messageBody && (
               <div
                 style={{
@@ -723,6 +735,7 @@ export default function CommitPage() {
                 {messageBody}
               </div>
             )}
+
             {(metaAuthor || metaTime) && (
               <div style={{ fontSize: 10, fontFamily: MONO, color: C.textDim }}>
                 {metaAuthor ? `by ${metaAuthor}` : ""}
@@ -730,16 +743,19 @@ export default function CommitPage() {
                 {metaTime ? fmtTime(metaTime) : ""}
               </div>
             )}
+
             {ghError && (
               <div style={{ fontSize: 10, fontFamily: MONO, color: C.red }}>
                 GitHub metadata unavailable: {ghError}
               </div>
             )}
+
             {ghLoading && (
               <div style={{ fontSize: 10, fontFamily: MONO, color: C.textDim }}>
                 loading GitHub metadata…
               </div>
             )}
+
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {githubCommit?.htmlUrl && (
                 <a
@@ -764,6 +780,7 @@ export default function CommitPage() {
                   View diff on GitHub
                 </a>
               )}
+
               <button
                 onClick={onSchedule}
                 disabled={scheduling || !targetSha}
@@ -785,6 +802,7 @@ export default function CommitPage() {
                 {scheduling ? "Scheduling..." : "Schedule Forager run"}
               </button>
             </div>
+
             {scheduleError && (
               <div style={{ fontSize: 10, fontFamily: MONO, color: C.red }}>
                 failed to schedule run: {scheduleError}
@@ -792,7 +810,6 @@ export default function CommitPage() {
             )}
           </div>
 
-          {/* Forager panel */}
           {commit ? (
             <div
               style={{
@@ -803,7 +820,6 @@ export default function CommitPage() {
             >
               <CommitHeader commit={commit} C={C} />
 
-              {/* Table header */}
               <div
                 style={{
                   display: "grid",
@@ -826,7 +842,6 @@ export default function CommitPage() {
                 <span>Δ prev</span>
               </div>
 
-              {/* Grouped measurement rows */}
               {grouped.map(([kind, measurements], gi) => (
                 <div key={kind}>
                   {grouped.length > 1 && (
@@ -852,6 +867,7 @@ export default function CommitPage() {
                       key={m.id}
                       m={m}
                       C={C}
+                      projectId={projectId}
                       commitSha={commit.shortSha}
                       navigate={navigate}
                     />

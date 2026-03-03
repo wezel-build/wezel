@@ -21,11 +21,15 @@ const router = createBrowserRouter([
         element: <ScenariosPage />,
       },
       {
-        path: "scenario/:id",
+        path: "project/:projectId",
         element: <ScenariosPage />,
       },
       {
-        path: "commit/:sha",
+        path: "project/:projectId/scenario/:id",
+        element: <ScenariosPage />,
+      },
+      {
+        path: "project/:projectId/commit/:sha",
         element: (
           <Suspense>
             <CommitPage />
@@ -33,7 +37,7 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "commit/:sha/m/:id",
+        path: "project/:projectId/commit/:sha/m/:id",
         element: (
           <Suspense>
             <MeasurementDetailPage />
@@ -41,7 +45,7 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "commits",
+        path: "project/:projectId/commits",
         element: (
           <Suspense>
             <CommitsListPage />

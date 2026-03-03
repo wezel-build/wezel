@@ -48,7 +48,9 @@ export default function Shell() {
   }, [projectOpen]);
 
   const { overview } = useOverview();
-  const onCommitPage = location.pathname.startsWith("/commit");
+  const onCommitPage =
+    current != null &&
+    location.pathname.startsWith(`/project/${current.id}/commit`);
   const onNewPage = location.pathname === "/projects/create";
 
   return (
@@ -208,7 +210,7 @@ export default function Shell() {
                 </div>
                 <div style={{ width: 1, height: 16, background: C.border }} />
                 <Link
-                  to="/"
+                  to={current ? `/project/${current.id}` : "/"}
                   style={{
                     fontSize: 10,
                     fontFamily: MONO,
@@ -222,7 +224,7 @@ export default function Shell() {
                   scenarios
                 </Link>
                 <Link
-                  to="/commits"
+                  to={current ? `/project/${current.id}/commits` : "/"}
                   style={{
                     display: "flex",
                     alignItems: "center",

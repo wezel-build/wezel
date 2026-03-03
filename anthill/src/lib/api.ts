@@ -48,27 +48,27 @@ async function patch<T>(path: string, body?: unknown): Promise<T> {
 }
 
 function projectApi(projectId: number) {
-  const p = `/api/projects/${projectId}`;
+  const p = `/api/project/${projectId}`;
   return {
     overview: () => get<Overview>(`${p}/overview`),
-    scenarios: () => get<ScenarioSummary[]>(`${p}/scenarios`),
-    scenario: (id: number) => get<Scenario>(`${p}/scenarios/${id}`),
-    togglePin: (id: number) => patch<Scenario>(`${p}/scenarios/${id}/pin`),
-    commits: () => get<ForagerCommit[]>(`${p}/commits`),
-    commit: (sha: string) => get<ForagerCommit>(`${p}/commits/${sha}`),
+    scenarios: () => get<ScenarioSummary[]>(`${p}/scenario`),
+    scenario: (id: number) => get<Scenario>(`${p}/scenario/${id}`),
+    togglePin: (id: number) => patch<Scenario>(`${p}/scenario/${id}/pin`),
+    commits: () => get<ForagerCommit[]>(`${p}/commit`),
+    commit: (sha: string) => get<ForagerCommit>(`${p}/commit/${sha}`),
     githubCommit: (sha: string) =>
-      get<GithubCommit>(`${p}/github/commits/${sha}`),
+      get<GithubCommit>(`${p}/github/commit/${sha}`),
     scheduleCommit: (sha: string) =>
-      post<ForagerCommit>(`${p}/commits`, { sha }),
-    users: () => get<string[]>(`${p}/users`),
+      post<ForagerCommit>(`${p}/commit`, { sha }),
+    users: () => get<string[]>(`${p}/user`),
   };
 }
 
 export type ProjectApi = ReturnType<typeof projectApi>;
 
 export const api = {
-  projects: () => get<Project[]>("/api/projects"),
+  projects: () => get<Project[]>("/api/project"),
   createProject: (name: string, upstream: string) =>
-    post<Project>("/api/projects", { name, upstream }),
+    post<Project>("/api/project", { name, upstream }),
   forProject: projectApi,
 };

@@ -6,6 +6,7 @@ import { useTheme } from "../lib/theme";
 import { MONO, fmtValue } from "../lib/format";
 import { type Measurement, type MeasurementDetail } from "../lib/data";
 import { useCommits } from "../lib/hooks";
+import { useProject } from "../lib/useProject";
 import { DeltaBadge } from "../components/DeltaBadge";
 
 // ── Sort logic ───────────────────────────────────────────────────────────────
@@ -153,6 +154,7 @@ export default function MeasurementDetailPage() {
   const [hoveredBack, setHoveredBack] = useState(false);
 
   const { commits, error } = useCommits();
+  const { current } = useProject();
 
   const commit = useMemo(
     () => commits.find((c) => c.shortSha === sha || c.sha === sha) ?? null,
@@ -175,9 +177,14 @@ export default function MeasurementDetailPage() {
 
   const navKeyMap = useMemo(
     () => ({
-      Escape: () => navigate(commit ? `/commit/${commit.shortSha}` : "/"),
+      Escape: () =>
+        navigate(
+          commit
+            ? `/project/${current?.id}/commit/${commit.shortSha}`
+            : `/project/${current?.id}/commits`,
+        ),
     }),
-    [commit, navigate],
+    [commit, current?.id, navigate],
   );
 
   useKeyboardNav(navKeyMap);
@@ -220,7 +227,13 @@ export default function MeasurementDetailPage() {
           )}
         </span>
         <button
-          onClick={() => navigate(commit ? `/commit/${commit.shortSha}` : "/")}
+          onClick={() =>
+            navigate(
+              commit
+                ? `/project/${current?.id}/commit/${commit.shortSha}`
+                : `/project/${current?.id}/commits`,
+            )
+          }
           style={{
             color: C.accent,
             fontSize: 11,
@@ -253,7 +266,9 @@ export default function MeasurementDetailPage() {
           no detail breakdown for this measurement
         </span>
         <button
-          onClick={() => navigate(`/commit/${commit.shortSha}`)}
+          onClick={() =>
+            navigate(`/project/${current?.id}/commit/${commit.shortSha}`)
+          }
           style={{
             color: C.accent,
             fontSize: 11,
@@ -307,7 +322,9 @@ export default function MeasurementDetailPage() {
         }}
       >
         <button
-          onClick={() => navigate(`/commit/${commit.shortSha}`)}
+          onClick={() =>
+            navigate(`/project/${current?.id}/commit/${commit.shortSha}`)
+          }
           style={{
             display: "flex",
             alignItems: "center",
