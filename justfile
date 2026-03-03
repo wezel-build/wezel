@@ -15,7 +15,7 @@ build-pheromones:
 
 # Run burrow + anthill dev servers
 dev:
-    #!/usr/bin/env bash
+    #!/usr/bin/env zsh
     set -euo pipefail
     cleanup() {
         echo ""
