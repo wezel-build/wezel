@@ -26,16 +26,24 @@ pub struct Scenario {
 
 #[derive(FromRow)]
 pub struct Run {
+    pub id: i64,
+    pub scenario_id: i64,
     pub user: String,
     pub platform: String,
     pub timestamp: String,
     pub commit_short: String,
     pub build_time_ms: i64,
-    pub dirty_crates_json: String,
+}
+
+#[derive(FromRow)]
+pub struct DirtyCrate {
+    pub run_id: i64,
+    pub crate_name: String,
 }
 
 #[derive(FromRow)]
 pub struct Commit {
+    pub id: i64,
     pub sha: String,
     pub short_sha: String,
     pub author: String,
@@ -47,13 +55,32 @@ pub struct Commit {
 #[derive(FromRow)]
 pub struct Measurement {
     pub id: i64,
+    pub commit_id: i64,
     pub name: String,
     pub kind: String,
     pub status: String,
     pub value: Option<f64>,
     pub prev_value: Option<f64>,
     pub unit: Option<String>,
-    pub detail_json: Option<String>,
+}
+
+#[derive(FromRow, Serialize)]
+pub struct MeasurementDetail {
+    pub measurement_id: i64,
+    pub name: String,
+    pub value: f64,
+    pub prev_value: f64,
+}
+
+#[derive(FromRow)]
+pub struct GraphNodeRow {
+    pub name: String,
+}
+
+#[derive(FromRow)]
+pub struct GraphEdgeRow {
+    pub source_name: String,
+    pub dep_name: String,
 }
 
 #[derive(FromRow)]
@@ -62,8 +89,9 @@ pub struct IdRow {
 }
 
 #[derive(FromRow)]
-pub struct GraphRow {
-    pub graph_json: String,
+pub struct IdNameRow {
+    pub id: i64,
+    pub name: String,
 }
 
 #[derive(FromRow)]
@@ -83,7 +111,13 @@ pub struct RunJson {
     #[serde(rename = "buildTimeMs")]
     pub build_time_ms: i64,
     #[serde(rename = "dirtyCrates")]
-    pub dirty_crates: serde_json::Value,
+    pub dirty_crates: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct GraphNodeJson {
+    pub name: String,
+    pub deps: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -95,7 +129,15 @@ pub struct ScenarioJson {
     pub platform: Option<String>,
     pub runs: Vec<RunJson>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub graph: Option<serde_json::Value>,
+    pub graph: Option<Vec<GraphNodeJson>>,
+}
+
+#[derive(Serialize)]
+pub struct MeasurementDetailJson {
+    pub name: String,
+    pub value: f64,
+    #[serde(rename = "prevValue")]
+    pub prev_value: f64,
 }
 
 #[derive(Serialize)]
@@ -110,8 +152,8 @@ pub struct MeasurementJson {
     pub prev_value: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub detail: Vec<MeasurementDetailJson>,
 }
 
 #[derive(Serialize)]
@@ -136,37 +178,4 @@ pub struct OverviewJson {
     pub latest_commit_short_sha: Option<String>,
     #[serde(rename = "latestCommitStatus")]
     pub latest_commit_status: Option<String>,
-}
-
-// ── Conversions ──────────────────────────────────────────────────────────────
-
-impl Run {
-    pub fn to_json(self) -> RunJson {
-        let dirty_crates: serde_json::Value =
-            serde_json::from_str(&self.dirty_crates_json).unwrap_or(serde_json::json!([]));
-        RunJson {
-            user: self.user,
-            platform: self.platform,
-            timestamp: self.timestamp,
-            commit: self.commit_short,
-            build_time_ms: self.build_time_ms,
-            dirty_crates,
-        }
-    }
-}
-
-impl Measurement {
-    pub fn to_json(self) -> MeasurementJson {
-        let detail = self.detail_json.and_then(|d| serde_json::from_str(&d).ok());
-        MeasurementJson {
-            id: self.id,
-            name: self.name,
-            kind: self.kind,
-            status: self.status,
-            value: self.value,
-            prev_value: self.prev_value,
-            unit: self.unit,
-            detail,
-        }
-    }
 }

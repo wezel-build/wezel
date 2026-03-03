@@ -1,6 +1,8 @@
 mod db;
 mod models;
 
+use std::collections::HashMap;
+
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -9,7 +11,7 @@ use axum::{
 };
 use clap::Parser;
 use models::*;
-use serde_json::{Value, json};
+use serde_json::Value;
 use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -30,6 +32,49 @@ fn ise<E: std::fmt::Debug>(_: E) -> StatusCode {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+async fn build_graph(pool: &PgPool, scenario_id: i64) -> ApiResult<Vec<GraphNodeJson>> {
+    let nodes = sqlx::query_as::<_, GraphNodeRow>(
+        "SELECT name FROM graph_nodes WHERE scenario_id = $1 ORDER BY name",
+    )
+    .bind(scenario_id)
+    .fetch_all(pool)
+    .await
+    .map_err(ise)?;
+
+    let edges = sqlx::query_as::<_, GraphEdgeRow>(
+        "SELECT src.name AS source_name, tgt.name AS dep_name \
+         FROM graph_edges ge \
+         JOIN graph_nodes src ON src.id = ge.source_id \
+         JOIN graph_nodes tgt ON tgt.id = ge.target_id \
+         WHERE src.scenario_id = $1",
+    )
+    .bind(scenario_id)
+    .fetch_all(pool)
+    .await
+    .map_err(ise)?;
+
+    let mut deps_map: HashMap<String, Vec<String>> = HashMap::new();
+    for node in &nodes {
+        deps_map.entry(node.name.clone()).or_default();
+    }
+    for edge in edges {
+        deps_map
+            .entry(edge.source_name)
+            .or_default()
+            .push(edge.dep_name);
+    }
+
+    let graph: Vec<GraphNodeJson> = nodes
+        .into_iter()
+        .map(|n| {
+            let deps = deps_map.remove(&n.name).unwrap_or_default();
+            GraphNodeJson { name: n.name, deps }
+        })
+        .collect();
+
+    Ok(graph)
+}
+
 async fn scenario_to_json(
     pool: &PgPool,
     id: i64,
@@ -47,7 +92,7 @@ async fn scenario_to_json(
     };
 
     let runs = sqlx::query_as::<_, Run>(
-        "SELECT \"user\", platform, timestamp, commit_short, build_time_ms, dirty_crates_json \
+        "SELECT id, scenario_id, \"user\", platform, timestamp, commit_short, build_time_ms \
          FROM runs WHERE scenario_id = $1 ORDER BY timestamp",
     )
     .bind(s.id)
@@ -55,15 +100,40 @@ async fn scenario_to_json(
     .await
     .map_err(ise)?;
 
+    let run_ids: Vec<i64> = runs.iter().map(|r| r.id).collect();
+
+    // Fetch all dirty crates for these runs in one query
+    let dirty_crates = sqlx::query_as::<_, DirtyCrate>(
+        "SELECT run_id, crate_name FROM run_dirty_crates WHERE run_id = ANY($1) ORDER BY crate_name",
+    )
+    .bind(&run_ids)
+    .fetch_all(pool)
+    .await
+    .map_err(ise)?;
+
+    let mut dirty_map: HashMap<i64, Vec<String>> = HashMap::new();
+    for dc in dirty_crates {
+        dirty_map.entry(dc.run_id).or_default().push(dc.crate_name);
+    }
+
+    let runs_json: Vec<RunJson> = runs
+        .into_iter()
+        .map(|r| {
+            let crates = dirty_map.remove(&r.id).unwrap_or_default();
+            RunJson {
+                user: r.user,
+                platform: r.platform,
+                timestamp: r.timestamp,
+                commit: r.commit_short,
+                build_time_ms: r.build_time_ms,
+                dirty_crates: crates,
+            }
+        })
+        .collect();
+
     let graph = if include_graph {
-        sqlx::query_as::<_, GraphRow>(
-            "SELECT graph_json FROM scenario_graphs WHERE scenario_id = $1",
-        )
-        .bind(s.id)
-        .fetch_optional(pool)
-        .await
-        .map_err(ise)?
-        .and_then(|r| serde_json::from_str(&r.graph_json).ok())
+        let g = build_graph(pool, s.id).await?;
+        if g.is_empty() { None } else { Some(g) }
     } else {
         None
     };
@@ -74,14 +144,14 @@ async fn scenario_to_json(
         profile: s.profile,
         pinned: s.pinned,
         platform: s.platform,
-        runs: runs.into_iter().map(Run::to_json).collect(),
+        runs: runs_json,
         graph,
     }))
 }
 
 async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> {
     let c = sqlx::query_as::<_, Commit>(
-        "SELECT sha, short_sha, author, message, timestamp, status FROM commits WHERE id = $1",
+        "SELECT id, sha, short_sha, author, message, timestamp, status FROM commits WHERE id = $1",
     )
     .bind(commit_id)
     .fetch_one(pool)
@@ -89,13 +159,54 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
     .map_err(ise)?;
 
     let measurements = sqlx::query_as::<_, Measurement>(
-        "SELECT id, name, kind, status, value, prev_value, unit, detail_json \
+        "SELECT id, commit_id, name, kind, status, value, prev_value, unit \
          FROM measurements WHERE commit_id = $1 ORDER BY id",
     )
     .bind(commit_id)
     .fetch_all(pool)
     .await
     .map_err(ise)?;
+
+    let m_ids: Vec<i64> = measurements.iter().map(|m| m.id).collect();
+
+    // Fetch all details for these measurements in one query
+    let details = sqlx::query_as::<_, MeasurementDetail>(
+        "SELECT measurement_id, name, value, prev_value \
+         FROM measurement_details WHERE measurement_id = ANY($1) ORDER BY id",
+    )
+    .bind(&m_ids)
+    .fetch_all(pool)
+    .await
+    .map_err(ise)?;
+
+    let mut detail_map: HashMap<i64, Vec<MeasurementDetailJson>> = HashMap::new();
+    for d in details {
+        detail_map
+            .entry(d.measurement_id)
+            .or_default()
+            .push(MeasurementDetailJson {
+                name: d.name,
+                value: d.value,
+                prev_value: d.prev_value,
+            });
+    }
+
+    let measurements_json: Vec<MeasurementJson> = measurements
+        .into_iter()
+        .map(|m| {
+            let detail = detail_map.remove(&m.id).unwrap_or_default();
+            MeasurementJson {
+                id: m.id,
+                name: m.name,
+                kind: m.kind,
+                status: m.status,
+                value: m.value,
+                prev_value: m.prev_value,
+                unit: m.unit,
+                detail,
+            }
+        })
+        .collect();
 
     Ok(CommitJson {
         sha: c.sha,
@@ -104,7 +215,7 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
         message: c.message,
         timestamp: c.timestamp,
         status: c.status,
-        measurements: measurements.into_iter().map(Measurement::to_json).collect(),
+        measurements: measurements_json,
     })
 }
 
@@ -166,17 +277,73 @@ async fn get_overview(State(pool): State<PgPool>) -> ApiResult<Json<OverviewJson
 }
 
 async fn get_scenarios(State(pool): State<PgPool>) -> ApiResult<Json<Vec<ScenarioJson>>> {
-    let ids: Vec<(i64,)> = sqlx::query_as("SELECT id FROM scenarios ORDER BY id")
-        .fetch_all(&pool)
-        .await
-        .map_err(ise)?;
+    let scenarios = sqlx::query_as::<_, Scenario>(
+        "SELECT id, name, profile, pinned, platform FROM scenarios ORDER BY id",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(ise)?;
 
-    let mut out = Vec::with_capacity(ids.len());
-    for (id,) in ids {
-        if let Some(s) = scenario_to_json(&pool, id, false).await? {
-            out.push(s);
-        }
+    if scenarios.is_empty() {
+        return Ok(Json(vec![]));
     }
+
+    let scenario_ids: Vec<i64> = scenarios.iter().map(|s| s.id).collect();
+
+    let runs = sqlx::query_as::<_, Run>(
+        "SELECT id, scenario_id, \"user\", platform, timestamp, commit_short, build_time_ms \
+         FROM runs WHERE scenario_id = ANY($1) ORDER BY timestamp",
+    )
+    .bind(&scenario_ids)
+    .fetch_all(&pool)
+    .await
+    .map_err(ise)?;
+
+    let run_ids: Vec<i64> = runs.iter().map(|r| r.id).collect();
+
+    let dirty_crates = sqlx::query_as::<_, DirtyCrate>(
+        "SELECT run_id, crate_name FROM run_dirty_crates \
+         WHERE run_id = ANY($1) ORDER BY crate_name",
+    )
+    .bind(&run_ids)
+    .fetch_all(&pool)
+    .await
+    .map_err(ise)?;
+
+    let mut dirty_map: HashMap<i64, Vec<String>> = HashMap::new();
+    for dc in dirty_crates {
+        dirty_map.entry(dc.run_id).or_default().push(dc.crate_name);
+    }
+
+    let mut runs_by_scenario: HashMap<i64, Vec<RunJson>> = HashMap::new();
+    for r in runs {
+        let crates = dirty_map.remove(&r.id).unwrap_or_default();
+        runs_by_scenario
+            .entry(r.scenario_id)
+            .or_default()
+            .push(RunJson {
+                user: r.user,
+                platform: r.platform,
+                timestamp: r.timestamp,
+                commit: r.commit_short,
+                build_time_ms: r.build_time_ms,
+                dirty_crates: crates,
+            });
+    }
+
+    let out: Vec<ScenarioJson> = scenarios
+        .into_iter()
+        .map(|s| ScenarioJson {
+            id: s.id,
+            name: s.name,
+            profile: s.profile,
+            pinned: s.pinned,
+            platform: s.platform,
+            runs: runs_by_scenario.remove(&s.id).unwrap_or_default(),
+            graph: None,
+        })
+        .collect();
+
     Ok(Json(out))
 }
 
@@ -201,15 +368,82 @@ async fn get_scenario_p(
 }
 
 async fn get_commits(State(pool): State<PgPool>) -> ApiResult<Json<Vec<CommitJson>>> {
-    let ids: Vec<(i64,)> = sqlx::query_as("SELECT id FROM commits ORDER BY timestamp")
-        .fetch_all(&pool)
-        .await
-        .map_err(ise)?;
+    let commits = sqlx::query_as::<_, Commit>(
+        "SELECT id, sha, short_sha, author, message, timestamp, status \
+         FROM commits ORDER BY timestamp",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(ise)?;
 
-    let mut out = Vec::with_capacity(ids.len());
-    for (id,) in ids {
-        out.push(commit_to_json(&pool, id).await?);
+    if commits.is_empty() {
+        return Ok(Json(vec![]));
     }
+
+    let commit_ids: Vec<i64> = commits.iter().map(|c| c.id).collect();
+
+    let measurements = sqlx::query_as::<_, Measurement>(
+        "SELECT id, commit_id, name, kind, status, value, prev_value, unit \
+         FROM measurements WHERE commit_id = ANY($1) ORDER BY id",
+    )
+    .bind(&commit_ids)
+    .fetch_all(&pool)
+    .await
+    .map_err(ise)?;
+
+    let m_ids: Vec<i64> = measurements.iter().map(|m| m.id).collect();
+
+    let details = sqlx::query_as::<_, MeasurementDetail>(
+        "SELECT measurement_id, name, value, prev_value \
+         FROM measurement_details WHERE measurement_id = ANY($1) ORDER BY id",
+    )
+    .bind(&m_ids)
+    .fetch_all(&pool)
+    .await
+    .map_err(ise)?;
+
+    let mut detail_map: HashMap<i64, Vec<MeasurementDetailJson>> = HashMap::new();
+    for d in details {
+        detail_map
+            .entry(d.measurement_id)
+            .or_default()
+            .push(MeasurementDetailJson {
+                name: d.name,
+                value: d.value,
+                prev_value: d.prev_value,
+            });
+    }
+
+    let mut measurements_by_commit: HashMap<i64, Vec<MeasurementJson>> = HashMap::new();
+    for m in measurements {
+        measurements_by_commit
+            .entry(m.commit_id)
+            .or_default()
+            .push(MeasurementJson {
+                id: m.id,
+                name: m.name,
+                kind: m.kind,
+                status: m.status,
+                value: m.value,
+                prev_value: m.prev_value,
+                unit: m.unit,
+                detail: detail_map.remove(&m.id).unwrap_or_default(),
+            });
+    }
+
+    let out: Vec<CommitJson> = commits
+        .into_iter()
+        .map(|c| CommitJson {
+            sha: c.sha,
+            short_sha: c.short_sha,
+            author: c.author,
+            message: c.message,
+            timestamp: c.timestamp,
+            status: c.status,
+            measurements: measurements_by_commit.remove(&c.id).unwrap_or_default(),
+        })
+        .collect();
+
     Ok(Json(out))
 }
 
@@ -314,15 +548,15 @@ async fn ingest_events(
             {
                 Some((id,)) => id,
                 None => {
-                    let row = sqlx::query_as::<_, IdRow>(
+                    sqlx::query_as::<_, IdRow>(
                         "INSERT INTO projects (name, upstream) VALUES ($1, $2) RETURNING id",
                     )
                     .bind(name)
                     .bind(upstream)
                     .fetch_one(&pool)
                     .await
-                    .map_err(ise)?;
-                    row.id
+                    .map_err(ise)?
+                    .id
                 }
             };
 
@@ -390,7 +624,7 @@ async fn ingest_events(
         {
             Some((id,)) => id,
             None => {
-                let row = sqlx::query_as::<_, IdRow>(
+                sqlx::query_as::<_, IdRow>(
                     "INSERT INTO scenarios (project_id, name, profile, platform) \
                      VALUES ($1, $2, $3, $4) RETURNING id",
                 )
@@ -400,33 +634,83 @@ async fn ingest_events(
                 .bind(scenario_platform)
                 .fetch_one(&pool)
                 .await
-                .map_err(ise)?;
-                row.id
+                .map_err(ise)?
+                .id
             }
         };
 
         // Upsert dependency graph
-        if let Some(graph) = pheromone.get("graph") {
-            let graph_json = serde_json::to_string(graph).unwrap_or_default();
-            sqlx::query(
-                "INSERT INTO scenario_graphs (scenario_id, graph_json) VALUES ($1, $2) \
-                 ON CONFLICT (scenario_id) DO UPDATE SET graph_json = EXCLUDED.graph_json",
+        if let Some(graph) = pheromone.get("graph").and_then(|v| v.as_array()) {
+            // Clear old graph (CASCADE handles edges)
+            sqlx::query("DELETE FROM graph_nodes WHERE scenario_id = $1")
+                .bind(scenario_id)
+                .execute(&pool)
+                .await
+                .map_err(ise)?;
+
+            // Bulk-insert all nodes in one query
+            let node_names: Vec<&str> = graph
+                .iter()
+                .filter_map(|e| e.get("name").and_then(|v| v.as_str()))
+                .collect();
+
+            let inserted_nodes = sqlx::query_as::<_, IdNameRow>(
+                "INSERT INTO graph_nodes (scenario_id, name) \
+                 SELECT $1, unnest($2::text[]) RETURNING id, name",
             )
             .bind(scenario_id)
-            .bind(&graph_json)
-            .execute(&pool)
+            .bind(&node_names)
+            .fetch_all(&pool)
             .await
             .map_err(ise)?;
+
+            let node_ids: HashMap<&str, i64> = inserted_nodes
+                .iter()
+                .map(|r| (r.name.as_str(), r.id))
+                .collect();
+
+            // Collect all edges, then bulk-insert
+            let mut source_ids: Vec<i64> = Vec::new();
+            let mut target_ids: Vec<i64> = Vec::new();
+            for entry in graph {
+                let Some(source_name) = entry.get("name").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                let Some(&src_id) = node_ids.get(source_name) else {
+                    continue;
+                };
+                if let Some(deps) = entry.get("deps").and_then(|v| v.as_array()) {
+                    for dep in deps {
+                        if let Some(dep_name) = dep.as_str() {
+                            if let Some(&tgt_id) = node_ids.get(dep_name) {
+                                source_ids.push(src_id);
+                                target_ids.push(tgt_id);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !source_ids.is_empty() {
+                sqlx::query(
+                    "INSERT INTO graph_edges (source_id, target_id) \
+                     SELECT unnest($1::bigint[]), unnest($2::bigint[]) \
+                     ON CONFLICT DO NOTHING",
+                )
+                .bind(&source_ids)
+                .bind(&target_ids)
+                .execute(&pool)
+                .await
+                .map_err(ise)?;
+            }
         }
 
         // Insert run
         let commit_short = event.get("commit").and_then(|v| v.as_str()).unwrap_or("");
-        let dirty_crates = pheromone.get("dirtyCrates").cloned().unwrap_or(json!([]));
-        let dirty_json = serde_json::to_string(&dirty_crates).unwrap_or_else(|_| "[]".into());
 
-        sqlx::query(
-            "INSERT INTO runs (scenario_id, \"user\", platform, timestamp, commit_short, build_time_ms, dirty_crates_json) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        let run_row = sqlx::query_as::<_, IdRow>(
+            "INSERT INTO runs (scenario_id, \"user\", platform, timestamp, commit_short, build_time_ms) \
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
         )
         .bind(scenario_id)
         .bind(user)
@@ -434,10 +718,28 @@ async fn ingest_events(
         .bind(timestamp)
         .bind(commit_short)
         .bind(duration_ms as i64)
-        .bind(&dirty_json)
-        .execute(&pool)
+        .fetch_one(&pool)
         .await
         .map_err(ise)?;
+
+        // Bulk-insert dirty crates
+        let dirty_crates: Vec<&str> = pheromone
+            .get("dirtyCrates")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_default();
+
+        if !dirty_crates.is_empty() {
+            sqlx::query(
+                "INSERT INTO run_dirty_crates (run_id, crate_name) \
+                 SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING",
+            )
+            .bind(run_row.id)
+            .bind(&dirty_crates)
+            .execute(&pool)
+            .await
+            .map_err(ise)?;
+        }
     }
 
     Ok(StatusCode::OK)

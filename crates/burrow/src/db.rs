@@ -28,9 +28,16 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             pinned BOOLEAN NOT NULL DEFAULT FALSE,
             platform TEXT
         );
-        CREATE TABLE IF NOT EXISTS scenario_graphs (
-            scenario_id BIGINT PRIMARY KEY REFERENCES scenarios(id),
-            graph_json TEXT NOT NULL
+        CREATE TABLE IF NOT EXISTS graph_nodes (
+            id BIGSERIAL PRIMARY KEY,
+            scenario_id BIGINT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            UNIQUE(scenario_id, name)
+        );
+        CREATE TABLE IF NOT EXISTS graph_edges (
+            source_id BIGINT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            target_id BIGINT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+            PRIMARY KEY (source_id, target_id)
         );
         CREATE TABLE IF NOT EXISTS runs (
             id BIGSERIAL PRIMARY KEY,
@@ -39,8 +46,12 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             platform TEXT NOT NULL DEFAULT '',
             timestamp TEXT NOT NULL,
             commit_short TEXT NOT NULL,
-            build_time_ms BIGINT NOT NULL,
-            dirty_crates_json TEXT NOT NULL
+            build_time_ms BIGINT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS run_dirty_crates (
+            run_id BIGINT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+            crate_name TEXT NOT NULL,
+            PRIMARY KEY (run_id, crate_name)
         );
         CREATE TABLE IF NOT EXISTS commits (
             id BIGSERIAL PRIMARY KEY,
@@ -60,8 +71,14 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             status TEXT NOT NULL,
             value DOUBLE PRECISION,
             prev_value DOUBLE PRECISION,
-            unit TEXT,
-            detail_json TEXT
+            unit TEXT
+        );
+        CREATE TABLE IF NOT EXISTS measurement_details (
+            id BIGSERIAL PRIMARY KEY,
+            measurement_id BIGINT NOT NULL REFERENCES measurements(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            value DOUBLE PRECISION NOT NULL,
+            prev_value DOUBLE PRECISION NOT NULL
         );
         ",
     )
