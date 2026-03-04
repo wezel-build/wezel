@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { GitCommit, ChevronDown, Plus } from "lucide-react";
+import { GitCommit, ChevronDown, Plus, Pencil, Check, X } from "lucide-react";
 import { ThemeCtx, THEMES, THEME_ORDER, type ThemeKey } from "./lib/theme";
 import { MONO, SANS } from "./lib/format";
 import { useOverview } from "./lib/hooks";
@@ -22,9 +22,43 @@ export default function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const { projects, current, setCurrent, loaded } = useProject();
+  const { projects, current, setCurrent, loaded, renameProject } = useProject();
   const [projectOpen, setProjectOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
+  const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingProjectId !== null) {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }
+  }, [editingProjectId]);
+
+  const startRename = useCallback((p: { id: number; name: string }) => {
+    setEditingProjectId(p.id);
+    setRenameValue(p.name);
+  }, []);
+
+  const commitRename = useCallback(
+    async (id: number) => {
+      const trimmed = renameValue.trim();
+      if (trimmed) {
+        try {
+          await renameProject(id, trimmed);
+        } catch (e) {
+          console.error("renameProject failed:", e);
+        }
+      }
+      setEditingProjectId(null);
+    },
+    [renameValue, renameProject],
+  );
+
+  const cancelRename = useCallback(() => {
+    setEditingProjectId(null);
+  }, []);
 
   // Redirect to /new when loaded with no projects (and not already there)
   useEffect(() => {
@@ -144,38 +178,132 @@ export default function Shell() {
                       }}
                     >
                       {projects.map((p) => (
-                        <button
+                        <div
                           key={p.id}
-                          onClick={() => {
-                            setCurrent(p);
-                            setProjectOpen(false);
-                            navigate(`/project/${p.id}`);
-                          }}
                           style={{
-                            display: "block",
-                            width: "100%",
-                            textAlign: "left",
+                            display: "flex",
+                            alignItems: "center",
                             background:
                               p.id === current?.id ? C.surface2 : "transparent",
-                            border: "none",
-                            cursor: "pointer",
-                            padding: "6px 12px",
-                            color: p.id === current?.id ? C.accent : C.text,
-                            fontFamily: MONO,
-                            fontSize: 12,
                           }}
                         >
-                          <div style={{ fontWeight: 600 }}>{p.name}</div>
-                          <div
-                            style={{
-                              fontSize: 10,
-                              color: C.textDim,
-                              marginTop: 1,
-                            }}
-                          >
-                            {p.upstream}
-                          </div>
-                        </button>
+                          {editingProjectId === p.id ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                                flex: 1,
+                                padding: "4px 8px 4px 12px",
+                              }}
+                            >
+                              <input
+                                ref={renameInputRef}
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") commitRename(p.id);
+                                  if (e.key === "Escape") cancelRename();
+                                }}
+                                style={{
+                                  flex: 1,
+                                  background: C.bg,
+                                  border: `1px solid ${C.accent}`,
+                                  borderRadius: 3,
+                                  color: C.text,
+                                  fontFamily: MONO,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  padding: "2px 5px",
+                                  outline: "none",
+                                  minWidth: 0,
+                                }}
+                              />
+                              <button
+                                onClick={() => commitRename(p.id)}
+                                title="Save"
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  color: C.accent,
+                                  padding: 2,
+                                  display: "flex",
+                                }}
+                              >
+                                <Check size={12} />
+                              </button>
+                              <button
+                                onClick={cancelRename}
+                                title="Cancel"
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  color: C.textDim,
+                                  padding: 2,
+                                  display: "flex",
+                                }}
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setCurrent(p);
+                                  setProjectOpen(false);
+                                  navigate(`/project/${p.id}`);
+                                }}
+                                style={{
+                                  display: "block",
+                                  flex: 1,
+                                  textAlign: "left",
+                                  background: "transparent",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  padding: "6px 8px 6px 12px",
+                                  color:
+                                    p.id === current?.id ? C.accent : C.text,
+                                  fontFamily: MONO,
+                                  fontSize: 12,
+                                }}
+                              >
+                                <div style={{ fontWeight: 600 }}>{p.name}</div>
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    color: C.textDim,
+                                    marginTop: 1,
+                                  }}
+                                >
+                                  {p.upstream}
+                                </div>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startRename(p);
+                                }}
+                                title="Rename"
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  color: C.textDim,
+                                  padding: "0 8px",
+                                  display: "flex",
+                                  alignSelf: "stretch",
+                                  alignItems: "center",
+                                  opacity: 0.6,
+                                }}
+                              >
+                                <Pencil size={11} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       ))}
                       <div
                         style={{

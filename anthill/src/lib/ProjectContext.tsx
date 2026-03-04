@@ -45,6 +45,16 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const renameProject = useCallback(
+    async (id: number, name: string): Promise<Project> => {
+      const updated = await api.renameProject(id, name);
+      setProjects((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      setCurrentRaw((prev) => (prev?.id === id ? updated : prev));
+      return updated;
+    },
+    [],
+  );
+
   const pApi = useMemo(
     () => (current ? api.forProject(current.id) : nullApi),
     [current],
@@ -60,7 +70,15 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
   return (
     <ProjectCtx.Provider
-      value={{ projects, current, setCurrent, addProject, loaded, pApi }}
+      value={{
+        projects,
+        current,
+        setCurrent,
+        addProject,
+        renameProject,
+        loaded,
+        pApi,
+      }}
     >
       {children}
     </ProjectCtx.Provider>

@@ -407,6 +407,24 @@ async fn get_projects(State(pool): State<PgPool>) -> ApiResult<Json<Vec<Project>
     Ok(Json(projects))
 }
 
+async fn rename_project(
+    State(pool): State<PgPool>,
+    Path(project_id): Path<i64>,
+    Json(body): Json<Value>,
+) -> ApiResult<Json<Project>> {
+    let name = body["name"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    let project = sqlx::query_as::<_, Project>(
+        "UPDATE projects SET name = $1 WHERE id = $2 RETURNING id, name, upstream",
+    )
+    .bind(name)
+    .bind(project_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(ise)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(project))
+}
+
 async fn get_overview(State(pool): State<PgPool>) -> ApiResult<Json<OverviewJson>> {
     let (scenario_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM scenarios")
         .fetch_one(&pool)
@@ -1212,6 +1230,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/project", get(get_projects).post(create_project))
+        .route("/api/project/{project_id}", patch(rename_project))
         .route("/api/project/{project_id}/overview", get(get_overview_p))
         .route("/api/project/{project_id}/scenario", get(get_scenarios_p))
         .route(

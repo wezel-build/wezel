@@ -8,6 +8,7 @@ export interface ProjectCtxValue {
   loaded: boolean;
   setCurrent: (p: Project) => void;
   addProject: (name: string, upstream: string) => Promise<Project>;
+  renameProject: (id: number, name: string) => Promise<Project>;
   pApi: ProjectApi;
 }
 
@@ -30,5 +31,6 @@ export const ProjectCtx = createContext<ProjectCtxValue>({
   loaded: false,
   setCurrent: () => {},
   addProject: () => Promise.reject("no provider"),
+  renameProject: () => Promise.reject("no provider"),
   pApi: nullApi,
 });
