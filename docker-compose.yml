@@ -6,6 +6,10 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://wezel:wezel@db:5432/wezel}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_ORG: ${GITHUB_ORG}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
     ports:
       - "3000:3000"
 
@@ -14,7 +18,7 @@ services:
       context: .
       dockerfile: Dockerfile.anthill
       args:
-        VITE_BURROW_URL: ${VITE_BURROW_URL:-http://localhost:3000}
+        BURROW_UPSTREAM: http://burrow:3000
     restart: unless-stopped
     ports:
       - "8080:80"
