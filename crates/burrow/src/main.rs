@@ -1,3 +1,4 @@
+mod auth;
 mod db;
 mod models;
 
@@ -5,10 +6,13 @@ use std::collections::HashMap;
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::StatusCode,
+    middleware::{self, Next},
+    response::Response,
     routing::{get, patch, post},
 };
+use axum_extra::extract::CookieJar;
 use clap::Parser;
 use models::*;
 use reqwest::Client;
@@ -1217,6 +1221,26 @@ async fn ingest_events(
     Ok(StatusCode::OK)
 }
 
+async fn require_auth(
+    State(pool): State<PgPool>,
+    jar: CookieJar,
+    mut req: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let session_id = jar
+        .get("session_id")
+        .map(|c| c.value().to_string())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let login = db::get_session(&pool, &session_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    req.extensions_mut().insert(auth::AuthUser { login });
+    Ok(next.run(req).await)
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -1228,7 +1252,8 @@ async fn main() {
         .await
         .expect("could not connect to database");
 
-    let app = Router::new()
+    // Protected API routes (all except /api/events)
+    let protected_api = Router::new()
         .route("/api/project", get(get_projects).post(create_project))
         .route("/api/project/{project_id}", patch(rename_project))
         .route("/api/project/{project_id}/overview", get(get_overview_p))
@@ -1258,7 +1283,16 @@ async fn main() {
         .route("/api/commit", get(get_commits))
         .route("/api/commit/{sha}", get(get_commit))
         .route("/api/user", get(get_users))
+        .route_layer(middleware::from_fn_with_state(pool.clone(), require_auth));
+
+    let app = Router::new()
+        .merge(protected_api)
+        // Unauthenticated: ingest endpoint (used by CLI) and auth routes
         .route("/api/events", post(ingest_events))
+        .route("/auth/github", get(auth::login))
+        .route("/auth/github/callback", get(auth::callback))
+        .route("/auth/me", get(auth::me))
+        .route("/auth/logout", post(auth::logout))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(pool);

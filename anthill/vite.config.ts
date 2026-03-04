@@ -2,8 +2,16 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 // https://vite.dev/config/
+const BURROW_URL = process.env.VITE_BURROW_URL ?? "http://localhost:3001";
+
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      "/api": { target: BURROW_URL, changeOrigin: true },
+      "/auth": { target: BURROW_URL, changeOrigin: true },
+    },
+  },
   optimizeDeps: {
     include: [
       "react",

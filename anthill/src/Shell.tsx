@@ -1,12 +1,22 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { GitCommit, ChevronDown, Plus, Pencil, Check, X } from "lucide-react";
+import {
+  GitCommit,
+  ChevronDown,
+  Plus,
+  Pencil,
+  Check,
+  X,
+  LogOut,
+} from "lucide-react";
 import { ThemeCtx, THEMES, THEME_ORDER, type ThemeKey } from "./lib/theme";
 import { MONO, SANS } from "./lib/format";
 import { useOverview } from "./lib/hooks";
 import { useProject } from "./lib/useProject";
+import { useAuth } from "./lib/AuthContext";
 
 export default function Shell() {
+  const { user, logout } = useAuth();
   const [themeKey, setThemeKey] = useState<ThemeKey>(
     () => (localStorage.getItem("themeKey") as ThemeKey) || "warm",
   );
@@ -411,6 +421,42 @@ export default function Shell() {
             >
               {themeKey}
             </button>
+            {user && (
+              <>
+                <div style={{ width: 1, height: 16, background: C.border }} />
+                <img
+                  src={`https://github.com/${user.login}.png?size=24`}
+                  alt={user.login}
+                  width={20}
+                  height={20}
+                  style={{ borderRadius: "50%", display: "block" }}
+                />
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontFamily: MONO,
+                    color: C.textMid,
+                  }}
+                >
+                  {user.login}
+                </span>
+                <button
+                  onClick={logout}
+                  title="Sign out"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: C.textDim,
+                    padding: 2,
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  <LogOut size={13} />
+                </button>
+              </>
+            )}
           </div>
         </div>
 

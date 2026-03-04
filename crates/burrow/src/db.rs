@@ -80,11 +80,41 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             value DOUBLE PRECISION NOT NULL,
             prev_value DOUBLE PRECISION NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            github_login TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
         ",
     )
     .execute(pool)
     .await?;
 
+    Ok(())
+}
+
+pub async fn create_session(pool: &PgPool, session_id: &str, login: &str) -> sqlx::Result<()> {
+    sqlx::query("INSERT INTO sessions (id, github_login) VALUES ($1, $2)")
+        .bind(session_id)
+        .bind(login)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn get_session(pool: &PgPool, session_id: &str) -> sqlx::Result<Option<String>> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT github_login FROM sessions WHERE id = $1")
+        .bind(session_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(|(login,)| login))
+}
+
+pub async fn delete_session(pool: &PgPool, session_id: &str) -> sqlx::Result<()> {
+    sqlx::query("DELETE FROM sessions WHERE id = $1")
+        .bind(session_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

@@ -3,6 +3,8 @@ import ScenariosPage from "./routes/ScenariosPage";
 import { ProjectProvider } from "./lib/ProjectContext";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import Shell from "./Shell";
+import { AuthProvider, useAuth } from "./lib/AuthContext";
+import LoginPage from "./routes/LoginPage";
 
 const CommitPage = lazy(() => import("./routes/CommitPage"));
 const MeasurementDetailPage = lazy(
@@ -64,10 +66,21 @@ const router = createBrowserRouter([
   },
 ]);
 
-export default function App() {
+function AuthGate() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <LoginPage />;
   return (
     <ProjectProvider>
       <RouterProvider router={router} />
     </ProjectProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
   );
 }

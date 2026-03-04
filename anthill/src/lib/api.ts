@@ -19,10 +19,10 @@ export interface Overview {
 /** Scenario as returned by the list endpoint (no graph). */
 export type ScenarioSummary = Omit<Scenario, "graph">;
 
-const BASE = import.meta.env.VITE_BURROW_URL ?? "http://localhost:3001";
+const BASE = import.meta.env.VITE_BURROW_URL ?? "";
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+  const res = await fetch(`${BASE}${path}`, { credentials: "include" });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -32,6 +32,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    credentials: "include",
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
@@ -42,10 +43,25 @@ async function patch<T>(path: string, body?: unknown): Promise<T> {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: body != null ? JSON.stringify(body) : undefined,
+    credentials: "include",
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
+
+export interface AuthUser {
+  login: string;
+}
+
+export const authApi = {
+  me: (): Promise<AuthUser> => get<AuthUser>(`${BASE}/auth/me`),
+  logout: (): Promise<void> =>
+    fetch(`${BASE}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    }).then(() => undefined),
+  loginUrl: `${BASE}/auth/github`,
+};
 
 function projectApi(projectId: number) {
   const p = `/api/project/${projectId}`;
