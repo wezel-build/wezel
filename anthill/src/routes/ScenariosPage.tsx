@@ -223,7 +223,7 @@ export default function ScenariosPage() {
                   </code>{" "}
                   in your project to start tracking builds.{" "}
                   <a
-                    href="https://github.com/wezel-dev/wezel#readme"
+                    href="https://github.com/wezel-build/wezel#readme"
                     target="_blank"
                     rel="noreferrer"
                     style={{ color: C.accent }}
