@@ -80,33 +80,50 @@ function computeRows(topo: CrateTopo[], heat: Record<string, number>): Row[] {
     }
   }
 
-  // BFS from roots (crates nothing depends on) following dependency edges.
-  // depth[c] = shortest hop-count from any root to c via its dependency chain.
-  // This ensures: depth 0 = the top-level binary (e.g. `zed`),
-  //               depth 1 = its direct deps, depth 2 = their deps, etc.
-  const depths = new Map<string, number>();
-  const queue: string[] = [];
+  // Longest-path depth from roots via Kahn's topo-sort + relaxation.
+  //
+  // BFS (shortest path) would put B at depth 1 even when A→C→B exists,
+  // because A also depends on B directly.  We want depth = longest path
+  // from any root, so that B sits one tier below C — reflecting that a
+  // change to B cascades through C before reaching A.
+  //
+  // Algorithm:
+  //   1. Kahn's topo-sort starting from roots (no consumers), following
+  //      dependency edges (root → dep → sub-dep …).
+  //   2. Walk nodes in that order and relax: depth[dep] = max(depth[dep], depth[n]+1).
 
+  // Step 1 – Kahn's topo-sort.
+  const inDeg = new Map<string, number>();
   for (const c of internal) {
-    if ((consumersOf.get(c.name) ?? []).length === 0) {
-      depths.set(c.name, 0);
-      queue.push(c.name);
-    }
+    inDeg.set(c.name, (consumersOf.get(c.name) ?? []).length);
   }
 
-  let qi = 0;
-  while (qi < queue.length) {
-    const name = queue[qi++];
-    const d = depths.get(name)!;
+  const topoOrder: string[] = [];
+  const tq: string[] = [];
+  for (const c of internal) {
+    if (inDeg.get(c.name) === 0) tq.push(c.name);
+  }
+  let tqi = 0;
+  while (tqi < tq.length) {
+    const name = tq[tqi++];
+    topoOrder.push(name);
     for (const dep of depMap.get(name) ?? []) {
-      if (!depths.has(dep)) {
-        depths.set(dep, d + 1);
-        queue.push(dep);
-      }
+      const nd = (inDeg.get(dep) ?? 1) - 1;
+      inDeg.set(dep, nd);
+      if (nd === 0) tq.push(dep);
     }
   }
 
-  // Anything not reached (disconnected sub-graph or cycle) lands at depth 0.
+  // Step 2 – longest-path relaxation.
+  const depths = new Map<string, number>();
+  for (const name of topoOrder) {
+    const d = depths.get(name) ?? 0;
+    for (const dep of depMap.get(name) ?? []) {
+      depths.set(dep, Math.max(depths.get(dep) ?? 0, d + 1));
+    }
+  }
+
+  // Cycle members (not reached by topo-sort) fall back to depth 0.
   for (const c of internal) {
     if (!depths.has(c.name)) depths.set(c.name, 0);
   }
