@@ -3081,6 +3081,7 @@ dependencies = [
  "dirs",
  "env_logger",
  "figment",
+ "libc",
  "log",
  "serde",
  "serde_json",

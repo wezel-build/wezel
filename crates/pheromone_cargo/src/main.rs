@@ -582,11 +582,49 @@ fn run() -> anyhow::Result<ExitCode> {
 
     let message_format = detect_message_format(&args);
     let (status, dirty_crates) = run_cargo_tee(&cargo, &args, message_format)?;
-    let graph = extract_graph(&cargo);
-
-    emit_output(&parsed, dirty_crates, graph);
 
     let code = status.code().unwrap_or(1) as u8;
+
+    // Read the pipe write end passed by wezel_cli, if any.
+    let ready_fd: Option<i32> = std::env::var("PHEROMONE_READY_FD")
+        .ok()
+        .and_then(|s| s.parse().ok());
+
+    // Fork so the parent can exit immediately and return control to the user.
+    // The child handles the slow work: extract_graph (takes cargo lock) + emit_output,
+    // then signals wezel_cli's background child by writing to the pipe.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        // Fork failed — fall back to doing it synchronously.
+        log::debug!("fork failed, running extract_graph synchronously");
+        let graph = extract_graph(&cargo);
+        emit_output(&parsed, dirty_crates, graph);
+        if let Some(fd) = ready_fd {
+            unsafe {
+                libc::write(fd, [1u8].as_ptr() as *const libc::c_void, 1);
+                libc::close(fd);
+            }
+        }
+    } else if pid == 0 {
+        // Child: do the slow work, signal done, then exit.
+        log::debug!("child: extracting graph and emitting output");
+        let graph = extract_graph(&cargo);
+        emit_output(&parsed, dirty_crates, graph);
+        if let Some(fd) = ready_fd {
+            unsafe {
+                libc::write(fd, [1u8].as_ptr() as *const libc::c_void, 1);
+                libc::close(fd);
+            }
+        }
+        unsafe { libc::_exit(0) };
+    } else {
+        // Parent: close our copy of the write end so wezel_cli's child doesn't
+        // block waiting for an fd we still hold, then exit.
+        if let Some(fd) = ready_fd {
+            unsafe { libc::close(fd) };
+        }
+    }
+
     Ok(ExitCode::from(code))
 }
 

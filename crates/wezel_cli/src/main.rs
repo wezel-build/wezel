@@ -6,7 +6,7 @@ mod shell;
 use log::{debug, warn};
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
@@ -152,9 +152,60 @@ fn detect_chip() -> Option<String> {
     }
 }
 
-fn read_pheromone_output(path: &std::path::Path) -> Option<PheromoneOutput> {
+fn read_pheromone_output(path: &Path) -> Option<PheromoneOutput> {
     let content = std::fs::read_to_string(path).ok()?;
     serde_json::from_str(&content).ok()
+}
+
+/// Block until the pheromone child signals readiness by closing the write end
+/// of the pipe (read_fd), then read PHEROMONE_OUT and flush the event.
+fn flush_in_background(
+    read_fd: i32,
+    pheromone_out: &Path,
+    config: &config::Config,
+    exit_code: i32,
+    duration_ms: u64,
+) {
+    // Block until the pheromone background child closes its write end.
+    let mut buf = [0u8; 1];
+    unsafe { libc::read(read_fd, buf.as_mut_ptr() as *mut libc::c_void, 1) };
+    unsafe { libc::close(read_fd) };
+
+    let pheromone = read_pheromone_output(pheromone_out);
+    let _ = std::fs::remove_file(pheromone_out);
+
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let timestamp = {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        format!("{}", now.as_secs())
+    };
+    let id = uuid::Uuid::new_v4();
+    let tool: String = pheromone
+        .as_ref()
+        .map(|p| p.tool.clone())
+        .unwrap_or_else(|| "cargo".to_string());
+
+    let event = BuildEvent {
+        upstream: detect_upstream(),
+        commit: detect_commit(),
+        cwd: cwd.display().to_string(),
+        user: config.username.clone(),
+        platform: detect_platform(),
+        timestamp,
+        duration_ms,
+        exit_code,
+        pheromone,
+    };
+
+    debug!("persisting event {tool}-{id}");
+    persist_event(&tool, &id, &event);
+
+    debug!("flushing events to {}", config.burrow_url);
+    if let Err(e) = flush_events(config) {
+        warn!("flush failed: {e}");
+    }
 }
 
 fn persist_event(tool: &str, id: &uuid::Uuid, event: &BuildEvent) {
@@ -210,24 +261,30 @@ fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
     let id = uuid::Uuid::new_v4();
     let pheromone_out = pheromone_out_path(tool, &id);
 
-    let timestamp = {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
-        format!("{}", now.as_secs())
-    };
-
     let start = Instant::now();
+
+    // Create a pipe. The write end is passed to the pheromone handler via
+    // PHEROMONE_READY_FD; its background child closes it when PHEROMONE_OUT
+    // is written. Our background child blocks on the read end.
+    let mut pipe_fds = [0i32; 2];
+    let pipe_ok = unsafe { libc::pipe(pipe_fds.as_mut_ptr()) } == 0;
+    let (read_fd, write_fd) = if pipe_ok {
+        (pipe_fds[0], pipe_fds[1])
+    } else {
+        (-1, -1)
+    };
 
     debug!(
         "spawning pheromone handler: {} {:?}",
         program.to_string_lossy(),
         program_args
     );
-    let status = std::process::Command::new(program)
-        .args(program_args)
-        .env("PHEROMONE_OUT", &pheromone_out)
-        .status();
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(program_args).env("PHEROMONE_OUT", &pheromone_out);
+    if pipe_ok {
+        cmd.env("PHEROMONE_READY_FD", write_fd.to_string());
+    }
+    let status = cmd.status();
 
     let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -239,31 +296,34 @@ fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
         Err(_) => (127, ExitCode::from(127)),
     };
 
-    let pheromone = read_pheromone_output(&pheromone_out);
-    let _ = std::fs::remove_file(&pheromone_out);
-
-    let event = BuildEvent {
-        upstream: detect_upstream(),
-        commit: detect_commit(),
-        cwd: cwd.display().to_string(),
-        user: config.username.clone(),
-        platform: detect_platform(),
-        timestamp,
-        duration_ms,
-        exit_code,
-        pheromone,
-    };
-
-    debug!("persisting event {tool}-{id}");
-    persist_event(tool, &id, &event);
-
-    debug!("flushing events to {}", config.burrow_url);
-    if let Err(e) = flush_events(&config) {
-        warn!("flush failed: {e}");
-    }
-
     if let Err(e) = &status {
         eprintln!("wezel: failed to execute `{tool}`: {e}");
+    }
+
+    // Close our copy of write_fd so that when the pheromone child closes its
+    // copy, the read end sees EOF.
+    if pipe_ok {
+        unsafe { libc::close(write_fd) };
+    }
+
+    // Fork so the parent can return the exit code to the shell immediately.
+    // The child blocks on the pipe read end waiting for pheromone's background
+    // child to finish, then persists + flushes the event.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        // Fork failed — fall back to synchronous path.
+        debug!("fork failed, flushing synchronously");
+        flush_in_background(read_fd, &pheromone_out, &config, exit_code, duration_ms);
+    } else if pid == 0 {
+        // Child: wait for signal then flush.
+        debug!("child: waiting on pipe for pheromone to finish, then flushing events");
+        flush_in_background(read_fd, &pheromone_out, &config, exit_code, duration_ms);
+        unsafe { libc::_exit(0) };
+    } else {
+        // Parent: close the read end and return immediately.
+        if pipe_ok {
+            unsafe { libc::close(read_fd) };
+        }
     }
 
     Ok(process_exit_code)
