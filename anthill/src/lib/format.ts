@@ -5,7 +5,11 @@ export function fmtValue(value: number, unit?: string): string {
   if (!unit) return value.toLocaleString();
   switch (unit) {
     case "ms":
-      if (value >= 60_000) return `${(value / 60_000).toFixed(1)}m`;
+      if (value >= 60_000) {
+        const m = Math.floor(value / 60_000);
+        const s = Math.round((value % 60_000) / 1000);
+        return `${m}m ${s}s`;
+      }
       if (value >= 1000) return `${(value / 1000).toFixed(1)}s`;
       return `${value}ms`;
     case "bytes":
@@ -22,7 +26,11 @@ export function fmtValue(value: number, unit?: string): string {
 
 export function fmtMs(ms: number, precise?: boolean): string {
   if (!precise) {
-    if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
+    if (ms >= 60_000) {
+      const m = Math.floor(ms / 60_000);
+      const s = Math.round((ms % 60_000) / 1000);
+      return `${m}m ${s}s`;
+    }
     if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
     return `${ms}ms`;
   }
