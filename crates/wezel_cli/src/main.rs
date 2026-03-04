@@ -219,6 +219,11 @@ fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
 
     let start = Instant::now();
 
+    debug!(
+        "spawning pheromone handler: {} {:?}",
+        program.to_string_lossy(),
+        program_args
+    );
     let status = std::process::Command::new(program)
         .args(program_args)
         .env("PHEROMONE_OUT", &pheromone_out)

@@ -1602,8 +1602,10 @@ name = "pheromone_cargo"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "env_logger",
  "guppy",
  "libc",
+ "log",
  "serde_json",
  "wezel_types",
  "which",

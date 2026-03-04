@@ -4,6 +4,7 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
 use std::sync::atomic::{AtomicI32, Ordering};
+use std::time::Instant;
 
 use guppy::platform::{EnabledTernary, PlatformSpec};
 use wezel_types::{CrateTopo, PheromoneOutput, Profile};
@@ -245,12 +246,19 @@ fn find_real_cargo() -> anyhow::Result<PathBuf> {
 /// Use guppy to extract the workspace dependency graph.
 /// Returns an empty vec on failure — we never want this to block the build.
 fn extract_graph(cargo: &Path) -> Vec<CrateTopo> {
+    let t = Instant::now();
     let graph = match guppy::MetadataCommand::new()
         .cargo_path(cargo)
         .build_graph()
     {
-        Ok(g) => g,
-        Err(_) => return Vec::new(),
+        Ok(g) => {
+            log::debug!("cargo metadata took {:?}", t.elapsed());
+            g
+        }
+        Err(e) => {
+            log::debug!("cargo metadata failed after {:?}: {e}", t.elapsed());
+            return Vec::new();
+        }
     };
 
     let platform = match PlatformSpec::build_target() {
@@ -313,6 +321,11 @@ fn extract_graph(cargo: &Path) -> Vec<CrateTopo> {
         });
     }
 
+    log::debug!(
+        "extract_graph total took {:?} ({} crates)",
+        t.elapsed(),
+        result.len()
+    );
     result
 }
 
@@ -568,8 +581,8 @@ fn run() -> anyhow::Result<ExitCode> {
     };
 
     let message_format = detect_message_format(&args);
-    let graph = extract_graph(&cargo);
     let (status, dirty_crates) = run_cargo_tee(&cargo, &args, message_format)?;
+    let graph = extract_graph(&cargo);
 
     emit_output(&parsed, dirty_crates, graph);
 
@@ -578,6 +591,7 @@ fn run() -> anyhow::Result<ExitCode> {
 }
 
 fn main() -> ExitCode {
+    env_logger::init();
     match run() {
         Ok(code) => code,
         Err(e) => {
