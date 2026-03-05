@@ -307,16 +307,39 @@ fn extract_graph(cargo: &Path) -> Vec<CrateTopo> {
             Some(p) => p,
             None => continue,
         };
-        // Only include deps that are in our visited set and active on the current platform.
-        let deps: Vec<String> = pkg
+        // Classify each link into the most-structural kind it appears in.
+        // Priority: normal > build > dev.  A link active in multiple kinds
+        // is placed only in the highest-priority bucket.
+        let mut deps: Vec<String> = Vec::new();
+        let mut build_deps: Vec<String> = Vec::new();
+        let mut dev_deps: Vec<String> = Vec::new();
+        for link in pkg
             .direct_links()
             .filter(&is_active_on_current_platform)
             .filter(|link| visited.contains(link.to().name()))
-            .map(|link| link.to().name().to_string())
-            .collect();
+        {
+            let name = link.to().name().to_string();
+            if matches!(
+                link.normal().status().enabled_on(&platform),
+                EnabledTernary::Enabled
+            ) {
+                deps.push(name);
+            } else if matches!(
+                link.build().status().enabled_on(&platform),
+                EnabledTernary::Enabled
+            ) {
+                build_deps.push(name);
+            } else {
+                dev_deps.push(name);
+            }
+        }
+
         result.push(CrateTopo {
             name: pkg_name.clone(),
+            version: pkg.version().to_string(),
             deps,
+            build_deps,
+            dev_deps,
             external: !workspace_names.contains(pkg_name.as_str()),
         });
     }

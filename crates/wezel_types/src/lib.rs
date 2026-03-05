@@ -25,7 +25,17 @@ pub struct Project {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrateTopo {
     pub name: String,
+    /// Semver version string, e.g. "1.2.3".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub version: String,
+    /// Normal (runtime) dependencies — primary structural edges.
     pub deps: Vec<String>,
+    /// Build-script dependencies (`[build-dependencies]`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub build_deps: Vec<String>,
+    /// Dev-only dependencies (`[dev-dependencies]`); excluded from layout to avoid cycles.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dev_deps: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub external: bool,
 }

@@ -75,12 +75,15 @@ pub struct MeasurementDetail {
 #[derive(FromRow)]
 pub struct GraphNodeRow {
     pub name: String,
+    pub version: String,
+    pub external: bool,
 }
 
 #[derive(FromRow)]
 pub struct GraphEdgeRow {
     pub source_name: String,
     pub dep_name: String,
+    pub kind: String,
 }
 
 #[derive(FromRow)]
@@ -117,7 +120,15 @@ pub struct RunJson {
 #[derive(Serialize)]
 pub struct GraphNodeJson {
     pub name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub version: String,
     pub deps: Vec<String>,
+    #[serde(rename = "buildDeps", skip_serializing_if = "Vec::is_empty")]
+    pub build_deps: Vec<String>,
+    #[serde(rename = "devDeps", skip_serializing_if = "Vec::is_empty")]
+    pub dev_deps: Vec<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub external: bool,
 }
 
 #[derive(Serialize)]

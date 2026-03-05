@@ -62,13 +62,14 @@ function computeRows(topo: CrateTopo[], heat: Record<string, number>): Row[] {
   const internal = topo.filter((c) => !c.external);
   const nameSet = new Set(internal.map((c) => c.name));
 
-  // Deps filtered to workspace-only.
+  // Structural deps: normal + build only (dev deps excluded to avoid cycles).
+  // Filtered to workspace-only.
   const depMap = new Map<string, string[]>();
   for (const c of internal) {
-    depMap.set(
-      c.name,
-      c.deps.filter((d) => nameSet.has(d)),
+    const structural = [...c.deps, ...(c.buildDeps ?? [])].filter((d) =>
+      nameSet.has(d),
     );
+    depMap.set(c.name, structural);
   }
 
   // Reverse map: for each crate, which crates consume it (depend on it).

@@ -32,12 +32,15 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             id BIGSERIAL PRIMARY KEY,
             scenario_id BIGINT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
+            version TEXT NOT NULL DEFAULT '',
+            external BOOLEAN NOT NULL DEFAULT FALSE,
             UNIQUE(scenario_id, name)
         );
         CREATE TABLE IF NOT EXISTS graph_edges (
             source_id BIGINT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
             target_id BIGINT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
-            PRIMARY KEY (source_id, target_id)
+            kind TEXT NOT NULL DEFAULT 'normal' CHECK(kind IN ('normal', 'build', 'dev')),
+            PRIMARY KEY (source_id, target_id, kind)
         );
         CREATE TABLE IF NOT EXISTS runs (
             id BIGSERIAL PRIMARY KEY,
@@ -85,6 +88,19 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             github_login TEXT NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+        ",
+    )
+    .execute(pool)
+    .await?;
+
+    // Incremental migrations for columns added after initial schema.
+    sqlx::raw_sql(
+        "
+        ALTER TABLE graph_nodes ADD COLUMN IF NOT EXISTS version TEXT NOT NULL DEFAULT '';
+        ALTER TABLE graph_nodes ADD COLUMN IF NOT EXISTS external BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE graph_edges DROP CONSTRAINT IF EXISTS graph_edges_pkey;
+        ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'normal';
+        ALTER TABLE graph_edges ADD PRIMARY KEY (source_id, target_id, kind);
         ",
     )
     .execute(pool)

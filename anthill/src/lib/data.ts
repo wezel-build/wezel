@@ -10,7 +10,10 @@ export interface Project {
 
 export interface CrateTopo {
   name: string;
+  version?: string;
   deps: string[];
+  buildDeps?: string[];
+  devDeps?: string[];
   external?: boolean;
 }
 

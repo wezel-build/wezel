@@ -196,7 +196,7 @@ async fn get_or_fetch_github_commit(
 
 async fn build_graph(pool: &PgPool, scenario_id: i64) -> ApiResult<Vec<GraphNodeJson>> {
     let nodes = sqlx::query_as::<_, GraphNodeRow>(
-        "SELECT name FROM graph_nodes WHERE scenario_id = $1 ORDER BY name",
+        "SELECT name, version, external FROM graph_nodes WHERE scenario_id = $1 ORDER BY name",
     )
     .bind(scenario_id)
     .fetch_all(pool)
@@ -204,7 +204,7 @@ async fn build_graph(pool: &PgPool, scenario_id: i64) -> ApiResult<Vec<GraphNode
     .map_err(ise)?;
 
     let edges = sqlx::query_as::<_, GraphEdgeRow>(
-        "SELECT src.name AS source_name, tgt.name AS dep_name \
+        "SELECT src.name AS source_name, tgt.name AS dep_name, ge.kind \
          FROM graph_edges ge \
          JOIN graph_nodes src ON src.id = ge.source_id \
          JOIN graph_nodes tgt ON tgt.id = ge.target_id \
@@ -216,21 +216,36 @@ async fn build_graph(pool: &PgPool, scenario_id: i64) -> ApiResult<Vec<GraphNode
     .map_err(ise)?;
 
     let mut deps_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut build_deps_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut dev_deps_map: HashMap<String, Vec<String>> = HashMap::new();
     for node in &nodes {
         deps_map.entry(node.name.clone()).or_default();
+        build_deps_map.entry(node.name.clone()).or_default();
+        dev_deps_map.entry(node.name.clone()).or_default();
     }
     for edge in edges {
-        deps_map
-            .entry(edge.source_name)
-            .or_default()
-            .push(edge.dep_name);
+        let map = match edge.kind.as_str() {
+            "build" => &mut build_deps_map,
+            "dev" => &mut dev_deps_map,
+            _ => &mut deps_map,
+        };
+        map.entry(edge.source_name).or_default().push(edge.dep_name);
     }
 
     let graph: Vec<GraphNodeJson> = nodes
         .into_iter()
         .map(|n| {
             let deps = deps_map.remove(&n.name).unwrap_or_default();
-            GraphNodeJson { name: n.name, deps }
+            let build_deps = build_deps_map.remove(&n.name).unwrap_or_default();
+            let dev_deps = dev_deps_map.remove(&n.name).unwrap_or_default();
+            GraphNodeJson {
+                name: n.name,
+                version: n.version,
+                deps,
+                build_deps,
+                dev_deps,
+                external: n.external,
+            }
         })
         .collect();
 
@@ -1124,18 +1139,28 @@ async fn ingest_events(
                 .await
                 .map_err(ise)?;
 
-            // Bulk-insert all nodes in one query
-            let node_names: Vec<&str> = graph
-                .iter()
-                .filter_map(|e| e.get("name").and_then(|v| v.as_str()))
-                .collect();
+            // Bulk-insert all nodes in one query, carrying version and external flag.
+            let mut node_names: Vec<&str> = Vec::new();
+            let mut node_versions: Vec<&str> = Vec::new();
+            let mut node_externals: Vec<bool> = Vec::new();
+            for e in graph {
+                if let Some(name) = e.get("name").and_then(|v| v.as_str()) {
+                    node_names.push(name);
+                    node_versions.push(e.get("version").and_then(|v| v.as_str()).unwrap_or(""));
+                    node_externals
+                        .push(e.get("external").and_then(|v| v.as_bool()).unwrap_or(false));
+                }
+            }
 
             let inserted_nodes = sqlx::query_as::<_, IdNameRow>(
-                "INSERT INTO graph_nodes (scenario_id, name) \
-                 SELECT $1, unnest($2::text[]) RETURNING id, name",
+                "INSERT INTO graph_nodes (scenario_id, name, version, external) \
+                 SELECT $1, unnest($2::text[]), unnest($3::text[]), unnest($4::bool[]) \
+                 RETURNING id, name",
             )
             .bind(scenario_id)
             .bind(&node_names)
+            .bind(&node_versions)
+            .bind(&node_externals)
             .fetch_all(&pool)
             .await
             .map_err(ise)?;
@@ -1145,9 +1170,31 @@ async fn ingest_events(
                 .map(|r| (r.name.as_str(), r.id))
                 .collect();
 
-            // Collect all edges, then bulk-insert
+            // Collect all edges with their kind, then bulk-insert.
             let mut source_ids: Vec<i64> = Vec::new();
             let mut target_ids: Vec<i64> = Vec::new();
+            let mut edge_kinds: Vec<&str> = Vec::new();
+
+            let push_edges = |deps: Option<&serde_json::Value>,
+                              kind: &'static str,
+                              src_id: i64,
+                              node_ids: &HashMap<&str, i64>,
+                              source_ids: &mut Vec<i64>,
+                              target_ids: &mut Vec<i64>,
+                              edge_kinds: &mut Vec<&str>| {
+                if let Some(arr) = deps.and_then(|v| v.as_array()) {
+                    for dep in arr {
+                        if let Some(dep_name) = dep.as_str()
+                            && let Some(&tgt_id) = node_ids.get(dep_name)
+                        {
+                            source_ids.push(src_id);
+                            target_ids.push(tgt_id);
+                            edge_kinds.push(kind);
+                        }
+                    }
+                }
+            };
+
             for entry in graph {
                 let Some(source_name) = entry.get("name").and_then(|v| v.as_str()) else {
                     continue;
@@ -1155,26 +1202,44 @@ async fn ingest_events(
                 let Some(&src_id) = node_ids.get(source_name) else {
                     continue;
                 };
-                if let Some(deps) = entry.get("deps").and_then(|v| v.as_array()) {
-                    for dep in deps {
-                        if let Some(dep_name) = dep.as_str()
-                            && let Some(&tgt_id) = node_ids.get(dep_name)
-                        {
-                            source_ids.push(src_id);
-                            target_ids.push(tgt_id);
-                        }
-                    }
-                }
+                push_edges(
+                    entry.get("deps"),
+                    "normal",
+                    src_id,
+                    &node_ids,
+                    &mut source_ids,
+                    &mut target_ids,
+                    &mut edge_kinds,
+                );
+                push_edges(
+                    entry.get("buildDeps"),
+                    "build",
+                    src_id,
+                    &node_ids,
+                    &mut source_ids,
+                    &mut target_ids,
+                    &mut edge_kinds,
+                );
+                push_edges(
+                    entry.get("devDeps"),
+                    "dev",
+                    src_id,
+                    &node_ids,
+                    &mut source_ids,
+                    &mut target_ids,
+                    &mut edge_kinds,
+                );
             }
 
             if !source_ids.is_empty() {
                 sqlx::query(
-                    "INSERT INTO graph_edges (source_id, target_id) \
-                     SELECT unnest($1::bigint[]), unnest($2::bigint[]) \
+                    "INSERT INTO graph_edges (source_id, target_id, kind) \
+                     SELECT unnest($1::bigint[]), unnest($2::bigint[]), unnest($3::text[]) \
                      ON CONFLICT DO NOTHING",
                 )
                 .bind(&source_ids)
                 .bind(&target_ids)
+                .bind(&edge_kinds)
                 .execute(&pool)
                 .await
                 .map_err(ise)?;
