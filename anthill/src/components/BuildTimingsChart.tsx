@@ -20,6 +20,8 @@ const TIERS: Tier[] = [
   { lo: 71, hi: 100, barW: 160, hasPill: true },
 ];
 
+const MAX_BAR_W = TIERS[TIERS.length - 1].barW;
+
 function getTier(heat: number): Tier {
   return TIERS.find((t) => heat <= t.hi) ?? TIERS[TIERS.length - 1];
 }
@@ -98,42 +100,44 @@ function computeRows(topo: CrateTopo[], heat: Record<string, number>): Row[] {
   // Cycle fallback.
   for (const c of topo) if (!topoOrder.includes(c.name)) topoOrder.push(c.name);
 
-  const barW = (name: string) => getTier(heat[name] ?? 0).barW;
-
-  // ASAP: each crate starts as soon as all its deps finish.
-  // topoOrder is already foundations-first so we iterate forward.
-  const asapStart = new Map<string, number>();
-  const asapFinish = new Map<string, number>();
-  for (const name of topoOrder) {
-    const deps = depMap.get(name) ?? [];
-    const start =
-      deps.length === 0
-        ? 0
-        : Math.max(...deps.map((d) => asapFinish.get(d) ?? 0)) + BAR_GAP;
-    asapStart.set(name, start);
-    asapFinish.set(name, start + barW(name));
-  }
-  const totalSpan = Math.max(...asapFinish.values());
-
-  // ALAP: push each crate as late as possible without delaying its consumers.
-  // Walk in reverse build order (binaries first).
-  const alapStart = new Map<string, number>();
-  const alapFinish = new Map<string, number>();
+  // ALAP depth: how many hops from this crate to any consumer (top-level app).
+  // Computed using the reverse topoOrder (consumers first).
+  // depth[n] = 0 for top-level consumers, increases toward foundations.
+  const depth = new Map<string, number>();
   for (const name of [...topoOrder].reverse()) {
     const consumers = consumersOf.get(name) ?? [];
-    const finish =
+    depth.set(
+      name,
       consumers.length === 0
-        ? totalSpan
-        : Math.min(...consumers.map((c) => alapStart.get(c) ?? totalSpan)) -
-          BAR_GAP;
-    alapFinish.set(name, finish);
-    alapStart.set(name, finish - barW(name));
+        ? 0
+        : Math.min(...consumers.map((c) => depth.get(c) ?? 0)) + 1,
+    );
   }
 
-  // One row per crate. Consumers (late ALAP start) at the top, foundations at the bottom.
-  const sorted = [...topo].sort(
-    (a, b) => (alapStart.get(b.name) ?? 0) - (alapStart.get(a.name) ?? 0),
-  );
+  const maxDepth = Math.max(0, ...depth.values());
+
+  // Column x positions: col[d] starts after the widest bar in col[d-1] + BAR_GAP.
+  // Consumers (depth=0) are leftmost; foundations (depth=maxDepth) are rightmost.
+  const colMaxW = new Map<number, number>();
+  for (const c of topo) {
+    const d = depth.get(c.name) ?? 0;
+    const w = getTier(heat[c.name] ?? 0).barW;
+    colMaxW.set(d, Math.max(colMaxW.get(d) ?? 0, w));
+  }
+  const colX = new Map<number, number>();
+  let x = LEFT_PAD;
+  for (let d = 0; d <= maxDepth; d++) {
+    colX.set(d, x);
+    x += (colMaxW.get(d) ?? MAX_BAR_W) + BAR_GAP;
+  }
+
+  // Sort: consumers first (depth 0), then by heat desc within same depth.
+  const sorted = [...topo].sort((a, b) => {
+    const da = depth.get(a.name) ?? 0;
+    const db = depth.get(b.name) ?? 0;
+    if (da !== db) return da - db;
+    return (heat[b.name] ?? 0) - (heat[a.name] ?? 0);
+  });
 
   return sorted.map((c, i) => ({
     name: c.name,
@@ -141,8 +145,7 @@ function computeRows(topo: CrateTopo[], heat: Record<string, number>): Row[] {
     heat: heat[c.name] ?? 0,
     external: c.external ?? false,
     tier: getTier(heat[c.name] ?? 0),
-    // Mirror x so consumers are on the left, foundations on the right.
-    barX: LEFT_PAD + (totalSpan - (alapFinish.get(c.name) ?? 0)),
+    barX: colX.get(depth.get(c.name) ?? 0) ?? LEFT_PAD,
     y: TOP_PAD + i * (ROW_H + ROW_GAP),
   }));
 }
