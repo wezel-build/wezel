@@ -18,9 +18,9 @@ pub struct AuthUser {
     pub login: String,
 }
 
-pub async fn login() -> impl IntoResponse {
+pub async fn login() -> Result<impl IntoResponse, StatusCode> {
     let state = Uuid::new_v4().to_string();
-    let client_id = std::env::var("GITHUB_CLIENT_ID").expect("GITHUB_CLIENT_ID not set");
+    let client_id = std::env::var("GITHUB_CLIENT_ID").map_err(|_| StatusCode::NOT_IMPLEMENTED)?;
     let url = format!(
         "https://github.com/login/oauth/authorize?client_id={client_id}&state={state}&scope=read:user%20read:org"
     );
@@ -29,7 +29,7 @@ pub async fn login() -> impl IntoResponse {
         .same_site(SameSite::Lax)
         .path("/")
         .build();
-    (CookieJar::new().add(state_cookie), Redirect::to(&url))
+    Ok((CookieJar::new().add(state_cookie), Redirect::to(&url)))
 }
 
 #[derive(Deserialize)]
@@ -151,6 +151,12 @@ pub async fn me(
         Ok(Some(login)) => Ok(Json(json!({ "login": login }))),
         _ => Err(StatusCode::UNAUTHORIZED),
     }
+}
+
+pub async fn config() -> Json<serde_json::Value> {
+    let auth_required =
+        std::env::var("GITHUB_CLIENT_ID").is_ok() || std::env::var("GITHUB_ORG").is_ok();
+    Json(json!({ "auth_required": auth_required }))
 }
 
 pub async fn logout(State(pool): State<PgPool>, jar: CookieJar) -> impl IntoResponse {

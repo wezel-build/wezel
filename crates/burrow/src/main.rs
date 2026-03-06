@@ -1292,6 +1292,12 @@ async fn require_auth(
     mut req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    let auth_required =
+        std::env::var("GITHUB_CLIENT_ID").is_ok() || std::env::var("GITHUB_ORG").is_ok();
+    if !auth_required {
+        return Ok(next.run(req).await);
+    }
+
     let session_id = jar
         .get("session_id")
         .map(|c| c.value().to_string())
@@ -1357,6 +1363,7 @@ async fn main() {
         .route("/auth/github", get(auth::login))
         .route("/auth/github/callback", get(auth::callback))
         .route("/auth/me", get(auth::me))
+        .route("/auth/config", get(auth::config))
         .route("/auth/logout", post(auth::logout))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())

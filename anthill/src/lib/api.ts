@@ -55,6 +55,8 @@ export interface AuthUser {
 
 export const authApi = {
   me: (): Promise<AuthUser> => get<AuthUser>(`${BASE}/auth/me`),
+  config: (): Promise<{ auth_required: boolean }> =>
+    get<{ auth_required: boolean }>(`${BASE}/auth/config`),
   logout: (): Promise<void> =>
     fetch(`${BASE}/auth/logout`, {
       method: "POST",
