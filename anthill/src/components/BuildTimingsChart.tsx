@@ -31,10 +31,10 @@ function pillOpacity(heat: number, tier: Tier): number {
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const ROW_H = 20;
-const ROW_GAP = 4;
+const ROW_H = 24;
+const ROW_GAP = 8;
 const PILL_H = 3;
-const BAR_GAP = 6; // horizontal gap between dependent bars
+const BAR_GAP = 16; // horizontal gap between dependent bars
 const LEFT_PAD = 16;
 const TOP_PAD = 28;
 const BOT_PAD = 16;
@@ -148,7 +148,8 @@ function computeRows(topo: CrateTopo[], heat: Record<string, number>): Row[] {
     name: c.name,
     heat: heat[c.name] ?? 0,
     tier: getTier(heat[c.name] ?? 0),
-    barX: LEFT_PAD + (alapStart.get(c.name) ?? 0),
+    // Mirror x so consumers are on the left, foundations on the right.
+    barX: LEFT_PAD + (totalSpan - (alapFinish.get(c.name) ?? 0)),
     y: TOP_PAD + laneOf.get(c.name)! * (ROW_H + ROW_GAP),
   }));
 }
@@ -301,7 +302,7 @@ export function BuildTimingsChart({
           fontWeight={600}
           style={{ letterSpacing: "0.6px" }}
         >
-          ← FOUNDATIONS · · · CONSUMERS →
+          ← CONSUMERS · · · FOUNDATIONS →
         </text>
 
         {/* Rows */}
