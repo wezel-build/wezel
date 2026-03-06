@@ -130,9 +130,9 @@ function computeRows(topo: CrateTopo[], heat: Record<string, number>): Row[] {
     alapStart.set(name, finish - barW(name));
   }
 
-  // One row per crate, sorted by ALAP start (consumers left → foundations right).
+  // One row per crate. Consumers (late ALAP start) at the top, foundations at the bottom.
   const sorted = [...internal].sort(
-    (a, b) => (alapStart.get(a.name) ?? 0) - (alapStart.get(b.name) ?? 0),
+    (a, b) => (alapStart.get(b.name) ?? 0) - (alapStart.get(a.name) ?? 0),
   );
 
   return sorted.map((c, i) => ({
