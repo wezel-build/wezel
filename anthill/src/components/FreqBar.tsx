@@ -1,38 +1,23 @@
 import { useTheme } from "../lib/theme";
-import { MONO } from "../lib/format";
 
 export function FreqBar({ value, max }: { value: number; max: number }) {
   const { C } = useTheme();
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   const col = pct >= 70 ? C.red : pct >= 40 ? C.amber : C.accent;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div className="flex items-center gap-[6px]">
       <div
-        style={{
-          flex: 1,
-          height: 4,
-          background: C.surface3,
-          borderRadius: 2,
-          overflow: "hidden",
-        }}
+        className="flex-1 h-[4px] rounded-sm overflow-hidden"
+        style={{ background: C.surface3 }}
       >
         <div
-          style={{
-            width: `${pct}%`,
-            height: "100%",
-            background: col,
-            borderRadius: 2,
-          }}
+          className="h-full rounded-sm"
+          style={{ width: `${pct}%`, background: col }}
         />
       </div>
       <span
-        style={{
-          fontSize: 10,
-          color: col,
-          minWidth: 24,
-          textAlign: "right",
-          fontFamily: MONO,
-        }}
+        className="text-[10px] font-mono min-w-[24px] text-right"
+        style={{ color: col }}
       >
         {value}
       </span>

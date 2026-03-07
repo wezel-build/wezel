@@ -1,5 +1,5 @@
 import { useTheme } from "../lib/theme";
-import { MONO, fmtMs } from "../lib/format";
+import { fmtMs } from "../lib/format";
 import { Stat } from "./Stat";
 import type { Scenario, Run } from "../lib/data";
 
@@ -58,17 +58,9 @@ export function Summary({
   const dash = "—";
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        fontSize: 11,
-        minWidth: 170,
-      }}
-    >
+    <div className="flex flex-col gap-[12px] text-[11px] min-w-[170px]">
       {/* Metrics */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="flex flex-col gap-[8px]">
         <Stat
           label="Avg build"
           value={n > 0 ? fmtMs(avg) : dash}
@@ -83,9 +75,9 @@ export function Summary({
         <Stat label="p90" value={n > 0 ? fmtMs(p90) : dash} color={C.red} />
       </div>
 
-      <div style={{ height: 1, background: C.border }} />
+      <div className="h-[1px]" style={{ background: C.border }} />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="flex flex-col gap-[8px]">
         <Stat
           label="Total time"
           value={n > 0 ? fmtMs(sum, true) : dash}
@@ -112,7 +104,7 @@ export function Summary({
         selectedRuns[0].platform &&
         selectedRuns.every((r) => r.platform === selectedRuns[0].platform) && (
           <>
-            <div style={{ height: 1, background: C.border }} />
+            <div className="h-[1px]" style={{ background: C.border }} />
             <Stat
               label="Platform"
               value={selectedRuns[0].platform}
@@ -121,60 +113,37 @@ export function Summary({
           </>
         )}
 
-      <div style={{ height: 1, background: C.border }} />
+      <div className="h-[1px]" style={{ background: C.border }} />
 
       {/* Hottest crates */}
       <div>
         <div
-          style={{
-            fontSize: 9,
-            fontWeight: 700,
-            color: C.textDim,
-            letterSpacing: 0.8,
-            textTransform: "uppercase",
-            marginBottom: 6,
-          }}
+          className="text-[9px] font-bold uppercase tracking-[0.8px] mb-[6px]"
+          style={{ color: C.textDim }}
         >
           Rebuild frequency
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        <div className="flex flex-col gap-[3px]">
           {hotCrates.map((c) => {
             const col = heatColor(c.heat);
             return (
               <div
                 key={c.name}
+                className="flex items-center gap-[6px] py-[3px] px-[6px] rounded-[3px]"
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "3px 6px",
-                  borderRadius: 3,
                   background: col.bg,
                   border: `1px solid ${col.border}33`,
                 }}
               >
                 <span
-                  style={{
-                    fontSize: 10,
-                    fontFamily: MONO,
-                    color: col.text,
-                    flex: 1,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
+                  className="text-[10px] font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+                  style={{ color: col.text }}
                 >
                   {c.name}
                 </span>
                 <span
-                  style={{
-                    fontSize: 9,
-                    fontFamily: MONO,
-                    color: col.border,
-                    fontWeight: 700,
-                    minWidth: 28,
-                    textAlign: "right",
-                  }}
+                  className="text-[9px] font-mono font-bold min-w-[28px] text-right"
+                  style={{ color: col.border }}
                 >
                   {c.heat}%
                 </span>

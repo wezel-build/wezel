@@ -271,13 +271,10 @@ export function BuildTimingsChart({
 
   return (
     <div
+      className="w-full h-full overflow-auto rounded"
       style={{
-        width: "100%",
-        height: "100%",
-        overflow: "auto",
         background: bg,
         border: `1px solid ${border}`,
-        borderRadius: 4,
       }}
       onMouseLeave={() => setHoveredCrate(null)}
     >

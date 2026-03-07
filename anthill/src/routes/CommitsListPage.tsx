@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { GitCommit } from "lucide-react";
 import { useCommits } from "../lib/hooks";
 import { useTheme } from "../lib/theme";
-import { MONO, fmtTime } from "../lib/format";
+import { fmtTime } from "../lib/format";
 import { Badge } from "../components/Badge";
 import { useProject } from "../lib/useProject";
 
@@ -26,127 +26,55 @@ function statusBadge(
   return { color: C.textDim, bg: C.surface3, label: "not started" };
 }
 
+const GRID = "grid grid-cols-[16px_74px_1fr_130px_86px_78px_104px] gap-[8px]";
+
 export default function CommitsListPage() {
   const { C } = useTheme();
   const { commits, loading, error } = useCommits();
   const { current } = useProject();
 
   return (
-    <div
-      style={{
-        flex: 1,
-        overflowY: "auto",
-        background: C.bg,
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 900,
-          margin: "0 auto",
-          padding: 16,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            border: `1px solid ${C.border}`,
-            borderRadius: 6,
-            background: C.surface,
-            padding: "10px 12px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div className="flex-1 overflow-y-auto bg-bg">
+      <div className="max-w-[900px] mx-auto p-[16px] flex flex-col gap-[12px]">
+        <div className="flex items-center justify-between border border-[var(--c-border)] rounded-md bg-surface px-[12px] py-[10px]">
+          <div className="flex items-center gap-[8px]">
             <GitCommit size={14} color={C.accent} />
-            <span
-              style={{
-                fontSize: 12,
-                fontFamily: MONO,
-                color: C.accent,
-                fontWeight: 700,
-                letterSpacing: 0.4,
-                textTransform: "uppercase",
-              }}
-            >
+            <span className="text-xs font-mono text-accent font-bold tracking-[0.4px] uppercase">
               Commits
             </span>
           </div>
-          <span style={{ fontSize: 10, color: C.textDim, fontFamily: MONO }}>
+          <span className="text-[10px] text-dim font-mono">
             {commits.length} total
           </span>
         </div>
 
-        <div
-          style={{
-            border: `1px solid ${C.border}`,
-            borderRadius: 6,
-            overflow: "hidden",
-            background: C.surface,
-          }}
-        >
+        <div className="border border-[var(--c-border)] rounded-md overflow-hidden bg-surface">
           <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "16px 74px 1fr 130px 86px 78px 104px",
-              gap: 8,
-              padding: "6px 12px",
-              fontSize: 8,
-              fontWeight: 700,
-              color: C.textDim,
-              textTransform: "uppercase",
-              letterSpacing: 0.8,
-              borderBottom: `1px solid ${C.border}`,
-              background: C.surface2,
-            }}
+            className={`${GRID} px-[12px] py-[6px] text-[8px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2`}
           >
             <span />
             <span>Commit</span>
             <span>Message</span>
             <span>Author</span>
             <span>Time</span>
-            <span style={{ textAlign: "right" }}>Measures</span>
+            <span className="text-right">Measures</span>
             <span>Status</span>
           </div>
 
           {loading && (
-            <div
-              style={{
-                padding: "18px 12px",
-                fontSize: 11,
-                color: C.textDim,
-                fontFamily: MONO,
-              }}
-            >
+            <div className="px-[12px] py-[18px] text-[11px] text-dim font-mono">
               loading commits…
             </div>
           )}
 
           {error && !loading && (
-            <div
-              style={{
-                padding: "18px 12px",
-                fontSize: 11,
-                color: C.red,
-                fontFamily: MONO,
-              }}
-            >
+            <div className="px-[12px] py-[18px] text-[11px] text-c-red font-mono">
               failed to load commits: {error}
             </div>
           )}
 
           {!loading && !error && commits.length === 0 && (
-            <div
-              style={{
-                padding: "18px 12px",
-                fontSize: 11,
-                color: C.textDim,
-                fontFamily: MONO,
-              }}
-            >
+            <div className="px-[12px] py-[18px] text-[11px] text-dim font-mono">
               no commits yet
             </div>
           )}
@@ -163,65 +91,31 @@ export default function CommitsListPage() {
                       ? `/project/${current.id}/commit/${c.shortSha}`
                       : "/"
                   }
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "16px 74px 1fr 130px 86px 78px 104px",
-                    gap: 8,
-                    padding: "7px 12px",
-                    alignItems: "center",
-                    textDecoration: "none",
-                    color: C.text,
-                    borderBottom: `1px solid ${C.border}`,
-                  }}
+                  className={`${GRID} px-[12px] py-[7px] items-center no-underline text-fg border-b border-[var(--c-border)]`}
                 >
                   <span
+                    className="w-[8px] h-[8px] rounded-full shrink-0"
                     style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 999,
                       background: statusDot(c.status, C),
                       boxShadow: `0 0 0 1px ${C.border}`,
                     }}
                   />
-                  <span
-                    style={{
-                      fontFamily: MONO,
-                      color: C.pink,
-                      fontSize: 11,
-                      fontWeight: 600,
-                    }}
-                  >
+                  <span className="font-mono text-c-pink text-[11px] font-semibold">
                     {c.shortSha}
                   </span>
                   <span
                     title={c.message}
-                    style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: 12,
-                    }}
+                    className="overflow-hidden text-ellipsis whitespace-nowrap text-xs"
                   >
                     {c.message}
                   </span>
-                  <span
-                    style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: 11,
-                      color: C.cyan,
-                      fontFamily: MONO,
-                    }}
-                  >
+                  <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-c-cyan font-mono">
                     {c.author}
                   </span>
-                  <span
-                    style={{ fontSize: 10, color: C.textDim, fontFamily: MONO }}
-                  >
+                  <span className="text-[10px] text-dim font-mono">
                     {fmtTime(c.timestamp)}
                   </span>
-                  <span style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <span className="flex justify-end">
                     <Badge color={C.textMid} bg={C.surface2}>
                       {c.measurements.length}
                     </Badge>

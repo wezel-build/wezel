@@ -1,6 +1,5 @@
 import { Search, X } from "lucide-react";
 import { useTheme } from "../lib/theme";
-import { MONO } from "../lib/format";
 import { useUsers } from "../lib/hooks";
 
 export function FilterBar({
@@ -21,28 +20,11 @@ export function FilterBar({
   const { C } = useTheme();
   const { users } = useUsers();
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "6px 0",
-        fontSize: 11,
-        flexWrap: "wrap",
-      }}
-    >
+    <div className="flex items-center gap-[8px] py-[6px] text-[11px] flex-wrap">
       {/* Search */}
       <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          background: C.surface2,
-          border: `1px solid ${C.border}`,
-          borderRadius: 4,
-          padding: "3px 8px",
-          minWidth: 180,
-        }}
+        className="flex items-center gap-[4px] rounded px-[8px] py-[3px] min-w-[180px] border border-[var(--c-border)]"
+        style={{ background: C.surface2 }}
       >
         <Search size={12} color={C.textDim} />
         <input
@@ -50,26 +32,12 @@ export function FilterBar({
           value={search}
           onChange={(e) => onSearch(e.target.value)}
           placeholder="filter commands…"
-          style={{
-            background: "transparent",
-            border: "none",
-            outline: "none",
-            color: C.text,
-            fontSize: 11,
-            fontFamily: MONO,
-            width: "100%",
-          }}
+          className="bg-transparent border-none outline-none text-[11px] font-mono w-full text-fg"
         />
         {search && (
           <button
             onClick={() => onSearch("")}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-              display: "flex",
-            }}
+            className="bg-transparent border-none cursor-pointer p-0 flex"
           >
             <X size={11} color={C.textDim} />
           </button>
@@ -77,14 +45,10 @@ export function FilterBar({
       </div>
 
       {/* User filter */}
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <div className="flex items-center gap-[4px]">
         <span
-          style={{
-            color: C.textDim,
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: 0.5,
-          }}
+          className="text-[10px] font-semibold tracking-[0.5px]"
+          style={{ color: C.textDim }}
         >
           USER
         </span>
@@ -98,17 +62,13 @@ export function FilterBar({
                   : [...userFilter, u],
               )
             }
+            className="rounded-[3px] py-[2px] px-[7px] cursor-pointer text-[10px] font-mono border"
             style={{
               background: userFilter.includes(u)
                 ? C.accent + "22"
                 : "transparent",
-              border: `1px solid ${userFilter.includes(u) ? C.accent : C.border}`,
-              borderRadius: 3,
-              padding: "2px 7px",
-              cursor: "pointer",
+              borderColor: userFilter.includes(u) ? C.accent : C.border,
               color: userFilter.includes(u) ? C.accent : C.textMid,
-              fontSize: 10,
-              fontFamily: MONO,
             }}
           >
             {u}
@@ -117,14 +77,10 @@ export function FilterBar({
       </div>
 
       {/* Profile filter */}
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <div className="flex items-center gap-[4px]">
         <span
-          style={{
-            color: C.textDim,
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: 0.5,
-          }}
+          className="text-[10px] font-semibold tracking-[0.5px]"
+          style={{ color: C.textDim }}
         >
           PROFILE
         </span>
@@ -132,16 +88,11 @@ export function FilterBar({
           <button
             key={p}
             onClick={() => onProfileFilter(profileFilter === p ? null : p)}
+            className="rounded-[3px] py-[2px] px-[7px] cursor-pointer text-[10px] font-mono uppercase border"
             style={{
               background: profileFilter === p ? C.accent + "22" : "transparent",
-              border: `1px solid ${profileFilter === p ? C.accent : C.border}`,
-              borderRadius: 3,
-              padding: "2px 7px",
-              cursor: "pointer",
+              borderColor: profileFilter === p ? C.accent : C.border,
               color: profileFilter === p ? C.accent : C.textMid,
-              fontSize: 10,
-              fontFamily: MONO,
-              textTransform: "uppercase",
             }}
           >
             {p}

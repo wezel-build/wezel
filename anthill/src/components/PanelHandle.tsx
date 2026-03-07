@@ -16,23 +16,12 @@ export function PanelHandle({ onDrag }: { onDrag: (delta: number) => void }) {
       onMouseDown={onMouseDown}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{
-        width: 6,
-        flexShrink: 0,
-        cursor: "col-resize",
-        display: "flex",
-        justifyContent: "center",
-        background: hover ? C.accent + "22" : "transparent",
-        transition: "background 0.1s",
-      }}
+      className="w-[6px] shrink-0 cursor-col-resize flex justify-center transition-colors duration-100"
+      style={{ background: hover ? C.accent + "22" : "transparent" }}
     >
       <div
-        style={{
-          width: 1,
-          height: "100%",
-          background: hover ? C.accent : C.border,
-          transition: "background 0.1s",
-        }}
+        className="w-[1px] h-full transition-colors duration-100"
+        style={{ background: hover ? C.accent : C.border }}
       />
     </div>
   );

@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { useTheme } from "../lib/theme";
-import { MONO } from "../lib/format";
 import { computeHeat } from "../lib/data";
 import { useScenario } from "../lib/hooks";
 import { Badge } from "./Badge";
@@ -307,69 +306,28 @@ export function DetailView({
   if (error) {
     return (
       <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-          color: C.red ?? "#e55",
-          fontSize: 11,
-          fontFamily: MONO,
-          gap: 6,
-        }}
+        className="flex items-center justify-center h-full text-[11px] font-mono gap-[6px]"
+        style={{ color: C.red ?? "#e55" }}
       >
-        <span style={{ fontWeight: 700 }}>error:</span> {error}
+        <span className="font-bold">error:</span> {error}
       </div>
     );
   }
 
   if (loading || !scenario) {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-          color: C.textDim,
-          fontSize: 11,
-          fontFamily: MONO,
-        }}
-      >
+      <div className="flex items-center justify-center h-full text-dim text-[11px] font-mono">
         loading…
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        gap: 8,
-      }}
-    >
+    <div className="flex flex-col h-full gap-[8px]">
       {/* Header row */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: C.text,
-              fontFamily: MONO,
-            }}
-          >
+      <div className="flex items-center justify-between gap-[12px] flex-wrap shrink-0">
+        <div className="flex items-center gap-[8px]">
+          <span className="text-[13px] font-semibold text-fg font-mono">
             {scenario.name}
           </span>
           <Badge
@@ -384,34 +342,17 @@ export function DetailView({
             </Badge>
           )}
           {scenario.pinned && (
-            <span style={{ fontSize: 10, color: C.accent }}>📌 tracked</span>
+            <span className="text-[10px] text-accent">📌 tracked</span>
           )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="flex items-center gap-[12px]">
           <label
+            className="flex items-center gap-[5px] bg-surface2 rounded py-[3px] px-2 text-[10px] font-mono text-dim cursor-text transition-colors duration-150"
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              background: C.surface2,
               border: `1px solid ${threshold > 0 ? C.accent + "55" : C.border}`,
-              borderRadius: 4,
-              padding: "3px 8px",
-              fontSize: 10,
-              fontFamily: MONO,
-              color: C.textDim,
-              cursor: "text",
-              transition: "border-color 0.15s",
             }}
           >
-            <span
-              style={{
-                fontWeight: 600,
-                letterSpacing: 0.5,
-                textTransform: "uppercase",
-                fontSize: 9,
-              }}
-            >
+            <span className="font-semibold tracking-[0.5px] uppercase text-[9px]">
               threshold
             </span>
             <input
@@ -424,17 +365,9 @@ export function DetailView({
                   Math.max(0, Math.min(100, Number(e.target.value) || 0)),
                 )
               }
+              className="w-[28px] bg-transparent border-none text-[11px] font-mono font-semibold text-right outline-none p-0"
               style={{
-                width: 28,
-                background: "transparent",
-                border: "none",
                 color: threshold > 0 ? C.accent : C.textMid,
-                fontSize: 11,
-                fontFamily: MONO,
-                fontWeight: 600,
-                textAlign: "right",
-                outline: "none",
-                padding: 0,
                 MozAppearance: "textfield",
               }}
             />
@@ -447,77 +380,40 @@ export function DetailView({
       </div>
 
       {/* Body: runs list | graph | summary */}
-      <div style={{ flex: 1, display: "flex", gap: 0, minHeight: 0 }}>
+      <div className="flex flex-1 min-h-0">
         {/* Run list */}
         <div
-          style={{
-            width: runsWidth,
-            flexShrink: 0,
-            height: "100%",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-          }}
+          className="shrink-0 h-full overflow-hidden flex flex-col"
+          style={{ width: runsWidth }}
         >
           {/* Crate filter pill */}
           {crateFilter && (
-            <div
-              style={{
-                padding: "4px 8px",
-                borderBottom: `1px solid ${C.border}`,
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                flexShrink: 0,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 8,
-                  color: C.textDim,
-                  fontWeight: 700,
-                  letterSpacing: 0.5,
-                  textTransform: "uppercase",
-                }}
-              >
+            <div className="py-1 px-2 border-b border-[var(--c-border)] flex items-center gap-[5px] shrink-0">
+              <span className="text-[8px] text-dim font-bold tracking-[0.5px] uppercase">
                 crate
               </span>
               <span
+                className="inline-flex items-center gap-[3px] text-[10px] font-mono font-semibold text-accent rounded-[3px]"
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                  fontSize: 10,
-                  fontFamily: MONO,
-                  fontWeight: 600,
-                  color: C.accent,
                   background: C.accent + "18",
                   border: `1px solid ${C.accent}44`,
-                  borderRadius: 3,
                   padding: "1px 4px 1px 6px",
                 }}
               >
                 {crateFilter}
                 <button
                   onClick={() => setCrateFilter(null)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                    display: "flex",
-                    color: C.accent,
-                  }}
+                  className="bg-transparent border-none cursor-pointer p-0 flex text-accent"
                 >
                   <X size={9} />
                 </button>
               </span>
-              <span style={{ fontSize: 9, color: C.textDim, fontFamily: MONO }}>
+              <span className="text-[9px] text-dim font-mono">
                 {displayedRuns.length}/{scenario.runs.length}
               </span>
             </div>
           )}
-          <div style={{ flex: 1, overflow: "hidden" }}>
+          <div className="flex-1 overflow-hidden">
             <RunList
               runs={displayedRuns}
               selectedIndices={displayedSelectedIndices}
@@ -534,14 +430,7 @@ export function DetailView({
         />
 
         {/* Graph */}
-        <div
-          style={{
-            flex: 1,
-            borderRadius: 0,
-            overflow: "hidden",
-            background: C.bg,
-          }}
-        >
+        <div className="flex-1 overflow-hidden bg-bg">
           <BuildTimingsChart
             topo={filteredGraph}
             heat={heat}
@@ -561,12 +450,8 @@ export function DetailView({
         />
         {/* Summary sidebar */}
         <div
-          style={{
-            width: summaryWidth,
-            overflowY: "auto",
-            padding: "8px 10px",
-            flexShrink: 0,
-          }}
+          className="overflow-y-auto py-2 px-[10px] shrink-0"
+          style={{ width: summaryWidth }}
         >
           <Summary
             scenario={scenario}

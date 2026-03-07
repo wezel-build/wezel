@@ -1,5 +1,4 @@
 import { useTheme } from "../lib/theme";
-import { MONO } from "../lib/format";
 
 export function HeatLegend() {
   const { C, heatColor } = useTheme();
@@ -12,36 +11,17 @@ export function HeatLegend() {
   ];
   return (
     <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        fontSize: 9,
-        color: C.textDim,
-        fontFamily: MONO,
-      }}
+      className="flex items-center gap-[10px] text-[9px] font-mono"
+      style={{ color: C.textDim }}
     >
-      <span
-        style={{
-          fontWeight: 700,
-          letterSpacing: 0.5,
-          textTransform: "uppercase",
-        }}
-      >
-        rebuild freq
-      </span>
+      <span className="font-bold tracking-[0.5px] uppercase">rebuild freq</span>
       {stops.map((s) => {
         const c = heatColor(s.heat);
         return (
-          <div
-            key={s.label}
-            style={{ display: "flex", alignItems: "center", gap: 3 }}
-          >
+          <div key={s.label} className="flex items-center gap-[3px]">
             <div
+              className="w-[8px] h-[8px] rounded-sm"
               style={{
-                width: 8,
-                height: 8,
-                borderRadius: 2,
                 background: c.bg,
                 border: `1.5px solid ${c.border}`,
               }}

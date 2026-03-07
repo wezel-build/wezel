@@ -20,7 +20,7 @@ import {
   Play,
 } from "lucide-react";
 import { useTheme } from "../lib/theme";
-import { MONO, fmtValue, fmtTime } from "../lib/format";
+import { fmtValue, fmtTime } from "../lib/format";
 import {
   type ForagerCommit,
   type Measurement,
@@ -54,7 +54,7 @@ function StatusIcon({
     case "pending":
       return <Clock size={14} color={C.textDim} />;
     case "not-started":
-      return <Circle size={14} color={C.textDim} style={{ opacity: 0.4 }} />;
+      return <Circle size={14} color={C.textDim} className="opacity-40" />;
     case "failed":
       return <AlertCircle size={14} color={C.red} />;
   }
@@ -88,16 +88,8 @@ function ProgressBar({
   const pct = (n: number) => `${(n / total) * 100}%`;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <div
-        style={{
-          display: "flex",
-          height: 6,
-          borderRadius: 3,
-          overflow: "hidden",
-          background: C.surface3,
-        }}
-      >
+    <div className="flex flex-col gap-[4px]">
+      <div className="flex h-[6px] rounded-[3px] overflow-hidden bg-surface3">
         <div
           style={{
             width: pct(complete),
@@ -120,15 +112,7 @@ function ProgressBar({
           }}
         />
       </div>
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          fontSize: 9,
-          color: C.textDim,
-          fontFamily: MONO,
-        }}
-      >
+      <div className="flex gap-[10px] text-[9px] text-dim font-mono">
         <span>
           {complete}/{total} complete
         </span>
@@ -158,6 +142,7 @@ function MeasurementRow({
   commitSha: string;
   navigate: NavigateFunction;
 }) {
+  const [hovered, setHovered] = useState(false);
   const hasDelta =
     m.status === "complete" && m.value != null && m.prevValue != null;
   const isDone = m.status === "complete" && m.value != null;
@@ -171,42 +156,17 @@ function MeasurementRow({
               navigate(`/project/${projectId}/commit/${commitSha}/m/${m.id}`)
           : undefined
       }
+      className={`grid grid-cols-[18px_1fr_70px_56px_110px] gap-[8px] px-[12px] py-[8px] items-center border-b border-[var(--c-border)] text-[11px] font-mono ${hasDetail ? "cursor-pointer" : "cursor-default"}`}
       style={{
-        display: "grid",
-        gridTemplateColumns: "18px 1fr 70px 56px 110px",
-        gap: 8,
-        padding: "8px 12px",
-        alignItems: "center",
-        borderBottom: `1px solid ${C.border}`,
-        fontSize: 11,
-        fontFamily: MONO,
-        cursor: hasDetail ? "pointer" : "default",
+        background: hovered && hasDetail ? C.surface2 : "transparent",
       }}
-      onMouseEnter={(e) => {
-        if (hasDetail) e.currentTarget.style.background = C.surface2;
-      }}
-      onMouseLeave={(e) => {
-        if (hasDetail) e.currentTarget.style.background = "transparent";
-      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <StatusIcon status={m.status} C={C} />
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          overflow: "hidden",
-        }}
-      >
-        <span
-          style={{
-            color: C.text,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
+      <div className="flex items-center gap-[6px] overflow-hidden">
+        <span className="text-fg overflow-hidden text-ellipsis whitespace-nowrap">
           {m.name}
         </span>
         <Badge color={C.textDim} bg={C.surface3}>
@@ -215,12 +175,13 @@ function MeasurementRow({
       </div>
 
       <span
-        style={{ color: isDone ? C.textMid : C.textDim, textAlign: "right" }}
+        className="text-right"
+        style={{ color: isDone ? C.textMid : C.textDim }}
       >
         {isDone ? fmtValue(m.value!, m.unit) : statusLabel(m.status)}
       </span>
 
-      <span style={{ color: C.textDim, fontSize: 9 }}>
+      <span className="text-dim text-[9px]">
         {isDone && m.unit ? m.unit : ""}
       </span>
 
@@ -232,7 +193,7 @@ function MeasurementRow({
             unit={m.unit}
           />
         ) : (
-          <span style={{ color: C.textDim, fontSize: 10 }}>—</span>
+          <span className="text-dim text-[10px]">—</span>
         )}
       </span>
     </div>
@@ -282,35 +243,11 @@ function CommitHeader({
   ).length;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        padding: "16px 20px",
-        background: C.surface,
-        borderBottom: `1px solid ${C.border}`,
-        borderRadius: "6px 6px 0 0",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div className="flex flex-col gap-[12px] px-[20px] py-[16px] bg-surface border-b border-[var(--c-border)] rounded-t-md">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-[8px]">
           <GitCommit size={16} color={C.accent} />
-          <span
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              fontFamily: MONO,
-              color: C.accent,
-              letterSpacing: -0.3,
-            }}
-          >
+          <span className="text-sm font-bold font-mono text-accent tracking-[-0.3px]">
             {commit.shortSha}
           </span>
           <Badge
@@ -330,16 +267,16 @@ function CommitHeader({
                 : "complete"}
           </Badge>
         </div>
-        <span style={{ fontSize: 10, fontFamily: MONO, color: C.textDim }}>
+        <span className="text-[10px] font-mono text-dim">
           {fmtTime(commit.timestamp)}
         </span>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>
+      <div className="flex flex-col gap-[4px]">
+        <span className="text-[13px] text-fg font-medium">
           {commit.message}
         </span>
-        <span style={{ fontSize: 10, color: C.textDim, fontFamily: MONO }}>
+        <span className="text-[10px] text-dim font-mono">
           by {commit.author}
         </span>
       </div>
@@ -347,36 +284,14 @@ function CommitHeader({
       {isRunning && <ProgressBar measurements={commit.measurements} C={C} />}
 
       {commit.status === "complete" && (
-        <div
-          style={{
-            display: "flex",
-            gap: 20,
-            alignItems: "flex-end",
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="flex gap-[20px] items-end flex-wrap">
           {totalMs != null && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <span
-                style={{
-                  fontSize: 9,
-                  color: C.textDim,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
-                  fontWeight: 600,
-                }}
-              >
+            <div className="flex flex-col gap-[1px]">
+              <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
                 Σ timed measurements
               </span>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 700,
-                    fontFamily: MONO,
-                    color: C.text,
-                  }}
-                >
+              <div className="flex items-center gap-[8px]">
+                <span className="text-lg font-bold font-mono text-fg">
                   {fmtValue(totalMs, "ms")}
                 </span>
                 {totalPrevMs != null && (
@@ -390,50 +305,26 @@ function CommitHeader({
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <span
-              style={{
-                fontSize: 9,
-                color: C.textDim,
-                textTransform: "uppercase",
-                letterSpacing: 0.8,
-                fontWeight: 600,
-              }}
-            >
+          <div className="flex flex-col gap-[1px]">
+            <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
               Measurements
             </span>
             <span
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                fontFamily: MONO,
-                color: C.pink,
-              }}
+              className="text-lg font-bold font-mono"
+              style={{ color: C.pink }}
             >
               {commit.measurements.length}
             </span>
           </div>
 
           {regressions > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <span
-                style={{
-                  fontSize: 9,
-                  color: C.textDim,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
-                  fontWeight: 600,
-                }}
-              >
+            <div className="flex flex-col gap-[1px]">
+              <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
                 Regressions
               </span>
               <span
-                style={{
-                  fontSize: 18,
-                  fontWeight: 700,
-                  fontFamily: MONO,
-                  color: C.red,
-                }}
+                className="text-lg font-bold font-mono"
+                style={{ color: C.red }}
               >
                 {regressions}
               </span>
@@ -441,25 +332,13 @@ function CommitHeader({
           )}
 
           {improvements > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <span
-                style={{
-                  fontSize: 9,
-                  color: C.textDim,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
-                  fontWeight: 600,
-                }}
-              >
+            <div className="flex flex-col gap-[1px]">
+              <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
                 Improvements
               </span>
               <span
-                style={{
-                  fontSize: 18,
-                  fontWeight: 700,
-                  fontFamily: MONO,
-                  color: C.green,
-                }}
+                className="text-lg font-bold font-mono"
+                style={{ color: C.green }}
               >
                 {improvements}
               </span>
@@ -572,28 +451,13 @@ export default function CommitPage() {
 
   if (!commit && !githubCommit && !ghLoading) {
     return (
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 12,
-          color: C.textDim,
-        }}
-      >
-        <span style={{ fontSize: 14, fontFamily: MONO }}>
+      <div className="flex-1 flex flex-col items-center justify-center gap-[12px] text-dim">
+        <span className="text-sm font-mono">
           commit <span style={{ color: C.red }}>{sha}</span> not found
         </span>
         <Link
           to={toProjectHome}
-          style={{
-            color: C.accent,
-            fontSize: 11,
-            fontFamily: MONO,
-            textDecoration: "none",
-          }}
+          className="text-accent text-[11px] font-mono no-underline"
         >
           ← back to scenarios
         </Link>
@@ -602,61 +466,20 @@ export default function CommitPage() {
   }
 
   return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "6px 16px",
-          borderBottom: `1px solid ${C.border}`,
-          flexShrink: 0,
-        }}
-      >
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-[16px] py-[6px] border-b border-[var(--c-border)] shrink-0">
         <button
           onClick={() => navigate(toProjectHome)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            background: "none",
-            border: "none",
-            color: C.textMid,
-            fontSize: 10,
-            fontFamily: MONO,
-            cursor: "pointer",
-            padding: "2px 0",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = C.accent)}
-          onMouseLeave={(e) => (e.currentTarget.style.color = C.textMid)}
+          className="flex items-center gap-[4px] bg-transparent border-0 text-mid hover:text-accent text-[10px] font-mono cursor-pointer p-0"
         >
           <ArrowLeft size={12} /> scenarios
         </button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div className="flex items-center gap-[6px]">
           {prevCommit && (
             <button
               onClick={() => navigate(toCommit(prevCommit.shortSha))}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 3,
-                background: C.surface2,
-                border: `1px solid ${C.border}`,
-                borderRadius: 3,
-                padding: "2px 8px",
-                cursor: "pointer",
-                color: C.textMid,
-                fontSize: 10,
-                fontFamily: MONO,
-              }}
+              className="flex items-center gap-[3px] bg-surface2 border border-[var(--c-border)] rounded-[3px] px-[8px] py-[2px] cursor-pointer text-mid text-[10px] font-mono"
             >
               <ChevronLeft size={11} /> {prevCommit.shortSha}
             </button>
@@ -664,19 +487,7 @@ export default function CommitPage() {
           {nextCommit && (
             <button
               onClick={() => navigate(toCommit(nextCommit.shortSha))}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 3,
-                background: C.surface2,
-                border: `1px solid ${C.border}`,
-                borderRadius: 3,
-                padding: "2px 8px",
-                cursor: "pointer",
-                color: C.textMid,
-                fontSize: 10,
-                fontFamily: MONO,
-              }}
+              className="flex items-center gap-[3px] bg-surface2 border border-[var(--c-border)] rounded-[3px] px-[8px] py-[2px] cursor-pointer text-mid text-[10px] font-mono"
             >
               {nextCommit.shortSha} <ChevronRight size={11} />
             </button>
@@ -684,60 +495,28 @@ export default function CommitPage() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-        <div
-          style={{
-            maxWidth: 860,
-            margin: "0 auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
-          <div
-            style={{
-              border: `1px solid ${C.border}`,
-              borderRadius: 6,
-              background: C.surface,
-              padding: "12px 14px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="flex-1 overflow-y-auto p-[16px]">
+        <div className="max-w-[860px] mx-auto flex flex-col gap-[10px]">
+          <div className="border border-[var(--c-border)] rounded-md bg-surface px-[14px] py-[12px] flex flex-col gap-[8px]">
+            <div className="flex items-center gap-[8px]">
               <GitCommit size={14} color={C.accent} />
-              <span
-                style={{
-                  fontSize: 12,
-                  fontFamily: MONO,
-                  color: C.accent,
-                  fontWeight: 700,
-                }}
-              >
+              <span className="text-xs font-mono text-accent font-bold">
                 {githubCommit?.shortSha ?? commit?.shortSha ?? sha}
               </span>
             </div>
 
-            <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+            <div className="text-[13px] font-semibold text-fg">
               {messageTitle}
             </div>
 
             {messageBody && (
-              <div
-                style={{
-                  whiteSpace: "pre-wrap",
-                  color: C.textMid,
-                  fontSize: 12,
-                  lineHeight: 1.4,
-                }}
-              >
+              <div className="whitespace-pre-wrap text-mid text-xs leading-[1.4]">
                 {messageBody}
               </div>
             )}
 
             {(metaAuthor || metaTime) && (
-              <div style={{ fontSize: 10, fontFamily: MONO, color: C.textDim }}>
+              <div className="text-[10px] font-mono text-dim">
                 {metaAuthor ? `by ${metaAuthor}` : ""}
                 {metaAuthor && metaTime ? " · " : ""}
                 {metaTime ? fmtTime(metaTime) : ""}
@@ -745,36 +524,24 @@ export default function CommitPage() {
             )}
 
             {ghError && (
-              <div style={{ fontSize: 10, fontFamily: MONO, color: C.red }}>
+              <div className="text-[10px] font-mono text-c-red">
                 GitHub metadata unavailable: {ghError}
               </div>
             )}
 
             {ghLoading && (
-              <div style={{ fontSize: 10, fontFamily: MONO, color: C.textDim }}>
+              <div className="text-[10px] font-mono text-dim">
                 loading GitHub metadata…
               </div>
             )}
 
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="flex items-center gap-[8px]">
               {githubCommit?.htmlUrl && (
                 <a
                   href={githubCommit.htmlUrl}
                   target="_blank"
                   rel="noreferrer"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    textDecoration: "none",
-                    fontSize: 10,
-                    fontFamily: MONO,
-                    color: C.textMid,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: 4,
-                    padding: "4px 8px",
-                    background: C.surface2,
-                  }}
+                  className="inline-flex items-center gap-[6px] no-underline text-[10px] font-mono text-mid border border-[var(--c-border)] rounded px-[8px] py-[4px] bg-surface2"
                 >
                   <ExternalLink size={11} />
                   View diff on GitHub
@@ -784,17 +551,9 @@ export default function CommitPage() {
               <button
                 onClick={onSchedule}
                 disabled={scheduling || !targetSha}
+                className="inline-flex items-center gap-[6px] text-[10px] font-mono border border-[var(--c-border)] rounded px-[8px] py-[4px] bg-surface2"
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 10,
-                  fontFamily: MONO,
                   color: scheduling || !targetSha ? C.textDim : C.text,
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 4,
-                  padding: "4px 8px",
-                  background: C.surface2,
                   cursor: scheduling || !targetSha ? "default" : "pointer",
                 }}
               >
@@ -804,40 +563,20 @@ export default function CommitPage() {
             </div>
 
             {scheduleError && (
-              <div style={{ fontSize: 10, fontFamily: MONO, color: C.red }}>
+              <div className="text-[10px] font-mono text-c-red">
                 failed to schedule run: {scheduleError}
               </div>
             )}
           </div>
 
           {commit ? (
-            <div
-              style={{
-                border: `1px solid ${C.border}`,
-                borderRadius: 6,
-                overflow: "hidden",
-              }}
-            >
+            <div className="border border-[var(--c-border)] rounded-md overflow-hidden">
               <CommitHeader commit={commit} C={C} />
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "18px 1fr 70px 56px 110px",
-                  gap: 8,
-                  padding: "6px 12px",
-                  fontSize: 8,
-                  fontWeight: 700,
-                  color: C.textDim,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.8,
-                  borderBottom: `1px solid ${C.border}`,
-                  background: C.surface2,
-                }}
-              >
+              <div className="grid grid-cols-[18px_1fr_70px_56px_110px] gap-[8px] px-[12px] py-[6px] text-[8px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2">
                 <span />
                 <span>Measurement</span>
-                <span style={{ textAlign: "right" }}>Value</span>
+                <span className="text-right">Value</span>
                 <span>Unit</span>
                 <span>Δ prev</span>
               </div>
@@ -846,18 +585,7 @@ export default function CommitPage() {
                 <div key={kind}>
                   {grouped.length > 1 && (
                     <div
-                      style={{
-                        padding: "5px 12px",
-                        fontSize: 9,
-                        fontWeight: 700,
-                        fontFamily: MONO,
-                        color: C.textDim,
-                        textTransform: "uppercase",
-                        letterSpacing: 0.8,
-                        background: C.surface,
-                        borderBottom: `1px solid ${C.border}`,
-                        borderTop: gi > 0 ? `1px solid ${C.border}` : undefined,
-                      }}
+                      className={`px-[12px] py-[5px] text-[9px] font-bold font-mono text-dim uppercase tracking-[0.8px] bg-surface border-b border-[var(--c-border)]${gi > 0 ? " border-t border-[var(--c-border)]" : ""}`}
                     >
                       {kind}
                     </div>
@@ -876,24 +604,12 @@ export default function CommitPage() {
               ))}
             </div>
           ) : (
-            <div
-              style={{
-                border: `1px solid ${C.border}`,
-                borderRadius: 6,
-                background: C.surface,
-                padding: "14px 16px",
-                color: C.textDim,
-                fontSize: 11,
-                fontFamily: MONO,
-              }}
-            >
+            <div className="border border-[var(--c-border)] rounded-md bg-surface px-[16px] py-[14px] text-dim text-[11px] font-mono">
               No Forager measurements yet for this commit.
             </div>
           )}
         </div>
       </div>
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   );
 }

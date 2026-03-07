@@ -11,16 +11,11 @@ export function Badge({
 }) {
   return (
     <span
+      className="text-[10px] font-semibold tracking-[0.6px] py-[1px] px-[6px] rounded-[3px] uppercase border"
       style={{
-        fontSize: 10,
-        fontWeight: 600,
-        letterSpacing: 0.6,
-        padding: "1px 6px",
-        borderRadius: 3,
         background: bg,
         color,
-        border: `1px solid ${color}33`,
-        textTransform: "uppercase",
+        borderColor: color + "33",
       }}
     >
       {children}

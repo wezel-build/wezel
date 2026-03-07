@@ -10,7 +10,6 @@ import {
   LogOut,
 } from "lucide-react";
 import { ThemeCtx, THEMES, THEME_ORDER, type ThemeKey } from "./lib/theme";
-import { MONO, SANS } from "./lib/format";
 import { useOverview } from "./lib/hooks";
 import { useProject } from "./lib/useProject";
 import { useAuth } from "./lib/AuthContext";
@@ -31,6 +30,24 @@ export default function Shell() {
   const C = theme.C;
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--c-bg", C.bg);
+    root.style.setProperty("--c-surface", C.surface);
+    root.style.setProperty("--c-surface2", C.surface2);
+    root.style.setProperty("--c-surface3", C.surface3);
+    root.style.setProperty("--c-border", C.border);
+    root.style.setProperty("--c-text", C.text);
+    root.style.setProperty("--c-text-mid", C.textMid);
+    root.style.setProperty("--c-text-dim", C.textDim);
+    root.style.setProperty("--c-accent", C.accent);
+    root.style.setProperty("--c-green", C.green);
+    root.style.setProperty("--c-amber", C.amber);
+    root.style.setProperty("--c-red", C.red);
+    root.style.setProperty("--c-pink", C.pink);
+    root.style.setProperty("--c-cyan", C.cyan);
+  }, [C]);
 
   const { projects, current, setCurrent, loaded, renameProject } = useProject();
   const [projectOpen, setProjectOpen] = useState(false);
@@ -70,7 +87,6 @@ export default function Shell() {
     setEditingProjectId(null);
   }, []);
 
-  // Redirect to /new when loaded with no projects (and not already there)
   useEffect(() => {
     if (
       loaded &&
@@ -99,114 +115,42 @@ export default function Shell() {
 
   return (
     <ThemeCtx.Provider value={theme}>
-      <div
-        style={{
-          width: "100vw",
-          height: "100vh",
-          background: C.bg,
-          color: C.text,
-          fontFamily: SANS,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
+      <div className="w-screen h-screen bg-bg text-fg font-sans flex flex-col overflow-hidden">
         {/* ── Top bar ──────────────────────────────────────── */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            padding: "0 16px",
-            height: 40,
-            minHeight: 40,
-            borderBottom: `1px solid ${C.border}`,
-            background: C.surface,
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <Link
-              to="/"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                textDecoration: "none",
-              }}
-            >
+        <div className="flex items-center px-4 h-[40px] min-h-[40px] border-b border-[var(--c-border)] bg-surface justify-between">
+          <div className="flex items-center gap-[14px]">
+            <Link to="/" className="flex items-center gap-[8px] no-underline">
               <img src="/wezel.svg" width={18} height={18} alt="wezel" />
-              <span
-                style={{
-                  fontSize: 15,
-                  fontWeight: 800,
-                  color: C.accent,
-                  letterSpacing: -0.5,
-                }}
-              >
+              <span className="text-[15px] font-extrabold text-accent tracking-[-0.5px]">
                 wezel
               </span>
             </Link>
 
             {current && !onNewPage && (
               <>
-                <div style={{ width: 1, height: 16, background: C.border }} />
+                <div className="w-[1px] h-[16px] bg-[var(--c-border)]" />
                 {/* ── Project switcher ── */}
-                <div ref={dropRef} style={{ position: "relative" }}>
+                <div ref={dropRef} className="relative">
                   <button
                     onClick={() => setProjectOpen((o) => !o)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: 12,
-                      fontFamily: MONO,
-                      fontWeight: 600,
-                      color: C.text,
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                    }}
+                    className="flex items-center gap-[4px] bg-transparent border-none cursor-pointer text-xs font-mono font-semibold text-fg px-[6px] py-[2px] rounded"
                   >
                     {current.name}
                     <ChevronDown size={12} color={C.textDim} />
                   </button>
                   {projectOpen && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "calc(100% + 4px)",
-                        left: 0,
-                        background: C.surface,
-                        border: `1px solid ${C.border}`,
-                        borderRadius: 6,
-                        padding: "4px 0",
-                        zIndex: 100,
-                        minWidth: 200,
-                        boxShadow: "0 4px 12px rgba(0,0,0,.3)",
-                      }}
-                    >
+                    <div className="absolute top-[calc(100%+4px)] left-0 bg-surface border border-[var(--c-border)] rounded-md py-[4px] z-[100] min-w-[200px] shadow-[0_4px_12px_rgba(0,0,0,0.3)]">
                       {projects.map((p) => (
                         <div
                           key={p.id}
+                          className="flex items-center"
                           style={{
-                            display: "flex",
-                            alignItems: "center",
                             background:
                               p.id === current?.id ? C.surface2 : "transparent",
                           }}
                         >
                           {editingProjectId === p.id ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                                flex: 1,
-                                padding: "4px 8px 4px 12px",
-                              }}
-                            >
+                            <div className="flex items-center gap-[4px] flex-1 py-[4px] pr-[8px] pl-[12px]">
                               <input
                                 ref={renameInputRef}
                                 value={renameValue}
@@ -215,45 +159,19 @@ export default function Shell() {
                                   if (e.key === "Enter") commitRename(p.id);
                                   if (e.key === "Escape") cancelRename();
                                 }}
-                                style={{
-                                  flex: 1,
-                                  background: C.bg,
-                                  border: `1px solid ${C.accent}`,
-                                  borderRadius: 3,
-                                  color: C.text,
-                                  fontFamily: MONO,
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                  padding: "2px 5px",
-                                  outline: "none",
-                                  minWidth: 0,
-                                }}
+                                className="flex-1 bg-bg border border-[var(--c-accent)] rounded-[3px] text-fg font-mono text-xs font-semibold px-[5px] py-[2px] outline-none min-w-0"
                               />
                               <button
                                 onClick={() => commitRename(p.id)}
                                 title="Save"
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  color: C.accent,
-                                  padding: 2,
-                                  display: "flex",
-                                }}
+                                className="bg-transparent border-none cursor-pointer text-accent p-[2px] flex"
                               >
                                 <Check size={12} />
                               </button>
                               <button
                                 onClick={cancelRename}
                                 title="Cancel"
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  color: C.textDim,
-                                  padding: 2,
-                                  display: "flex",
-                                }}
+                                className="bg-transparent border-none cursor-pointer text-dim p-[2px] flex"
                               >
                                 <X size={12} />
                               </button>
@@ -266,28 +184,14 @@ export default function Shell() {
                                   setProjectOpen(false);
                                   navigate(`/project/${p.id}`);
                                 }}
+                                className="block flex-1 text-left bg-transparent border-none cursor-pointer py-[6px] pr-[8px] pl-[12px] font-mono text-xs"
                                 style={{
-                                  display: "block",
-                                  flex: 1,
-                                  textAlign: "left",
-                                  background: "transparent",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  padding: "6px 8px 6px 12px",
                                   color:
                                     p.id === current?.id ? C.accent : C.text,
-                                  fontFamily: MONO,
-                                  fontSize: 12,
                                 }}
                               >
-                                <div style={{ fontWeight: 600 }}>{p.name}</div>
-                                <div
-                                  style={{
-                                    fontSize: 10,
-                                    color: C.textDim,
-                                    marginTop: 1,
-                                  }}
-                                >
+                                <div className="font-semibold">{p.name}</div>
+                                <div className="text-[10px] text-dim mt-[1px]">
                                   {p.upstream}
                                 </div>
                               </button>
@@ -297,17 +201,7 @@ export default function Shell() {
                                   startRename(p);
                                 }}
                                 title="Rename"
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  color: C.textDim,
-                                  padding: "0 8px",
-                                  display: "flex",
-                                  alignSelf: "stretch",
-                                  alignItems: "center",
-                                  opacity: 0.6,
-                                }}
+                                className="bg-transparent border-none cursor-pointer text-dim px-[8px] flex self-stretch items-center opacity-60"
                               >
                                 <Pencil size={11} />
                               </button>
@@ -315,31 +209,13 @@ export default function Shell() {
                           )}
                         </div>
                       ))}
-                      <div
-                        style={{
-                          borderTop: `1px solid ${C.border}`,
-                          padding: "4px 0",
-                        }}
-                      >
+                      <div className="border-t border-[var(--c-border)] py-[4px]">
                         <button
                           onClick={() => {
                             setProjectOpen(false);
                             navigate("/projects/create");
                           }}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            width: "100%",
-                            textAlign: "left",
-                            background: "transparent",
-                            border: "none",
-                            cursor: "pointer",
-                            padding: "6px 12px",
-                            color: C.textDim,
-                            fontFamily: MONO,
-                            fontSize: 11,
-                          }}
+                          className="flex items-center gap-[6px] w-full text-left bg-transparent border-none cursor-pointer py-[6px] px-[12px] text-dim font-mono text-[11px]"
                         >
                           <Plus size={12} /> New project
                         </button>
@@ -347,56 +223,31 @@ export default function Shell() {
                     </div>
                   )}
                 </div>
-                <div style={{ width: 1, height: 16, background: C.border }} />
+                <div className="w-[1px] h-[16px] bg-[var(--c-border)]" />
                 <Link
                   to={current ? `/project/${current.id}` : "/"}
-                  style={{
-                    fontSize: 10,
-                    fontFamily: MONO,
-                    fontWeight: 600,
-                    color: !onCommitPage ? C.accent : C.textDim,
-                    textDecoration: "none",
-                    letterSpacing: 0.3,
-                    textTransform: "uppercase",
-                  }}
+                  className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  style={{ color: !onCommitPage ? C.accent : C.textDim }}
                 >
                   scenarios
                 </Link>
                 <Link
                   to={current ? `/project/${current.id}/commits` : "/"}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 10,
-                    fontFamily: MONO,
-                    fontWeight: 600,
-                    color: onCommitPage ? C.accent : C.textDim,
-                    textDecoration: "none",
-                    letterSpacing: 0.3,
-                    textTransform: "uppercase",
-                  }}
+                  className="flex items-center gap-[4px] no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  style={{ color: onCommitPage ? C.accent : C.textDim }}
                 >
                   <GitCommit size={11} />
                   commits
                   {overview.latestCommitStatus === "running" && (
-                    <span
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        background: C.amber,
-                        display: "inline-block",
-                      }}
-                    />
+                    <span className="w-[6px] h-[6px] rounded-[3px] bg-c-amber inline-block" />
                   )}
                 </Link>
               </>
             )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="flex items-center gap-[12px]">
             {current && !onNewPage && (
-              <div style={{ fontSize: 10, color: C.textDim, fontFamily: MONO }}>
+              <div className="text-[10px] text-dim font-mono">
                 {overview.scenarioCount} commands · {overview.trackedCount}{" "}
                 tracked
               </div>
@@ -408,50 +259,27 @@ export default function Shell() {
                   return THEME_ORDER[(i + 1) % THEME_ORDER.length];
                 })
               }
-              style={{
-                background: C.surface2,
-                border: `1px solid ${C.border}`,
-                borderRadius: 4,
-                padding: "2px 8px",
-                cursor: "pointer",
-                color: C.textMid,
-                fontSize: 10,
-                fontFamily: MONO,
-              }}
+              className="bg-surface2 border border-[var(--c-border)] rounded px-2 py-[2px] cursor-pointer text-mid text-[10px] font-mono"
             >
               {themeKey}
             </button>
             {user && (
               <>
-                <div style={{ width: 1, height: 16, background: C.border }} />
+                <div className="w-[1px] h-[16px] bg-[var(--c-border)]" />
                 <img
                   src={`https://github.com/${user.login}.png?size=24`}
                   alt={user.login}
                   width={20}
                   height={20}
-                  style={{ borderRadius: "50%", display: "block" }}
+                  className="rounded-[50%] block"
                 />
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontFamily: MONO,
-                    color: C.textMid,
-                  }}
-                >
+                <span className="text-[11px] font-mono text-mid">
                   {user.login}
                 </span>
                 <button
                   onClick={logout}
                   title="Sign out"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: C.textDim,
-                    padding: 2,
-                    display: "flex",
-                    alignItems: "center",
-                  }}
+                  className="bg-transparent border-none cursor-pointer text-dim p-[2px] flex items-center"
                 >
                   <LogOut size={13} />
                 </button>
@@ -461,7 +289,7 @@ export default function Shell() {
         </div>
 
         {/* ── Page content ──────────────────────────────────── */}
-        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <div className="flex-1 flex overflow-hidden">
           <Outlet />
         </div>
       </div>

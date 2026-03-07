@@ -1,5 +1,6 @@
+import type React from "react";
 import { useTheme } from "../lib/theme";
-import { MONO, fmtValue } from "../lib/format";
+import { fmtValue } from "../lib/format";
 
 export function DeltaBadge({
   current,
@@ -23,16 +24,11 @@ export function DeltaBadge({
 
   return (
     <span
+      className="text-[10px] font-mono font-semibold rounded-[3px] py-[1px] px-[5px] whitespace-nowrap border"
       style={{
-        fontSize: 10,
-        fontFamily: MONO,
-        fontWeight: 600,
         color,
-        padding: "1px 5px",
-        borderRadius: 3,
         background: color + "15",
-        border: `1px solid ${color}33`,
-        whiteSpace: "nowrap",
+        borderColor: color + "33",
         ...style,
       }}
     >

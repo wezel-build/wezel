@@ -2,7 +2,6 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useProject } from "../lib/useProject";
 import { useTheme } from "../lib/theme";
-import { MONO } from "../lib/format";
 import { fmtMs, fmtTime } from "../lib/format";
 import { useDrag } from "../lib/useDrag";
 import type { Run } from "../lib/data";
@@ -93,11 +92,10 @@ export function RunList({
   const { template, startResize, hoveredHandle, setHoveredHandle } =
     useResizableColumns(RUN_COLS.map((c) => c.init));
 
+  // Static parts of colStyle as a className; dynamic paddingRight stays inline
+  const colClassName =
+    "overflow-hidden text-ellipsis whitespace-nowrap relative";
   const colStyle = (i: number): React.CSSProperties => ({
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    position: "relative",
     paddingRight: i < RUN_COLS.length - 1 ? 6 : 0,
   });
 
@@ -106,14 +104,8 @@ export function RunList({
       onMouseDown={(e) => startResize(i, e)}
       onMouseEnter={() => setHoveredHandle(i)}
       onMouseLeave={() => setHoveredHandle(null)}
+      className="absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize z-[1]"
       style={{
-        position: "absolute",
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 5,
-        cursor: "col-resize",
-        zIndex: 1,
         background: hoveredHandle === i ? C.accent + "44" : "transparent",
         borderRadius: hoveredHandle === i ? 1 : 0,
       }}
@@ -123,47 +115,15 @@ export function RunList({
   const [hoveredCommit, setHoveredCommit] = useState<number | null>(null);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        width: "100%",
-        height: "100%",
-      }}
-    >
+    <div className="flex flex-col w-full h-full">
       {/* Header */}
-      <div
-        style={{
-          padding: "4px 10px",
-          borderBottom: `1px solid ${C.border}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <span
-          style={{
-            fontSize: 9,
-            fontWeight: 700,
-            color: C.textDim,
-            letterSpacing: 0.8,
-            textTransform: "uppercase",
-          }}
-        >
+      <div className="py-1 px-[10px] border-b border-[var(--c-border)] flex items-center justify-between">
+        <span className="text-[9px] font-bold text-dim tracking-[0.8px] uppercase">
           Runs ({selectedIndices.size}/{runs.length})
         </span>
         <button
           onClick={allSelected ? onSelectNone : onSelectAll}
-          style={{
-            background: "none",
-            border: `1px solid ${C.border}`,
-            borderRadius: 3,
-            padding: "1px 6px",
-            cursor: "pointer",
-            color: C.textMid,
-            fontSize: 9,
-            fontFamily: MONO,
-          }}
+          className="bg-transparent border border-[var(--c-border)] rounded-[3px] py-[1px] px-[6px] cursor-pointer text-mid text-[9px] font-mono"
         >
           {allSelected ? "none" : "all"}
         </button>
@@ -171,20 +131,11 @@ export function RunList({
 
       {/* Column headers */}
       <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: template,
-          padding: "3px 10px",
-          fontSize: 8,
-          fontWeight: 700,
-          color: C.textDim,
-          textTransform: "uppercase",
-          letterSpacing: 0.6,
-          borderBottom: `1px solid ${C.border}`,
-        }}
+        className="grid py-[3px] px-[10px] text-[8px] font-bold text-dim uppercase tracking-[0.6px] border-b border-[var(--c-border)]"
+        style={{ gridTemplateColumns: template }}
       >
         {RUN_COLS.map((col, i) => (
-          <div key={col.key} style={colStyle(i)}>
+          <div key={col.key} className={colClassName} style={colStyle(i)}>
             {col.label}
             {i < RUN_COLS.length - 1 && handle(i)}
           </div>
@@ -192,7 +143,7 @@ export function RunList({
       </div>
 
       {/* Run rows */}
-      <div ref={runRowsRef} style={{ flex: 1, overflowY: "auto" }}>
+      <div ref={runRowsRef} className="flex-1 overflow-y-auto">
         {runs.map((run, rowIdx) => {
           const isSel = selectedIndices.has(rowIdx);
           const isHl = rowIdx === hlIdx;
@@ -215,12 +166,9 @@ export function RunList({
               onClick={() => onToggle(rowIdx)}
               onMouseEnter={() => setHoveredRow(rowIdx)}
               onMouseLeave={() => setHoveredRow(null)}
+              className="grid py-[3px] px-[10px] items-center cursor-pointer text-[10px] font-mono"
               style={{
-                display: "grid",
                 gridTemplateColumns: template,
-                padding: "3px 10px",
-                alignItems: "center",
-                cursor: "pointer",
                 background: rowBg,
                 borderLeft: isHl
                   ? `2px solid ${C.accent}`
@@ -231,23 +179,15 @@ export function RunList({
                       : "2px solid transparent",
                 outline: isHl ? `1px solid ${C.accent}44` : "none",
                 outlineOffset: -1,
-                fontSize: 10,
-                fontFamily: MONO,
               }}
             >
               {/* Checkbox */}
-              <div style={colStyle(0)}>
+              <div className={colClassName} style={colStyle(0)}>
                 <div
+                  className="w-[12px] h-[12px] rounded-sm flex items-center justify-center text-[8px]"
                   style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: 2,
                     border: `1.5px solid ${isSel ? C.accent : C.border}`,
                     background: isSel ? C.accent + "33" : "transparent",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 8,
                     color: C.accent,
                   }}
                 >
@@ -255,9 +195,15 @@ export function RunList({
                 </div>
               </div>
               {/* User */}
-              <div style={{ ...colStyle(1), color: C.cyan }}>{run.user}</div>
+              <div
+                className={colClassName}
+                style={{ ...colStyle(1), color: C.cyan }}
+              >
+                {run.user}
+              </div>
               {/* Commit */}
               <div
+                className={colClassName}
                 style={{
                   ...colStyle(2),
                   color: C.pink,
@@ -281,21 +227,23 @@ export function RunList({
                 {run.commit ? run.commit.slice(0, 7) : ""}
               </div>
               {/* Timestamp */}
-              <div style={{ ...colStyle(3), color: C.textDim }}>
+              <div
+                className={colClassName}
+                style={{ ...colStyle(3), color: C.textDim }}
+              >
                 {fmtTime(run.timestamp)}
               </div>
               {/* Build time */}
-              <div style={{ ...colStyle(4), color: C.textMid }}>
+              <div
+                className={colClassName}
+                style={{ ...colStyle(4), color: C.textMid }}
+              >
                 {fmtMs(run.buildTimeMs)}
               </div>
               {/* Dirty count */}
               <div
-                style={{
-                  ...colStyle(5),
-                  color: C.amber,
-                  fontSize: 9,
-                  textAlign: "right",
-                }}
+                className={`${colClassName} text-[9px] text-right`}
+                style={{ ...colStyle(5), color: C.amber }}
               >
                 {run.dirtyCrates.length}
               </div>

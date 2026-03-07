@@ -31,7 +31,8 @@ export default function ScenariosPage() {
   const [hlIdx, setHlIdx] = useState(-1);
   const [focusPanel, setFocusPanel] = useState<"list" | "runs">("list");
 
-  const GRID_COLS = "minmax(140px, 3fr) 50px 70px minmax(80px, 1fr) 56px";
+  const GRID_CLS =
+    "grid grid-cols-[minmax(140px,3fr)_50px_70px_minmax(80px,1fr)_56px] gap-[6px]";
 
   const togglePin = useCallback(
     (sid: number) => {
@@ -146,12 +147,9 @@ export default function ScenariosPage() {
     <>
       {/* Left: command list */}
       <div
+        className="min-w-[280px] shrink-0 flex flex-col"
         style={{
           width: selectedId != null ? listWidth : "100%",
-          minWidth: 280,
-          flexShrink: 0,
-          display: "flex",
-          flexDirection: "column",
           boxShadow:
             selectedId != null && focusPanel === "list"
               ? `inset 0 0 0 1.5px ${C.accent}88, 0 0 8px ${C.accent}22`
@@ -160,14 +158,9 @@ export default function ScenariosPage() {
         }}
       >
         {/* Filters */}
-        <div
-          style={{
-            padding: "6px 12px",
-            borderBottom: `1px solid ${C.border}`,
-          }}
-        >
+        <div className="px-[12px] py-[6px] border-b border-[var(--c-border)]">
           {error && (
-            <div style={{ color: "#f44", padding: "8px 16px", fontSize: 13 }}>
+            <div className="text-[#f44] px-[16px] py-[8px] text-[13px]">
               {error}
             </div>
           )}
@@ -183,38 +176,19 @@ export default function ScenariosPage() {
 
         {/* Table header */}
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: GRID_COLS,
-            gap: 6,
-            padding: "4px 12px",
-            fontSize: 9,
-            fontWeight: 700,
-            color: C.textDim,
-            textTransform: "uppercase",
-            letterSpacing: 0.8,
-            borderBottom: `1px solid ${C.border}`,
-            background: C.surface,
-          }}
+          className={`${GRID_CLS} px-[12px] py-[4px] text-[9px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface`}
         >
           <span>Command</span>
           <span>Prof.</span>
           <span>Platform</span>
           <span>Runs</span>
-          <span style={{ textAlign: "center" }}>Track</span>
+          <span className="text-center">Track</span>
         </div>
 
         {/* Rows */}
-        <div ref={rowsRef} style={{ flex: 1, overflowY: "auto" }}>
+        <div ref={rowsRef} className="flex-1 overflow-y-auto">
           {filtered.length === 0 && (
-            <div
-              style={{
-                padding: 20,
-                textAlign: "center",
-                color: C.textDim,
-                fontSize: 12,
-              }}
-            >
+            <div className="p-[20px] text-center text-dim text-xs">
               {scenarios.length === 0 ? (
                 <span>
                   No scenarios yet. Run{" "}
@@ -250,13 +224,8 @@ export default function ScenariosPage() {
                       : `/project/${current.id}/scenario/${s.id}`,
                   );
                 }}
+                className={`${GRID_CLS} px-[12px] py-[6px] items-center cursor-pointer transition-all duration-100`}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: GRID_COLS,
-                  gap: 6,
-                  padding: "6px 12px",
-                  alignItems: "center",
-                  cursor: "pointer",
                   background: isSel
                     ? C.accent + "10"
                     : fi === hlIdx || hoveredId === s.id
@@ -265,7 +234,6 @@ export default function ScenariosPage() {
                   borderLeft: isSel
                     ? `2px solid ${C.accent}`
                     : "2px solid transparent",
-                  transition: "all 0.1s",
                 }}
                 onMouseEnter={() => {
                   if (!isSel) setHoveredId(s.id);
@@ -275,15 +243,8 @@ export default function ScenariosPage() {
                 }}
               >
                 <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: isSel ? C.text : C.textMid,
-                    fontFamily: MONO,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
+                  className="text-[11px] font-medium font-mono overflow-hidden text-ellipsis whitespace-nowrap"
+                  style={{ color: isSel ? C.text : C.textMid }}
                 >
                   {result ? (
                     <>
@@ -307,31 +268,21 @@ export default function ScenariosPage() {
                   {s.profile === "dev" ? "dev" : "rel"}
                 </Badge>
                 <span
-                  style={{
-                    fontSize: 10,
-                    fontFamily: MONO,
-                    color: s.platform ? C.textMid : C.textDim,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
+                  className="text-[10px] font-mono overflow-hidden text-ellipsis whitespace-nowrap"
+                  style={{ color: s.platform ? C.textMid : C.textDim }}
                 >
                   {s.platform ?? "—"}
                 </span>
                 <FreqBar value={freq} max={maxFreq} />
-                <div style={{ display: "flex", justifyContent: "center" }}>
+                <div className="flex justify-center">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       togglePin(s.id);
                     }}
+                    className="bg-transparent border-0 cursor-pointer p-[2px] flex"
                     style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: 2,
                       color: s.pinned ? C.accent : C.textDim,
-                      display: "flex",
                       opacity: s.pinned ? 1 : 0.5,
                     }}
                   >
@@ -352,11 +303,8 @@ export default function ScenariosPage() {
       )}
       {selectedId != null && (
         <div
+          className="flex-1 p-[12px] overflow-hidden bg-bg"
           style={{
-            flex: 1,
-            padding: 12,
-            overflow: "hidden",
-            background: C.bg,
             boxShadow:
               focusPanel === "runs"
                 ? `inset 0 0 0 1.5px ${C.accent}88, 0 0 8px ${C.accent}22`

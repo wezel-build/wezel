@@ -1,5 +1,4 @@
 import { useTheme } from "../lib/theme";
-import { MONO } from "../lib/format";
 
 export function Stat({
   label,
@@ -12,19 +11,14 @@ export function Stat({
 }) {
   const { C } = useTheme();
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+    <div className="flex flex-col gap-[1px]">
       <span
-        style={{
-          fontSize: 9,
-          color: C.textDim,
-          textTransform: "uppercase",
-          letterSpacing: 0.8,
-          fontWeight: 600,
-        }}
+        className="text-[9px] uppercase tracking-[0.8px] font-semibold"
+        style={{ color: C.textDim }}
       >
         {label}
       </span>
-      <span style={{ fontSize: 15, fontWeight: 700, color, fontFamily: MONO }}>
+      <span className="text-[15px] font-bold font-mono" style={{ color }}>
         {value}
       </span>
     </div>
