@@ -148,7 +148,7 @@ export default function ScenariosPage() {
       <div
         className="min-w-[280px] shrink-0 flex flex-col"
         style={{
-          width: selectedId != null ? listWidth : "100%",
+          width: listWidth,
           boxShadow:
             selectedId != null && focusPanel === "list"
               ? `inset 0 0 0 1.5px ${alpha(C.accent, 53)}, 0 0 8px ${alpha(C.accent, 13)}`
@@ -295,10 +295,11 @@ export default function ScenariosPage() {
       </div>
 
       {/* Resize handle + detail */}
-      {selectedId != null && (
-        <PanelHandle
-          onDrag={(d) => setListWidth((w) => Math.max(280, w + d))}
-        />
+      <PanelHandle onDrag={(d) => setListWidth((w) => Math.max(280, w + d))} />
+      {selectedId == null && (
+        <div className="flex-1 flex items-center justify-center text-dim text-[11px] font-mono border-l border-[var(--c-border)]">
+          select a scenario
+        </div>
       )}
       {selectedId != null && (
         <div
