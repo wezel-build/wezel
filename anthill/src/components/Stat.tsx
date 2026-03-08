@@ -1,5 +1,3 @@
-import { useTheme } from "../lib/theme";
-
 export function Stat({
   label,
   value,
@@ -9,12 +7,11 @@ export function Stat({
   value: string;
   color: string;
 }) {
-  const { C } = useTheme();
   return (
     <div className="flex flex-col gap-[1px]">
       <span
         className="text-[9px] uppercase tracking-[0.8px] font-semibold"
-        style={{ color: C.textDim }}
+        style={{ color: "var(--c-text-dim)" }}
       >
         {label}
       </span>

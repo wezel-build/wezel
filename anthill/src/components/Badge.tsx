@@ -1,4 +1,5 @@
 import type React from "react";
+import { alpha } from "../lib/colors";
 
 export function Badge({
   children,
@@ -15,7 +16,7 @@ export function Badge({
       style={{
         background: bg,
         color,
-        borderColor: color + "33",
+        borderColor: alpha(color, 20),
       }}
     >
       {children}

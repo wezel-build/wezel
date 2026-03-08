@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useProject } from "../lib/useProject";
-import { useTheme } from "../lib/theme";
+import { C, alpha } from "../lib/colors";
 import { fmtMs, fmtTime } from "../lib/format";
 import { useDrag } from "../lib/useDrag";
 import type { Run } from "../lib/data";
@@ -74,7 +74,6 @@ export function RunList({
   hlIdx?: number;
   markedIndices?: Set<number>;
 }) {
-  const { C } = useTheme();
   const navigate = useNavigate();
   const { current } = useProject();
   const allSelected = selectedIndices.size === runs.length;
@@ -106,7 +105,7 @@ export function RunList({
       onMouseLeave={() => setHoveredHandle(null)}
       className="absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize z-[1]"
       style={{
-        background: hoveredHandle === i ? C.accent + "44" : "transparent",
+        background: hoveredHandle === i ? alpha(C.accent, 27) : "transparent",
         borderRadius: hoveredHandle === i ? 1 : 0,
       }}
     />
@@ -151,11 +150,11 @@ export function RunList({
           const isHovered = hoveredRow === rowIdx;
 
           const rowBg = isHl
-            ? C.accent + "22"
+            ? alpha(C.accent, 13)
             : isMarked
-              ? C.accent + "33"
+              ? alpha(C.accent, 20)
               : isSel
-                ? C.accent + "10"
+                ? alpha(C.accent, 6)
                 : isHovered
                   ? C.surface2
                   : "transparent";
@@ -175,9 +174,9 @@ export function RunList({
                   : isMarked
                     ? `2px solid ${C.accent}`
                     : isSel
-                      ? `2px solid ${C.accent}55`
+                      ? `2px solid ${alpha(C.accent, 33)}`
                       : "2px solid transparent",
-                outline: isHl ? `1px solid ${C.accent}44` : "none",
+                outline: isHl ? `1px solid ${alpha(C.accent, 27)}` : "none",
                 outlineOffset: -1,
               }}
             >
@@ -187,7 +186,7 @@ export function RunList({
                   className="w-[12px] h-[12px] rounded-sm flex items-center justify-center text-[8px]"
                   style={{
                     border: `1.5px solid ${isSel ? C.accent : C.border}`,
-                    background: isSel ? C.accent + "33" : "transparent",
+                    background: isSel ? alpha(C.accent, 20) : "transparent",
                     color: C.accent,
                   }}
                 >

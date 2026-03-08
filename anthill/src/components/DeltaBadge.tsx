@@ -1,5 +1,5 @@
 import type React from "react";
-import { useTheme } from "../lib/theme";
+import { C, alpha } from "../lib/colors";
 import { fmtValue } from "../lib/format";
 
 export function DeltaBadge({
@@ -13,7 +13,6 @@ export function DeltaBadge({
   unit?: string;
   style?: React.CSSProperties;
 }) {
-  const { C } = useTheme();
   const diff = current - baseline;
   const pct = baseline !== 0 ? Math.round((diff / baseline) * 100) : 0;
   const isRegression = diff > 0;
@@ -27,8 +26,8 @@ export function DeltaBadge({
       className="text-[10px] font-mono font-semibold rounded-[3px] py-[1px] px-[5px] whitespace-nowrap border"
       style={{
         color,
-        background: color + "15",
-        borderColor: color + "33",
+        background: alpha(color, 8),
+        borderColor: alpha(color, 20),
         ...style,
       }}
     >

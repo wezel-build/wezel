@@ -1,4 +1,5 @@
 import { useTheme } from "../lib/theme";
+import { C, alpha } from "../lib/colors";
 import { fmtMs } from "../lib/format";
 import { Stat } from "./Stat";
 import type { Scenario, Run } from "../lib/data";
@@ -36,7 +37,7 @@ export function Summary({
   selectedRuns: Run[];
   heat: Record<string, number>;
 }) {
-  const { C, heatColor } = useTheme();
+  const { heatColor } = useTheme();
   const crateNames = scenario.graph.map((c) => c.name);
   const hotCrates = crateNames
     .map((n) => ({ name: n, heat: heat[n] ?? 0 }))
@@ -132,7 +133,7 @@ export function Summary({
                 className="flex items-center gap-[6px] py-[3px] px-[6px] rounded-[3px]"
                 style={{
                   background: col.bg,
-                  border: `1px solid ${col.border}33`,
+                  border: `1px solid ${alpha(col.border, 20)}`,
                 }}
               >
                 <span

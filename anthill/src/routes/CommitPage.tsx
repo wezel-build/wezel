@@ -19,7 +19,7 @@ import {
   ExternalLink,
   Play,
 } from "lucide-react";
-import { useTheme } from "../lib/theme";
+import { C, alpha } from "../lib/colors";
 import { fmtValue, fmtTime } from "../lib/format";
 import {
   type ForagerCommit,
@@ -33,13 +33,7 @@ import { DeltaBadge } from "../components/DeltaBadge";
 
 // ── Small pieces ─────────────────────────────────────────────────────────────
 
-function StatusIcon({
-  status,
-  C,
-}: {
-  status: MeasurementStatus;
-  C: ReturnType<typeof useTheme>["C"];
-}) {
+function StatusIcon({ status }: { status: MeasurementStatus }) {
   switch (status) {
     case "complete":
       return <CheckCircle2 size={14} color={C.green} />;
@@ -67,13 +61,7 @@ function statusLabel(s: MeasurementStatus): string {
 
 // ── Progress bar ─────────────────────────────────────────────────────────────
 
-function ProgressBar({
-  measurements,
-  C,
-}: {
-  measurements: Measurement[];
-  C: ReturnType<typeof useTheme>["C"];
-}) {
+function ProgressBar({ measurements }: { measurements: Measurement[] }) {
   const total = measurements.length;
   if (total === 0) return null;
 
@@ -131,13 +119,11 @@ function ProgressBar({
 
 function MeasurementRow({
   m,
-  C,
   projectId,
   commitSha,
   navigate,
 }: {
   m: Measurement;
-  C: ReturnType<typeof useTheme>["C"];
   projectId: number;
   commitSha: string;
   navigate: NavigateFunction;
@@ -163,7 +149,7 @@ function MeasurementRow({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <StatusIcon status={m.status} C={C} />
+      <StatusIcon status={m.status} />
 
       <div className="flex items-center gap-[6px] overflow-hidden">
         <span className="text-fg overflow-hidden text-ellipsis whitespace-nowrap">
@@ -202,13 +188,7 @@ function MeasurementRow({
 
 // ── Commit header ────────────────────────────────────────────────────────────
 
-function CommitHeader({
-  commit,
-  C,
-}: {
-  commit: ForagerCommit;
-  C: ReturnType<typeof useTheme>["C"];
-}) {
+function CommitHeader({ commit }: { commit: ForagerCommit }) {
   const isRunning = commit.status === "running";
   const isNotStarted = commit.status === "not-started";
 
@@ -256,8 +236,8 @@ function CommitHeader({
               isNotStarted
                 ? C.surface3
                 : isRunning
-                  ? C.amber + "18"
-                  : C.green + "18"
+                  ? alpha(C.amber, 9)
+                  : alpha(C.green, 9)
             }
           >
             {isNotStarted
@@ -281,7 +261,7 @@ function CommitHeader({
         </span>
       </div>
 
-      {isRunning && <ProgressBar measurements={commit.measurements} C={C} />}
+      {isRunning && <ProgressBar measurements={commit.measurements} />}
 
       {commit.status === "complete" && (
         <div className="flex gap-[20px] items-end flex-wrap">
@@ -357,7 +337,6 @@ export default function CommitPage() {
   const projectId = Number(projectIdParam);
   const hasProjectId = Number.isFinite(projectId);
 
-  const { C } = useTheme();
   const navigate = useNavigate();
   const { pApi } = useProject();
   const { commits } = useCommits();
@@ -571,7 +550,7 @@ export default function CommitPage() {
 
           {commit ? (
             <div className="border border-[var(--c-border)] rounded-md overflow-hidden">
-              <CommitHeader commit={commit} C={C} />
+              <CommitHeader commit={commit} />
 
               <div className="grid grid-cols-[18px_1fr_70px_56px_110px] gap-[8px] px-[12px] py-[6px] text-[8px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2">
                 <span />
@@ -594,7 +573,6 @@ export default function CommitPage() {
                     <MeasurementRow
                       key={m.id}
                       m={m}
-                      C={C}
                       projectId={projectId}
                       commitSha={commit.shortSha}
                       navigate={navigate}

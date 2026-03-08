@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Pin, PinOff } from "lucide-react";
-import { useTheme } from "../lib/theme";
+import { C, alpha } from "../lib/colors";
 import { MONO } from "../lib/format";
 import type { ScenarioSummary } from "../lib/api";
 import { useScenarios } from "../lib/hooks";
@@ -15,7 +15,6 @@ import fuzzysort from "fuzzysort";
 import { useProject } from "../lib/useProject";
 
 export default function ScenariosPage() {
-  const { C } = useTheme();
   const navigate = useNavigate();
   const { id } = useParams();
   const selectedId = id ? Number(id) : null;
@@ -152,7 +151,7 @@ export default function ScenariosPage() {
           width: selectedId != null ? listWidth : "100%",
           boxShadow:
             selectedId != null && focusPanel === "list"
-              ? `inset 0 0 0 1.5px ${C.accent}88, 0 0 8px ${C.accent}22`
+              ? `inset 0 0 0 1.5px ${alpha(C.accent, 53)}, 0 0 8px ${alpha(C.accent, 13)}`
               : "none",
           transition: "box-shadow 0.15s",
         }}
@@ -192,7 +191,7 @@ export default function ScenariosPage() {
               {scenarios.length === 0 ? (
                 <span>
                   No scenarios yet. Run{" "}
-                  <code style={{ fontFamily: MONO, color: C.accent }}>
+                  <code style={{ fontFamily: MONO, color: C.accent as string }}>
                     wezel
                   </code>{" "}
                   in your project to start tracking builds.{" "}
@@ -200,7 +199,7 @@ export default function ScenariosPage() {
                     href="https://github.com/wezel-build/wezel#readme"
                     target="_blank"
                     rel="noreferrer"
-                    style={{ color: C.accent }}
+                    style={{ color: C.accent as string }}
                   >
                     Docs →
                   </a>
@@ -227,7 +226,7 @@ export default function ScenariosPage() {
                 className={`${GRID_CLS} px-[12px] py-[6px] items-center cursor-pointer transition-all duration-100`}
                 style={{
                   background: isSel
-                    ? C.accent + "10"
+                    ? alpha(C.accent, 6)
                     : fi === hlIdx || hoveredId === s.id
                       ? C.surface2
                       : "transparent",
@@ -251,7 +250,7 @@ export default function ScenariosPage() {
                       {result.highlight((m, i) => (
                         <span
                           key={i}
-                          style={{ color: C.accent, fontWeight: 700 }}
+                          style={{ color: C.accent as string, fontWeight: 700 }}
                         >
                           {m}
                         </span>
@@ -263,7 +262,7 @@ export default function ScenariosPage() {
                 </span>
                 <Badge
                   color={s.profile === "dev" ? C.textDim : C.amber}
-                  bg={s.profile === "dev" ? C.surface3 : C.amber + "15"}
+                  bg={s.profile === "dev" ? C.surface3 : alpha(C.amber, 8)}
                 >
                   {s.profile === "dev" ? "dev" : "rel"}
                 </Badge>
@@ -282,7 +281,7 @@ export default function ScenariosPage() {
                     }}
                     className="bg-transparent border-0 cursor-pointer p-[2px] flex"
                     style={{
-                      color: s.pinned ? C.accent : C.textDim,
+                      color: s.pinned ? C.accent : (C.textDim as string),
                       opacity: s.pinned ? 1 : 0.5,
                     }}
                   >
@@ -307,7 +306,7 @@ export default function ScenariosPage() {
           style={{
             boxShadow:
               focusPanel === "runs"
-                ? `inset 0 0 0 1.5px ${C.accent}88, 0 0 8px ${C.accent}22`
+                ? `inset 0 0 0 1.5px ${alpha(C.accent, 53)}, 0 0 8px ${alpha(C.accent, 13)}`
                 : "none",
             transition: "box-shadow 0.15s",
           }}

@@ -1,5 +1,5 @@
 import { Search, X } from "lucide-react";
-import { useTheme } from "../lib/theme";
+import { C, alpha } from "../lib/colors";
 import { useUsers } from "../lib/hooks";
 
 export function FilterBar({
@@ -17,7 +17,6 @@ export function FilterBar({
   profileFilter: string | null;
   onProfileFilter: (v: string | null) => void;
 }) {
-  const { C } = useTheme();
   const { users } = useUsers();
   return (
     <div className="flex items-center gap-[8px] py-[6px] text-[11px] flex-wrap">
@@ -26,7 +25,7 @@ export function FilterBar({
         className="flex items-center gap-[4px] rounded px-[8px] py-[3px] min-w-[180px] border border-[var(--c-border)]"
         style={{ background: C.surface2 }}
       >
-        <Search size={12} color={C.textDim} />
+        <Search size={12} color={C.textDim as string} />
         <input
           id="scenario-search"
           value={search}
@@ -39,7 +38,7 @@ export function FilterBar({
             onClick={() => onSearch("")}
             className="bg-transparent border-none cursor-pointer p-0 flex"
           >
-            <X size={11} color={C.textDim} />
+            <X size={11} color={C.textDim as string} />
           </button>
         )}
       </div>
@@ -65,7 +64,7 @@ export function FilterBar({
             className="rounded-[3px] py-[2px] px-[7px] cursor-pointer text-[10px] font-mono border"
             style={{
               background: userFilter.includes(u)
-                ? C.accent + "22"
+                ? alpha(C.accent, 13)
                 : "transparent",
               borderColor: userFilter.includes(u) ? C.accent : C.border,
               color: userFilter.includes(u) ? C.accent : C.textMid,
@@ -90,7 +89,8 @@ export function FilterBar({
             onClick={() => onProfileFilter(profileFilter === p ? null : p)}
             className="rounded-[3px] py-[2px] px-[7px] cursor-pointer text-[10px] font-mono uppercase border"
             style={{
-              background: profileFilter === p ? C.accent + "22" : "transparent",
+              background:
+                profileFilter === p ? alpha(C.accent, 13) : "transparent",
               borderColor: profileFilter === p ? C.accent : C.border,
               color: profileFilter === p ? C.accent : C.textMid,
             }}

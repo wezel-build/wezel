@@ -1,7 +1,6 @@
-import { useTheme } from "../lib/theme";
+import { C } from "../lib/colors";
 
 export function FreqBar({ value, max }: { value: number; max: number }) {
-  const { C } = useTheme();
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   const col = pct >= 70 ? C.red : pct >= 40 ? C.amber : C.accent;
   return (

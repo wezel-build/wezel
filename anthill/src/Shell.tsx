@@ -27,27 +27,27 @@ export default function Shell() {
     });
   };
   const theme = THEMES[themeKey];
-  const C = theme.C;
   const location = useLocation();
   const navigate = useNavigate();
 
+  const { C: themeColors } = theme;
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty("--c-bg", C.bg);
-    root.style.setProperty("--c-surface", C.surface);
-    root.style.setProperty("--c-surface2", C.surface2);
-    root.style.setProperty("--c-surface3", C.surface3);
-    root.style.setProperty("--c-border", C.border);
-    root.style.setProperty("--c-text", C.text);
-    root.style.setProperty("--c-text-mid", C.textMid);
-    root.style.setProperty("--c-text-dim", C.textDim);
-    root.style.setProperty("--c-accent", C.accent);
-    root.style.setProperty("--c-green", C.green);
-    root.style.setProperty("--c-amber", C.amber);
-    root.style.setProperty("--c-red", C.red);
-    root.style.setProperty("--c-pink", C.pink);
-    root.style.setProperty("--c-cyan", C.cyan);
-  }, [C]);
+    root.style.setProperty("--c-bg", themeColors.bg);
+    root.style.setProperty("--c-surface", themeColors.surface);
+    root.style.setProperty("--c-surface2", themeColors.surface2);
+    root.style.setProperty("--c-surface3", themeColors.surface3);
+    root.style.setProperty("--c-border", themeColors.border);
+    root.style.setProperty("--c-text", themeColors.text);
+    root.style.setProperty("--c-text-mid", themeColors.textMid);
+    root.style.setProperty("--c-text-dim", themeColors.textDim);
+    root.style.setProperty("--c-accent", themeColors.accent);
+    root.style.setProperty("--c-green", themeColors.green);
+    root.style.setProperty("--c-amber", themeColors.amber);
+    root.style.setProperty("--c-red", themeColors.red);
+    root.style.setProperty("--c-pink", themeColors.pink);
+    root.style.setProperty("--c-cyan", themeColors.cyan);
+  }, [themeColors]);
 
   const { projects, current, setCurrent, loaded, renameProject } = useProject();
   const [projectOpen, setProjectOpen] = useState(false);
@@ -114,7 +114,7 @@ export default function Shell() {
   const onNewPage = location.pathname === "/projects/create";
 
   return (
-    <ThemeCtx.Provider value={theme}>
+    <ThemeCtx.Provider value={{ heatColor: theme.heatColor, dark: theme.dark }}>
       <div className="w-screen h-screen bg-bg text-fg font-sans flex flex-col overflow-hidden">
         {/* ── Top bar ──────────────────────────────────────── */}
         <div className="flex items-center px-4 h-[40px] min-h-[40px] border-b border-[var(--c-border)] bg-surface justify-between">
@@ -136,7 +136,7 @@ export default function Shell() {
                     className="flex items-center gap-[4px] bg-transparent border-none cursor-pointer text-xs font-mono font-semibold text-fg px-[6px] py-[2px] rounded"
                   >
                     {current.name}
-                    <ChevronDown size={12} color={C.textDim} />
+                    <ChevronDown size={12} color="var(--c-text-dim)" />
                   </button>
                   {projectOpen && (
                     <div className="absolute top-[calc(100%+4px)] left-0 bg-surface border border-[var(--c-border)] rounded-md py-[4px] z-[100] min-w-[200px] shadow-[0_4px_12px_rgba(0,0,0,0.3)]">
@@ -146,7 +146,9 @@ export default function Shell() {
                           className="flex items-center"
                           style={{
                             background:
-                              p.id === current?.id ? C.surface2 : "transparent",
+                              p.id === current?.id
+                                ? "var(--c-surface2)"
+                                : "transparent",
                           }}
                         >
                           {editingProjectId === p.id ? (
@@ -187,7 +189,9 @@ export default function Shell() {
                                 className="block flex-1 text-left bg-transparent border-none cursor-pointer py-[6px] pr-[8px] pl-[12px] font-mono text-xs"
                                 style={{
                                   color:
-                                    p.id === current?.id ? C.accent : C.text,
+                                    p.id === current?.id
+                                      ? "var(--c-accent)"
+                                      : "var(--c-text)",
                                 }}
                               >
                                 <div className="font-semibold">{p.name}</div>
@@ -227,14 +231,22 @@ export default function Shell() {
                 <Link
                   to={current ? `/project/${current.id}` : "/"}
                   className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
-                  style={{ color: !onCommitPage ? C.accent : C.textDim }}
+                  style={{
+                    color: !onCommitPage
+                      ? "var(--c-accent)"
+                      : "var(--c-text-dim)",
+                  }}
                 >
                   scenarios
                 </Link>
                 <Link
                   to={current ? `/project/${current.id}/commits` : "/"}
                   className="flex items-center gap-[4px] no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
-                  style={{ color: onCommitPage ? C.accent : C.textDim }}
+                  style={{
+                    color: onCommitPage
+                      ? "var(--c-accent)"
+                      : "var(--c-text-dim)",
+                  }}
                 >
                   <GitCommit size={11} />
                   commits

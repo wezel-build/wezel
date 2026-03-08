@@ -1,35 +1,28 @@
 import { Link } from "react-router-dom";
 import { GitCommit } from "lucide-react";
 import { useCommits } from "../lib/hooks";
-import { useTheme } from "../lib/theme";
+import { C, alpha } from "../lib/colors";
 import { fmtTime } from "../lib/format";
 import { Badge } from "../components/Badge";
 import { useProject } from "../lib/useProject";
 
-function statusDot(
-  status: "not-started" | "running" | "complete",
-  C: ReturnType<typeof useTheme>["C"],
-) {
+function statusDot(status: "not-started" | "running" | "complete") {
   if (status === "complete") return C.green;
   if (status === "running") return C.amber;
   return C.textDim;
 }
 
-function statusBadge(
-  status: "not-started" | "running" | "complete",
-  C: ReturnType<typeof useTheme>["C"],
-) {
+function statusBadge(status: "not-started" | "running" | "complete") {
   if (status === "complete")
-    return { color: C.green, bg: C.green + "18", label: "complete" };
+    return { color: C.green, bg: alpha(C.green, 9), label: "complete" };
   if (status === "running")
-    return { color: C.amber, bg: C.amber + "18", label: "running" };
+    return { color: C.amber, bg: alpha(C.amber, 9), label: "running" };
   return { color: C.textDim, bg: C.surface3, label: "not started" };
 }
 
 const GRID = "grid grid-cols-[16px_74px_1fr_130px_86px_78px_104px] gap-[8px]";
 
 export default function CommitsListPage() {
-  const { C } = useTheme();
   const { commits, loading, error } = useCommits();
   const { current } = useProject();
 
@@ -82,7 +75,8 @@ export default function CommitsListPage() {
           {!loading &&
             !error &&
             commits.map((c) => {
-              const badge = statusBadge(c.status, C);
+              const badge = statusBadge(c.status);
+
               return (
                 <Link
                   key={c.sha}
@@ -96,7 +90,7 @@ export default function CommitsListPage() {
                   <span
                     className="w-[8px] h-[8px] rounded-full shrink-0"
                     style={{
-                      background: statusDot(c.status, C),
+                      background: statusDot(c.status),
                       boxShadow: `0 0 0 1px ${C.border}`,
                     }}
                   />

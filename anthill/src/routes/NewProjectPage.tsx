@@ -1,11 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { useTheme } from "../lib/theme";
+import { C } from "../lib/colors";
 import { useProject } from "../lib/useProject";
 import { Workflow } from "lucide-react";
 
 export default function NewProjectPage() {
-  const { C } = useTheme();
   const navigate = useNavigate();
   const { projects, addProject } = useProject();
 

@@ -1,7 +1,7 @@
 import { useTheme } from "../lib/theme";
 
 export function HeatLegend() {
-  const { C, heatColor } = useTheme();
+  const { heatColor } = useTheme();
   const stops = [
     { label: "cold", heat: 5 },
     { label: "low", heat: 25 },
@@ -12,7 +12,7 @@ export function HeatLegend() {
   return (
     <div
       className="flex items-center gap-[10px] text-[9px] font-mono"
-      style={{ color: C.textDim }}
+      style={{ color: "var(--c-text-dim)" }}
     >
       <span className="font-bold tracking-[0.5px] uppercase">rebuild freq</span>
       {stops.map((s) => {

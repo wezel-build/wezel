@@ -57,6 +57,13 @@ export interface Theme {
   dark: boolean;
 }
 
+// Slimmed context — only what components actually need from React context.
+// Color values are accessed statically via CSS variables in lib/colors.ts.
+export interface ThemeCtxValue {
+  heatColor: HeatFn;
+  dark: boolean;
+}
+
 const WARM: Theme = {
   heatColor: warmHeat,
   dark: true,
@@ -128,7 +135,10 @@ export const THEMES: Record<ThemeKey, Theme> = {
   light: LIGHT,
 };
 
-export const ThemeCtx = createContext<Theme>(WARM);
+export const ThemeCtx = createContext<ThemeCtxValue>({
+  heatColor: warmHeat,
+  dark: true,
+});
 export function useTheme() {
   return useContext(ThemeCtx);
 }

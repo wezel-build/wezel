@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useKeyboardNav } from "../lib/useKeyboardNav";
 import { ArrowLeft, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { useTheme } from "../lib/theme";
+import { C, alpha } from "../lib/colors";
 import { fmtValue } from "../lib/format";
 import { type Measurement, type MeasurementDetail } from "../lib/data";
 import { useCommits } from "../lib/hooks";
@@ -67,7 +67,7 @@ function ValueBar({
   return (
     <div
       className="flex-1 h-[10px] rounded-sm overflow-hidden"
-      style={{ background: color + "15" }}
+      style={{ background: alpha(color, 8) }}
     >
       <div
         style={{
@@ -90,7 +90,6 @@ function SortHeader({
   currentKey,
   currentDir,
   onSort,
-  C,
   align,
 }: {
   label: string;
@@ -98,7 +97,6 @@ function SortHeader({
   currentKey: SortKey;
   currentDir: SortDir;
   onSort: (k: SortKey) => void;
-  C: ReturnType<typeof useTheme>["C"];
   align?: "left" | "right";
 }) {
   const active = currentKey === sortKey;
@@ -129,7 +127,6 @@ function SortHeader({
 
 export default function MeasurementDetailPage() {
   const { sha, id } = useParams();
-  const { C } = useTheme();
   const navigate = useNavigate();
 
   const [sortKey, setSortKey] = useState<SortKey>("value");
@@ -312,7 +309,6 @@ export default function MeasurementDetailPage() {
               currentKey={sortKey}
               currentDir={sortDir}
               onSort={handleSort}
-              C={C}
             />
             <SortHeader
               label="Value"
@@ -320,7 +316,6 @@ export default function MeasurementDetailPage() {
               currentKey={sortKey}
               currentDir={sortDir}
               onSort={handleSort}
-              C={C}
               align="right"
             />
             {/* Bar column — no sort header */}
@@ -333,7 +328,6 @@ export default function MeasurementDetailPage() {
                   currentKey={sortKey}
                   currentDir={sortDir}
                   onSort={handleSort}
-                  C={C}
                   align="right"
                 />
                 <SortHeader
@@ -342,7 +336,6 @@ export default function MeasurementDetailPage() {
                   currentKey={sortKey}
                   currentDir={sortDir}
                   onSort={handleSort}
-                  C={C}
                   align="right"
                 />
               </>
@@ -362,7 +355,7 @@ export default function MeasurementDetailPage() {
                   gridTemplateColumns: hasPrev
                     ? "1fr 80px minmax(80px, 160px) 80px 100px"
                     : "1fr 80px minmax(100px, 200px)",
-                  borderBottom: `1px solid ${C.border}22`,
+                  borderBottom: `1px solid ${alpha(C.border, 13)}`,
                   background: hoveredIdx === i ? C.surface2 : "transparent",
                 }}
                 onMouseEnter={() => setHoveredIdx(i)}

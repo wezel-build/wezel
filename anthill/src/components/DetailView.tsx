@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { useTheme } from "../lib/theme";
+import { C, alpha } from "../lib/colors";
 import { computeHeat } from "../lib/data";
 import { useScenario } from "../lib/hooks";
 import { Badge } from "./Badge";
@@ -53,7 +54,7 @@ export function DetailView({
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   const graph = scenario?.graph ?? EMPTY_GRAPH;
 
-  const { C, heatColor } = useTheme();
+  const { heatColor } = useTheme();
   const [threshold, setThreshold] = useState(0);
   const [runsWidth, setRunsWidth] = useState(280);
   const [summaryWidth, setSummaryWidth] = useState(190);
@@ -307,7 +308,7 @@ export function DetailView({
     return (
       <div
         className="flex items-center justify-center h-full text-[11px] font-mono gap-[6px]"
-        style={{ color: C.red ?? "#e55" }}
+        style={{ color: C.red }}
       >
         <span className="font-bold">error:</span> {error}
       </div>
@@ -349,7 +350,7 @@ export function DetailView({
           <label
             className="flex items-center gap-[5px] bg-surface2 rounded py-[3px] px-2 text-[10px] font-mono text-dim cursor-text transition-colors duration-150"
             style={{
-              border: `1px solid ${threshold > 0 ? C.accent + "55" : C.border}`,
+              border: `1px solid ${threshold > 0 ? alpha(C.accent, 33) : C.border}`,
             }}
           >
             <span className="font-semibold tracking-[0.5px] uppercase text-[9px]">
@@ -395,8 +396,8 @@ export function DetailView({
               <span
                 className="inline-flex items-center gap-[3px] text-[10px] font-mono font-semibold text-accent rounded-[3px]"
                 style={{
-                  background: C.accent + "18",
-                  border: `1px solid ${C.accent}44`,
+                  background: alpha(C.accent, 9),
+                  border: `1px solid ${alpha(C.accent, 27)}`,
                   padding: "1px 4px 1px 6px",
                 }}
               >
