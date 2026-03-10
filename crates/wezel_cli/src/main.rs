@@ -202,7 +202,7 @@ fn flush_in_background(
     debug!("persisting event {tool}-{id}");
     persist_event(&tool, &id, &event);
 
-    debug!("flushing events to {}", config.burrow_url);
+    debug!("flushing events to {}", config.server_url);
     if let Err(e) = flush_events(config) {
         warn!("flush failed: {e}");
     }
@@ -360,7 +360,7 @@ enum Command {
     Setup {
         /// Burrow API URL to push build timings to.
         #[arg(long)]
-        burrow_url: Option<String>,
+        server_url: Option<String>,
     },
     /// Check wezel health: pheromones, config, burrow connectivity.
     Health,
@@ -398,7 +398,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Command::Setup { burrow_url } => match setup_cmd(burrow_url.as_deref()) {
+        Command::Setup { server_url } => match setup_cmd(server_url.as_deref()) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("wezel: {e}");

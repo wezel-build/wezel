@@ -72,10 +72,10 @@ pub fn flush_events(config: &Config) -> anyhow::Result<()> {
     debug!(
         "flushing {} event(s) to {}",
         events.len(),
-        config.burrow_url
+        config.server_url
     );
 
-    let url = &config.burrow_url;
+    let url = &config.server_url;
 
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(5))

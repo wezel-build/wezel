@@ -13,7 +13,7 @@ fn config_path() -> PathBuf {
     dot_wezel().join("config.toml")
 }
 
-pub fn setup_cmd(burrow_url: Option<&str>) -> anyhow::Result<()> {
+pub fn setup_cmd(server_url: Option<&str>) -> anyhow::Result<()> {
     let path = config_path();
 
     if path.exists() {
@@ -23,13 +23,13 @@ pub fn setup_cmd(burrow_url: Option<&str>) -> anyhow::Result<()> {
         );
     }
 
-    let burrow_url = match burrow_url {
+    let server_url = match server_url {
         Some(url) => url.to_string(),
-        None => prompt_burrow_url()?,
+        None => prompt_server_url()?,
     };
 
     let config = ProjectConfig {
-        burrow_url: Some(burrow_url),
+        server_url: Some(server_url),
         username: None,
     };
 
@@ -41,14 +41,14 @@ pub fn setup_cmd(burrow_url: Option<&str>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn prompt_burrow_url() -> anyhow::Result<String> {
+fn prompt_server_url() -> anyhow::Result<String> {
     let url: String = dialoguer::Input::new()
-        .with_prompt("Burrow API URL")
+        .with_prompt("Server URL")
         .interact_text()?;
 
     let url = url.trim().to_string();
     if url.is_empty() {
-        anyhow::bail!("burrow_url cannot be empty");
+        anyhow::bail!("server_url cannot be empty");
     }
     Ok(url)
 }

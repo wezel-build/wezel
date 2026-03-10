@@ -47,13 +47,13 @@ pub fn health_cmd() -> anyhow::Result<()> {
                 "project config: {} ✓",
                 wezel_dir.join("config.toml").display()
             );
-            println!("  burrow_url: {}", config.burrow_url);
+            println!("  server_url: {}", config.server_url);
             println!("  username: {}", config.username);
 
-            // 4. Ping burrow
+            // 4. Ping server
             println!();
-            print!("burrow ({}): ", config.burrow_url);
-            match ping_burrow(&config.burrow_url) {
+            print!("server ({}): ", config.server_url);
+            match ping_burrow(&config.server_url) {
                 Ok(()) => println!("reachable ✓"),
                 Err(e) => println!("⚠ unreachable — {e}"),
             }

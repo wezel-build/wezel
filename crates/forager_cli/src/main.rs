@@ -13,12 +13,12 @@ use wezel_types::{ForagerJob, ForagerPluginEnvelope, ForagerRunReport, ForagerSt
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct ProjectConfig {
-    pub burrow_url: Option<String>,
+    pub server_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Config {
-    pub burrow_url: String,
+    pub server_url: String,
 }
 
 fn load_config(project_dir: &Path) -> Result<Config> {
@@ -29,17 +29,17 @@ fn load_config(project_dir: &Path) -> Result<Config> {
             config_path.display()
         );
     }
-    let defaults = ProjectConfig { burrow_url: None };
+    let defaults = ProjectConfig { server_url: None };
     let resolved: ProjectConfig = Figment::new()
         .merge(Serialized::defaults(defaults))
         .merge(Toml::file(&config_path))
         .extract()
         .with_context(|| format!("loading config from {}", config_path.display()))?;
-    let burrow_url = resolved
-        .burrow_url
+    let server_url = resolved
+        .server_url
         .filter(|s| !s.is_empty())
-        .with_context(|| format!("burrow_url not set in {}", config_path.display()))?;
-    Ok(Config { burrow_url })
+        .with_context(|| format!("server_url not set in {}", config_path.display()))?;
+    Ok(Config { server_url })
 }
 
 // ── Scenario TOML parsing ─────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ struct BenchmarkToml {
 #[derive(Debug, Deserialize)]
 struct BenchmarkStepToml {
     name: String,
-    forager: Option<String>,
+    tool: Option<String>,
     description: Option<String>,
     diff: Option<String>,
     #[serde(flatten)]
@@ -79,11 +79,11 @@ fn parse_benchmark(benchmark_dir: &Path) -> Result<(String, Option<String>, Vec<
 
     let mut steps = Vec::with_capacity(scenario.steps.len());
     for raw_step in scenario.steps {
-        let forager = match raw_step.forager {
+        let forager = match raw_step.tool {
             Some(f) => f,
             None if raw_step.rest.contains_key("cmd") => "exec".to_string(),
             None => bail!(
-                "step '{}' has no forager name and no cmd field",
+                "step '{}' has no tool name and no cmd field",
                 raw_step.name
             ),
         };
@@ -353,7 +353,7 @@ fn run_benchmark(benchmark_name: &str, project_dir_arg: Option<&Path>) -> Result
         .build();
 
     let job: ForagerJob = agent
-        .post(&format!("{}/api/forager/claim", config.burrow_url))
+        .post(&format!("{}/api/forager/claim", config.server_url))
         .send_json(&claim_body)
         .context("claiming job from Burrow")?
         .into_json()
@@ -408,7 +408,7 @@ fn run_benchmark(benchmark_name: &str, project_dir_arg: Option<&Path>) -> Result
     };
 
     agent
-        .post(&format!("{}/api/forager/run", config.burrow_url))
+        .post(&format!("{}/api/forager/run", config.server_url))
         .send_json(&report)
         .context("submitting run report to Burrow")?;
 

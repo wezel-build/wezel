@@ -6,7 +6,7 @@ use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
 
 /// Fields valid in `~/.wezel/config.toml` (global scope).
-/// `burrow_url` is intentionally absent — it must be set per-project.
+/// `server_url` is intentionally absent — it must be set per-project.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GlobalConfig {
     pub username: Option<String>,
@@ -15,19 +15,19 @@ pub struct GlobalConfig {
 /// Fields valid in `.wezel/config.toml` (project scope).
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ProjectConfig {
-    pub burrow_url: Option<String>,
+    pub server_url: Option<String>,
     pub username: Option<String>,
 }
 
 /// Fully resolved configuration after merging all layers.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
-    pub burrow_url: String,
+    pub server_url: String,
     pub username: String,
 }
 
 /// Walk up from `start` looking for a `.wezel/config.toml`.
-/// Returns `(project_wezel_dir, merged Config)` if found **and** `burrow_url` is set.
+/// Returns `(project_wezel_dir, merged Config)` if found **and** `server_url` is set.
 pub fn discover(start: &Path) -> Option<(PathBuf, Config)> {
     log::debug!("discovering config from {}", start.display());
 
@@ -39,8 +39,8 @@ pub fn discover(start: &Path) -> Option<(PathBuf, Config)> {
             let wezel_dir = dir.join(".wezel");
             let config = load(&candidate)?;
             log::debug!(
-                "loaded config: burrow_url={}, username={}",
-                config.burrow_url,
+                "loaded config: server_url={}, username={}",
+                config.server_url,
                 config.username,
             );
             return Some((wezel_dir, config));
@@ -55,12 +55,12 @@ pub fn discover(start: &Path) -> Option<(PathBuf, Config)> {
 /// Build a `Config` by layering:
 ///   1. defaults (username = whoami)
 ///   2. `~/.wezel/config.toml`  (global — username only)
-///   3. project `.wezel/config.toml` (burrow_url + username)
+///   3. project `.wezel/config.toml` (server_url + username)
 ///
-/// Returns `None` if `burrow_url` ends up missing.
+/// Returns `None` if `server_url` ends up missing.
 fn load(project_config_path: &Path) -> Option<Config> {
     let defaults = ProjectConfig {
-        burrow_url: None,
+        server_url: None,
         username: Some(whoami::username()),
     };
 
@@ -86,13 +86,13 @@ fn load(project_config_path: &Path) -> Option<Config> {
 
     let resolved: ProjectConfig = figment.extract().ok()?;
 
-    let burrow_url = resolved.burrow_url?;
-    if burrow_url.is_empty() {
+    let server_url = resolved.server_url?;
+    if server_url.is_empty() {
         return None;
     }
 
     Some(Config {
-        burrow_url,
+        server_url,
         username: resolved
             .username
             .filter(|s| !s.is_empty())
