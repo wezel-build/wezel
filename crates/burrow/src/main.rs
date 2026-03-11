@@ -1503,6 +1503,10 @@ async fn post_forager_run(
     Ok(StatusCode::OK)
 }
 
+async fn get_health() -> Json<Value> {
+    Json(serde_json::json!({"status": "ok"}))
+}
+
 async fn require_auth(
     State(pool): State<PgPool>,
     jar: CookieJar,
@@ -1584,6 +1588,7 @@ async fn main() {
         .route("/auth/me", get(auth::me))
         .route("/auth/config", get(auth::config))
         .route("/auth/logout", post(auth::logout))
+        .route("/health", get(get_health))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(pool);

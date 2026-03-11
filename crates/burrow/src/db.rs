@@ -111,7 +111,14 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
         ALTER TABLE graph_edges ADD PRIMARY KEY (source_id, target_id, kind);
         ALTER TABLE measurements ADD COLUMN IF NOT EXISTS step TEXT;
         ALTER TABLE IF EXISTS scenarios RENAME TO observations;
-        ALTER TABLE IF EXISTS forager_tokens RENAME COLUMN scenario_name TO benchmark_name;
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'forager_tokens' AND column_name = 'scenario_name'
+            ) THEN
+                ALTER TABLE forager_tokens RENAME COLUMN scenario_name TO benchmark_name;
+            END IF;
+        END $$;
         ",
     )
     .execute(pool)

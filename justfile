@@ -38,6 +38,17 @@ dev:
     echo "Press Ctrl+C to stop both."
     wait
 
+# Run end-to-end integration tests (requires hurl and local postgres)
+e2e:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --workspace
+    e2e/scripts/setup.sh
+    HURL_EXIT=0
+    hurl --test --variable base_url=http://localhost:3002 e2e/hurl/*.hurl || HURL_EXIT=$?
+    e2e/scripts/teardown.sh
+    exit $HURL_EXIT
+
 # Seed the burrow database
 seed:
     python3 scripts/seed.py
