@@ -30,6 +30,15 @@ struct Cli {
     /// Port to listen on
     #[arg(short, long, default_value = "3001")]
     port: u16,
+    /// Directory to cache downloaded pheromone tarballs
+    #[arg(long, env = "WEZEL_CACHE_DIR", default_value = ".wezel/cache")]
+    cache_dir: std::path::PathBuf,
+}
+
+static CACHE_DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+fn cache_dir() -> &'static std::path::PathBuf {
+    CACHE_DIR.get().expect("cache_dir not initialized")
 }
 
 type ApiResult<T> = Result<T, StatusCode>;
@@ -1843,6 +1852,71 @@ async fn post_admin_pheromone_fetch(
     Ok(Json(pheromone))
 }
 
+async fn get_pheromone_binary(
+    Path((name, target)): Path<(String, String)>,
+    State(pool): State<PgPool>,
+) -> Result<Response, StatusCode> {
+    let row = sqlx::query_as::<_, models::PheromoneRow>(
+        "SELECT id, name, github_repo, version, schema_json, viz_json, fetched_at::TEXT as fetched_at
+         FROM pheromones WHERE name = $1",
+    )
+    .bind(&name)
+    .fetch_optional(&pool)
+    .await
+    .map_err(ise)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let tarball_name = format!("{name}-{target}.tar.gz");
+
+    // Dev mode: serve directly from local dev dir, no caching.
+    if let Some(dev_dir) = get_dev_dir() {
+        let path = dev_dir.join(&name).join(&tarball_name);
+        if path.exists() {
+            let bytes = std::fs::read(&path).map_err(ise)?;
+            return Ok(Response::builder()
+                .header("content-type", "application/octet-stream")
+                .body(axum::body::Body::from(bytes))
+                .map_err(ise)?);
+        }
+    }
+
+    // Check cache; download from GitHub if missing.
+    let cache_path = cache_dir()
+        .join(&name)
+        .join(&row.version)
+        .join(&tarball_name);
+
+    if !cache_path.exists() {
+        let download_url = format!(
+            "https://github.com/{}/releases/download/v{}/{}",
+            row.github_repo, row.version, tarball_name
+        );
+        let client = Client::new();
+        let mut req = client.get(&download_url).header("User-Agent", "wezel-burrow");
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            let token = token.trim().to_string();
+            if !token.is_empty() {
+                req = req.bearer_auth(token);
+            }
+        }
+        let resp = req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+        if !resp.status().is_success() {
+            return Err(StatusCode::BAD_GATEWAY);
+        }
+        let bytes = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+        if let Some(parent) = cache_path.parent() {
+            tokio::fs::create_dir_all(parent).await.map_err(ise)?;
+        }
+        tokio::fs::write(&cache_path, &bytes).await.map_err(ise)?;
+    }
+
+    let bytes = tokio::fs::read(&cache_path).await.map_err(ise)?;
+    Ok(Response::builder()
+        .header("content-type", "application/octet-stream")
+        .body(axum::body::Body::from(bytes))
+        .map_err(ise)?)
+}
+
 // ── GitHub PR endpoint ────────────────────────────────────────────────────────
 
 async fn github_api<T: serde::de::DeserializeOwned>(
@@ -2042,6 +2116,8 @@ async fn main() {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
 
+    CACHE_DIR.set(cli.cache_dir).expect("CACHE_DIR already set");
+
     let db_url = db::db_url();
     println!("Connecting to database at {db_url}");
     let pool = db::connect(&db_url)
@@ -2104,6 +2180,10 @@ async fn main() {
         .route("/api/forager/claim", post(post_forager_claim))
         .route("/api/forager/run", post(post_forager_run))
         .route("/api/pheromones", get(get_pheromones))
+        .route(
+            "/api/pheromone/{name}/binary/{target}",
+            get(get_pheromone_binary),
+        )
         .route("/auth/github", get(auth::login))
         .route("/auth/github/callback", get(auth::callback))
         .route("/auth/me", get(auth::me))

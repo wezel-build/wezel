@@ -27,3 +27,5 @@ log = { workspace = true }
 env_logger = { workspace = true }
 url = { workspace = true }
 figment = { version = "0.10", features = ["toml"] }
+flate2 = { workspace = true }
+tar = { workspace = true }

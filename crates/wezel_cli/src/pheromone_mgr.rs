@@ -1,8 +1,14 @@
 //! Pheromone binary update manager.
 //!
 //! Queries burrow for the latest pheromone versions, downloads updated
-//! binaries for the current platform, and places them in `pheromone_dir`.
+//! tarballs via burrow (which handles caching and dev-mode), extracts
+//! the binary into a global cache, and symlinks it into the per-project
+//! pheromone directory.
+//!
+//! Global cache layout:  ~/.wezel/pheromones/{name}/{version}/{name}
+//! Per-project layout:   {pheromone_dir}/{name}  →  symlink to global cache
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -11,16 +17,12 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 struct PheromoneEntry {
     name: String,
-    #[serde(rename = "githubRepo")]
-    github_repo: String,
     version: String,
     platforms: Vec<String>,
 }
 
 /// Returns the target triple for the current platform, or `None` if unknown.
 fn current_target() -> Option<&'static str> {
-    // Use compile-time target_arch / target_os / target_env to produce a
-    // best-effort Rust target triple string.
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     return Some("aarch64-apple-darwin");
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
@@ -35,24 +37,73 @@ fn current_target() -> Option<&'static str> {
     None
 }
 
-fn version_file(pheromone_dir: &Path, name: &str) -> PathBuf {
-    pheromone_dir.join(format!("{name}.version"))
+fn global_cache_dir() -> PathBuf {
+    dirs::home_dir()
+        .expect("could not determine home directory")
+        .join(".wezel")
+        .join("pheromones")
 }
 
-fn installed_version(pheromone_dir: &Path, name: &str) -> Option<String> {
-    std::fs::read_to_string(version_file(pheromone_dir, name))
-        .ok()
-        .map(|s| s.trim().to_string())
+/// Path to the extracted binary in the global cache.
+fn cached_binary_path(name: &str, version: &str) -> PathBuf {
+    global_cache_dir().join(name).join(version).join(name)
 }
 
-fn write_version(pheromone_dir: &Path, name: &str, version: &str) -> std::io::Result<()> {
-    std::fs::write(version_file(pheromone_dir, name), version)
+fn extract_binary(tarball: &[u8], binary_name: &str, dest: &Path) -> anyhow::Result<()> {
+    use flate2::read::GzDecoder;
+    use tar::Archive;
+
+    let gz = GzDecoder::new(tarball);
+    let mut archive = Archive::new(gz);
+
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?;
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        if file_name == binary_name {
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let mut bytes = Vec::new();
+            entry.read_to_end(&mut bytes)?;
+            // Write atomically via temp file.
+            let tmp = dest.with_extension("tmp");
+            std::fs::write(&tmp, &bytes)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&tmp)?.permissions();
+                perms.set_mode(0o755);
+                std::fs::set_permissions(&tmp, perms)?;
+            }
+            std::fs::rename(&tmp, dest)?;
+            return Ok(());
+        }
+    }
+    anyhow::bail!("binary '{binary_name}' not found in tarball")
 }
 
-/// Check burrow for updated pheromone versions and download any that are newer.
+fn ensure_symlink(target: &Path, link: &Path) -> anyhow::Result<()> {
+    if let Some(parent) = link.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Remove stale link or old binary.
+    let _ = std::fs::remove_file(link);
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link)?;
+    #[cfg(not(unix))]
+    std::fs::copy(target, link).map(|_| ())?;
+    Ok(())
+}
+
+/// Check burrow for updated pheromone versions and install any that are newer.
 ///
-/// * `server_url` — base URL of burrow (e.g. `http://localhost:3001`)
-/// * `pheromone_dir` — directory where binaries are stored
+/// * `server_url`       — base URL of burrow (e.g. `http://localhost:3001`)
+/// * `pheromone_dir`    — per-project directory where symlinks are placed
 pub fn update_pheromones(server_url: &str, pheromone_dir: &Path) {
     let Some(target) = current_target() else {
         log::debug!("pheromone_mgr: unknown platform, skipping update");
@@ -75,11 +126,6 @@ pub fn update_pheromones(server_url: &str, pheromone_dir: &Path) {
         }
     };
 
-    if let Err(e) = std::fs::create_dir_all(pheromone_dir) {
-        log::warn!("pheromone_mgr: cannot create pheromone dir: {e}");
-        return;
-    }
-
     for entry in &entries {
         if !entry.platforms.iter().any(|p| p == target) {
             log::debug!(
@@ -89,67 +135,46 @@ pub fn update_pheromones(server_url: &str, pheromone_dir: &Path) {
             continue;
         }
 
-        let current = installed_version(pheromone_dir, &entry.name);
-        if current.as_deref() == Some(&entry.version) {
+        let cached = cached_binary_path(&entry.name, &entry.version);
+        let link = pheromone_dir.join(&entry.name);
+
+        if !cached.exists() {
+            log::info!("pheromone_mgr: downloading {} {}", entry.name, entry.version);
+            let binary_url = format!(
+                "{}/api/pheromone/{}/binary/{target}",
+                server_url.trim_end_matches('/'),
+                entry.name,
+            );
+            let tarball = match agent.get(&binary_url).call() {
+                Ok(r) => {
+                    let mut buf = Vec::new();
+                    if let Err(e) = r.into_reader().read_to_end(&mut buf) {
+                        log::warn!("pheromone_mgr: failed to read tarball for {}: {e}", entry.name);
+                        continue;
+                    }
+                    buf
+                }
+                Err(e) => {
+                    log::warn!("pheromone_mgr: failed to download {}: {e}", entry.name);
+                    continue;
+                }
+            };
+
+            if let Err(e) = extract_binary(&tarball, &entry.name, &cached) {
+                log::warn!("pheromone_mgr: failed to extract {}: {e}", entry.name);
+                continue;
+            }
+            log::info!("pheromone_mgr: installed {} {}", entry.name, entry.version);
+        } else {
             log::debug!(
-                "pheromone_mgr: {} is up to date ({})",
+                "pheromone_mgr: {} {} already cached",
                 entry.name,
                 entry.version
             );
-            continue;
         }
 
-        log::info!(
-            "pheromone_mgr: updating {} {} → {}",
-            entry.name,
-            current.as_deref().unwrap_or("(not installed)"),
-            entry.version
-        );
-
-        let bin_name = if cfg!(target_os = "windows") {
-            format!("{}-{}.exe", entry.name, target)
-        } else {
-            format!("{}-{}", entry.name, target)
-        };
-        let download_url = format!(
-            "https://github.com/{}/releases/download/v{}/{}",
-            entry.github_repo, entry.version, bin_name
-        );
-
-        let dest = pheromone_dir.join(&entry.name);
-        match download_binary(&agent, &download_url, &dest) {
-            Ok(()) => {
-                if let Err(e) = write_version(pheromone_dir, &entry.name, &entry.version) {
-                    log::warn!("pheromone_mgr: failed to write version file: {e}");
-                }
-                log::info!("pheromone_mgr: updated {} to {}", entry.name, entry.version);
-            }
-            Err(e) => {
-                log::warn!("pheromone_mgr: failed to download {}: {e}", entry.name);
-            }
+        if let Err(e) = ensure_symlink(&cached, &link) {
+            log::warn!("pheromone_mgr: failed to symlink {}: {e}", entry.name);
         }
     }
-}
-
-fn download_binary(agent: &ureq::Agent, url: &str, dest: &Path) -> anyhow::Result<()> {
-    use std::io::Read;
-    let resp = agent.get(url).call()?;
-    let mut bytes = Vec::new();
-    resp.into_reader().read_to_end(&mut bytes)?;
-
-    // Write to a temp file then rename for atomicity.
-    let tmp = dest.with_extension("tmp");
-    std::fs::write(&tmp, &bytes)?;
-
-    // Make executable on Unix.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&tmp)?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&tmp, perms)?;
-    }
-
-    std::fs::rename(&tmp, dest)?;
-    Ok(())
 }
