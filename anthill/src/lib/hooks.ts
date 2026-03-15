@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useProject } from "./useProject";
+import { api } from "./api";
 import type { Overview, ObservationSummary, GithubCommit } from "./api";
-import type { Observation, ForagerCommit } from "./data";
+import type { Observation, ForagerCommit, Pheromone } from "./data";
 
 const EMPTY_OBSERVATIONS: ObservationSummary[] = [];
 const EMPTY_COMMITS: ForagerCommit[] = [];
 const EMPTY_USERS: string[] = [];
+const EMPTY_PHEROMONES: Pheromone[] = [];
 const EMPTY_GITHUB_COMMIT: GithubCommit | null = null;
 const EMPTY_OVERVIEW: Overview = {
   observationCount: 0,
@@ -132,6 +134,15 @@ export function useUsers() {
   const result = useAsync(() => pApi.users(), [current?.id]);
   return {
     users: result.data ?? EMPTY_USERS,
+    loading: result.loading,
+    error: result.error,
+  };
+}
+
+export function usePheromones() {
+  const result = useAsync(() => api.pheromones(), []);
+  return {
+    pheromones: result.data ?? EMPTY_PHEROMONES,
     loading: result.loading,
     error: result.error,
   };

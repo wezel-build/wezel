@@ -4,10 +4,11 @@ import { useKeyboardNav } from "../lib/useKeyboardNav";
 import { ArrowLeft, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { C, alpha } from "../lib/colors";
 import { fmtValue } from "../lib/format";
-import { type Measurement, type MeasurementDetail } from "../lib/data";
-import { useCommits } from "../lib/hooks";
+import { type Measurement, type MeasurementDetail, buildVizMap } from "../lib/data";
+import { useCommits, usePheromones } from "../lib/hooks";
 import { useProject } from "../lib/useProject";
 import { DeltaBadge } from "../components/DeltaBadge";
+import { VizRenderer } from "../components/VizRenderer";
 
 // ── Sort logic ───────────────────────────────────────────────────────────────
 
@@ -135,6 +136,8 @@ export default function MeasurementDetailPage() {
 
   const { commits, error } = useCommits();
   const { current } = useProject();
+  const { pheromones } = usePheromones();
+  const vizMap = useMemo(() => buildVizMap(pheromones), [pheromones]);
 
   const commit = useMemo(
     () => commits.find((c) => c.shortSha === sha || c.sha === sha) ?? null,
@@ -290,6 +293,21 @@ export default function MeasurementDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Custom viz */}
+      {vizMap[measurement.kind]?.detail && (
+        <div className="px-[16px] py-[12px] border-b border-[var(--c-border)]">
+          <VizRenderer
+            spec={vizMap[measurement.kind]!.detail!}
+            data={sorted.map((d) => ({
+              name: d.name,
+              value: d.value,
+              prevValue: d.prevValue,
+            }))}
+            unit={measurement.unit}
+          />
+        </div>
+      )}
 
       {/* Table */}
       <div className="flex-1 overflow-y-auto">

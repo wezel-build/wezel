@@ -1568,6 +1568,10 @@ fn pheromone_json_from_row(row: &models::PheromoneRow) -> models::PheromoneJson 
                 .collect()
         })
         .unwrap_or_default();
+    let viz_json = row
+        .viz_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
     models::PheromoneJson {
         id: row.id,
         name: row.name.clone(),
@@ -1576,6 +1580,7 @@ fn pheromone_json_from_row(row: &models::PheromoneRow) -> models::PheromoneJson 
         platforms,
         fields,
         fetched_at: row.fetched_at.clone(),
+        viz_json,
     }
 }
 
@@ -1638,16 +1643,44 @@ async fn fetch_and_store_pheromone(
         .to_string();
     let schema_str = serde_json::to_string(&schema).map_err(ise)?;
 
+    // Optionally fetch viz.json from the same release.
+    let viz_str: Option<String> = if let Some(viz_url) = assets
+        .iter()
+        .find(|a| a.get("name").and_then(|v| v.as_str()) == Some("viz.json"))
+        .and_then(|a| a.get("browser_download_url"))
+        .and_then(|v| v.as_str())
+    {
+        let mut req = client.get(viz_url).header("User-Agent", "wezel-burrow");
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            let token = token.trim().to_string();
+            if !token.is_empty() {
+                req = req.bearer_auth(token);
+            }
+        }
+        if let Ok(resp) = req.send().await {
+            if let Ok(val) = resp.json::<Value>().await {
+                serde_json::to_string(&val).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let row = sqlx::query_as::<_, models::PheromoneRow>(
-        "INSERT INTO pheromones (name, github_repo, version, schema_json)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (name) DO UPDATE SET github_repo = $2, version = $3, schema_json = $4, fetched_at = now()
-         RETURNING id, name, github_repo, version, schema_json, fetched_at::TEXT as fetched_at",
+        "INSERT INTO pheromones (name, github_repo, version, schema_json, viz_json)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (name) DO UPDATE SET github_repo = $2, version = $3, schema_json = $4, viz_json = $5, fetched_at = now()
+         RETURNING id, name, github_repo, version, schema_json, viz_json, fetched_at::TEXT as fetched_at",
     )
     .bind(&name)
     .bind(github_repo)
     .bind(&version)
     .bind(&schema_str)
+    .bind(&viz_str)
     .fetch_one(pool)
     .await
     .map_err(ise)?;
@@ -1670,7 +1703,7 @@ async fn get_pheromones(
     State(pool): State<PgPool>,
 ) -> ApiResult<Json<Vec<models::PheromoneJson>>> {
     let rows = sqlx::query_as::<_, models::PheromoneRow>(
-        "SELECT id, name, github_repo, version, schema_json, fetched_at::TEXT as fetched_at
+        "SELECT id, name, github_repo, version, schema_json, viz_json, fetched_at::TEXT as fetched_at
          FROM pheromones ORDER BY name",
     )
     .fetch_all(&pool)

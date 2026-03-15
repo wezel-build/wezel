@@ -83,6 +83,32 @@ export interface PheromoneField {
   replacedBy?: string;
 }
 
+export type VizSpec =
+  | { type: "stat"; field: string; label: string }
+  | { type: "vega-lite"; spec: Record<string, unknown> };
+
+export interface VizForKind {
+  summary?: VizSpec;
+  detail?: VizSpec;
+}
+
+/** Keys are forager tool kinds (e.g. "exec", "llvm-lines"). */
+export type VizConfig = Record<string, VizForKind>;
+
+/** Build a kind → VizForKind lookup from the full pheromone list. */
+export function buildVizMap(
+  pheromones: Pheromone[],
+): Record<string, VizForKind> {
+  const map: Record<string, VizForKind> = {};
+  for (const p of pheromones) {
+    if (!p.vizJson) continue;
+    for (const [kind, cfg] of Object.entries(p.vizJson)) {
+      map[kind] = cfg;
+    }
+  }
+  return map;
+}
+
 export interface Pheromone {
   id: number;
   name: string;
@@ -91,6 +117,7 @@ export interface Pheromone {
   platforms: string[];
   fields: PheromoneField[];
   fetchedAt: string;
+  vizJson?: VizConfig;
 }
 
 // ── Registry adapter types ────────────────────────────────────────────────────

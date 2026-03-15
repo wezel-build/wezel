@@ -146,6 +146,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
                 ALTER TABLE forager_tokens RENAME COLUMN scenario_name TO benchmark_name;
             END IF;
         END $$;
+        ALTER TABLE pheromones ADD COLUMN IF NOT EXISTS viz_json TEXT;
         ",
     )
     .execute(pool)

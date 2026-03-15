@@ -25,11 +25,13 @@ import {
   type ForagerCommit,
   type Measurement,
   type MeasurementStatus,
+  buildVizMap,
 } from "../lib/data";
-import { useCommits, useGithubCommit } from "../lib/hooks";
+import { useCommits, useGithubCommit, usePheromones } from "../lib/hooks";
 import { useProject } from "../lib/useProject";
 import { Badge } from "../components/Badge";
 import { DeltaBadge } from "../components/DeltaBadge";
+import { VizRenderer } from "../components/VizRenderer";
 
 // ── Small pieces ─────────────────────────────────────────────────────────────
 
@@ -340,6 +342,8 @@ export default function CommitPage() {
   const navigate = useNavigate();
   const { pApi } = useProject();
   const { commits } = useCommits();
+  const { pheromones } = usePheromones();
+  const vizMap = useMemo(() => buildVizMap(pheromones), [pheromones]);
 
   const [scheduling, setScheduling] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
@@ -560,26 +564,45 @@ export default function CommitPage() {
                 <span>Δ prev</span>
               </div>
 
-              {grouped.map(([kind, measurements], gi) => (
-                <div key={kind}>
-                  {grouped.length > 1 && (
-                    <div
-                      className={`px-[12px] py-[5px] text-[9px] font-bold font-mono text-dim uppercase tracking-[0.8px] bg-surface border-b border-[var(--c-border)]${gi > 0 ? " border-t border-[var(--c-border)]" : ""}`}
-                    >
-                      {kind}
-                    </div>
-                  )}
-                  {measurements.map((m) => (
-                    <MeasurementRow
-                      key={m.id}
-                      m={m}
-                      projectId={projectId}
-                      commitSha={commit.shortSha}
-                      navigate={navigate}
-                    />
-                  ))}
-                </div>
-              ))}
+              {grouped.map(([kind, measurements], gi) => {
+                const summarySpec = vizMap[kind]?.summary;
+                const completedMs = measurements.filter(
+                  (m) => m.status === "complete" && m.value != null,
+                );
+                return (
+                  <div key={kind}>
+                    {grouped.length > 1 && (
+                      <div
+                        className={`px-[12px] py-[5px] text-[9px] font-bold font-mono text-dim uppercase tracking-[0.8px] bg-surface border-b border-[var(--c-border)]${gi > 0 ? " border-t border-[var(--c-border)]" : ""}`}
+                      >
+                        {kind}
+                      </div>
+                    )}
+                    {summarySpec && completedMs.length > 0 && (
+                      <div className="px-[12px] py-[8px] border-b border-[var(--c-border)] bg-surface">
+                        <VizRenderer
+                          spec={summarySpec}
+                          data={completedMs.map((m) => ({
+                            name: m.name,
+                            value: m.value,
+                            prevValue: m.prevValue,
+                          }))}
+                          unit={completedMs[0]?.unit}
+                        />
+                      </div>
+                    )}
+                    {measurements.map((m) => (
+                      <MeasurementRow
+                        key={m.id}
+                        m={m}
+                        projectId={projectId}
+                        commitSha={commit.shortSha}
+                        navigate={navigate}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="border border-[var(--c-border)] rounded-md bg-surface px-[16px] py-[14px] text-dim text-[11px] font-mono">

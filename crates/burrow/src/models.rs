@@ -211,6 +211,7 @@ pub struct PheromoneRow {
     pub github_repo: String,
     pub version: String,
     pub schema_json: String,
+    pub viz_json: Option<String>,
     pub fetched_at: String,
 }
 
@@ -240,6 +241,8 @@ pub struct PheromoneJson {
     pub fields: Vec<PheromoneFieldJson>,
     #[serde(rename = "fetchedAt")]
     pub fetched_at: String,
+    #[serde(rename = "vizJson", skip_serializing_if = "Option::is_none")]
+    pub viz_json: Option<serde_json::Value>,
 }
 
 // ── GitHub proxy ─────────────────────────────────────────────────────────────
