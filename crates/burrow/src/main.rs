@@ -1584,10 +1584,110 @@ fn pheromone_json_from_row(row: &models::PheromoneRow) -> models::PheromoneJson 
     }
 }
 
+fn get_dev_dir() -> Option<std::path::PathBuf> {
+    std::env::var("WEZEL_PHEROMONE_DEV_DIR").ok().map(Into::into)
+}
+
+async fn fetch_and_store_from_local(
+    pool: &PgPool,
+    dev_dir: &std::path::Path,
+    name: &str,
+    github_repo: &str,
+) -> ApiResult<models::PheromoneJson> {
+    let schema: Value = {
+        let s = std::fs::read_to_string(dev_dir.join(name).join("schema.json")).map_err(ise)?;
+        serde_json::from_str(&s).map_err(ise)?
+    };
+    let pheromone_name = schema
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or(name)
+        .to_string();
+    let version = schema
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("0.0.0")
+        .to_string();
+    let schema_str = serde_json::to_string(&schema).map_err(ise)?;
+
+    let viz_str: Option<String> = std::fs::read_to_string(dev_dir.join(name).join("viz.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|v| serde_json::to_string(&v).ok());
+
+    let row = sqlx::query_as::<_, models::PheromoneRow>(
+        "INSERT INTO pheromones (name, github_repo, version, schema_json, viz_json)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (name) DO UPDATE SET github_repo = $2, version = $3, schema_json = $4, viz_json = $5, fetched_at = now()
+         RETURNING id, name, github_repo, version, schema_json, viz_json, fetched_at::TEXT as fetched_at",
+    )
+    .bind(&pheromone_name)
+    .bind(github_repo)
+    .bind(&version)
+    .bind(&schema_str)
+    .bind(&viz_str)
+    .fetch_one(pool)
+    .await
+    .map_err(ise)?;
+
+    let _ = sqlx::query(
+        "INSERT INTO pheromone_schema_history (pheromone_id, version, schema_json)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (pheromone_id, version) DO NOTHING",
+    )
+    .bind(row.id)
+    .bind(&version)
+    .bind(&schema_str)
+    .execute(pool)
+    .await;
+
+    tracing::info!("loaded dev pheromone: {pheromone_name}");
+    Ok(pheromone_json_from_row(&row))
+}
+
+async fn load_dev_pheromones(pool: &PgPool, dev_dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dev_dir) else {
+        tracing::warn!("WEZEL_PHEROMONE_DEV_DIR not readable: {}", dev_dir.display());
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if !path.join("schema.json").exists() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        // Look up existing DB row to get stored github_repo; fall back to "dev/{name}".
+        let github_repo = sqlx::query_scalar::<_, String>(
+            "SELECT github_repo FROM pheromones WHERE name = $1",
+        )
+        .bind(name.as_ref())
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| format!("dev/{name}"));
+
+        if let Err(e) = fetch_and_store_pheromone(pool, &github_repo).await {
+            tracing::warn!("failed to load dev pheromone {name}: {e:?}");
+        }
+    }
+}
+
 async fn fetch_and_store_pheromone(
     pool: &PgPool,
     github_repo: &str,
 ) -> ApiResult<models::PheromoneJson> {
+    let name = github_repo.split('/').last().unwrap_or(github_repo);
+    if let Some(dev_dir) = get_dev_dir() {
+        if dev_dir.join(name).join("schema.json").exists() {
+            return fetch_and_store_from_local(pool, &dev_dir, name, github_repo).await;
+        }
+    }
+
     let client = Client::new();
     let url = format!("https://api.github.com/repos/{github_repo}/releases/latest");
     let mut req = client.get(&url).header("User-Agent", "wezel-burrow");
@@ -1947,6 +2047,10 @@ async fn main() {
     let pool = db::connect(&db_url)
         .await
         .expect("could not connect to database");
+
+    if let Some(dev_dir) = get_dev_dir() {
+        load_dev_pheromones(&pool, &dev_dir).await;
+    }
 
     // Protected API routes (all except /api/events)
     let protected_api = Router::new()
