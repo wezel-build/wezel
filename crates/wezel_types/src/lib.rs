@@ -159,6 +159,17 @@ pub struct StepDef {
     pub inputs: serde_json::Value,
 }
 
+/// A job from the forager queue, returned by `POST /api/forager/jobs/next`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForagerQueueJob {
+    pub id: u64,
+    pub project_id: u64,
+    pub project_upstream: String,
+    pub commit_sha: String,
+    pub benchmark_name: String,
+}
+
 /// Response from `POST /api/forager/claim`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

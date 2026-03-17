@@ -147,6 +147,18 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             END IF;
         END $$;
         ALTER TABLE pheromones ADD COLUMN IF NOT EXISTS viz_json TEXT;
+        CREATE TABLE IF NOT EXISTS forager_queue (
+            id             BIGSERIAL PRIMARY KEY,
+            project_id     BIGINT NOT NULL REFERENCES projects(id),
+            commit_sha     TEXT NOT NULL,
+            benchmark_name TEXT NOT NULL,
+            status         TEXT NOT NULL DEFAULT 'pending'
+                           CHECK(status IN ('pending', 'running', 'complete', 'failed')),
+            claimed_at     TIMESTAMPTZ,
+            completed_at   TIMESTAMPTZ,
+            error_text     TEXT,
+            created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
         ",
     )
     .execute(pool)

@@ -1512,6 +1512,191 @@ async fn post_forager_run(
     Ok(StatusCode::OK)
 }
 
+// ── Forager queue endpoints ───────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct ForagerEnqueueBody {
+    project_upstream: String,
+    commit_sha: String,
+    benchmark_name: String,
+}
+
+async fn post_forager_jobs(
+    State(pool): State<PgPool>,
+    Json(body): Json<ForagerEnqueueBody>,
+) -> ApiResult<(StatusCode, Json<Value>)> {
+    let upstream = body.project_upstream.trim();
+    let sha = body.commit_sha.trim();
+    let benchmark_name = body.benchmark_name.trim();
+
+    if upstream.is_empty() || sha.is_empty() || benchmark_name.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Find or create project.
+    let project_name = upstream.rsplit('/').next().unwrap_or(upstream);
+    let project_id: i64 =
+        match sqlx::query_as::<_, (i64,)>("SELECT id FROM projects WHERE upstream = $1")
+            .bind(upstream)
+            .fetch_optional(&pool)
+            .await
+            .map_err(ise)?
+        {
+            Some((id,)) => id,
+            None => {
+                sqlx::query_as::<_, IdRow>(
+                    "INSERT INTO projects (name, upstream) VALUES ($1, $2) RETURNING id",
+                )
+                .bind(project_name)
+                .bind(upstream)
+                .fetch_one(&pool)
+                .await
+                .map_err(ise)?
+                .id
+            }
+        };
+
+    // Return existing pending/running job if one already exists.
+    if let Some((id, status)) = sqlx::query_as::<_, (i64, String)>(
+        "SELECT id, status FROM forager_queue \
+         WHERE project_id = $1 AND commit_sha = $2 AND benchmark_name = $3 \
+         AND status IN ('pending', 'running') \
+         LIMIT 1",
+    )
+    .bind(project_id)
+    .bind(sha)
+    .bind(benchmark_name)
+    .fetch_optional(&pool)
+    .await
+    .map_err(ise)?
+    {
+        return Ok((
+            StatusCode::CREATED,
+            Json(serde_json::json!({ "id": id, "status": status })),
+        ));
+    }
+
+    let (id,): (i64,) = sqlx::query_as(
+        "INSERT INTO forager_queue (project_id, commit_sha, benchmark_name) \
+         VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(project_id)
+    .bind(sha)
+    .bind(benchmark_name)
+    .fetch_one(&pool)
+    .await
+    .map_err(ise)?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "id": id, "status": "pending" })),
+    ))
+}
+
+#[derive(Deserialize)]
+struct ForagerJobsNextBody {
+    project_upstream: String,
+}
+
+async fn post_forager_jobs_next(
+    State(pool): State<PgPool>,
+    Json(body): Json<ForagerJobsNextBody>,
+) -> ApiResult<(StatusCode, Json<Option<wezel_types::ForagerQueueJob>>)> {
+    let upstream = body.project_upstream.trim();
+    if upstream.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let row = sqlx::query_as::<_, (i64, i64, String, String, String)>(
+        "UPDATE forager_queue fq \
+         SET status = 'running', claimed_at = now() \
+         WHERE fq.id = ( \
+             SELECT fq2.id FROM forager_queue fq2 \
+             JOIN projects p ON fq2.project_id = p.id \
+             WHERE p.upstream = $1 AND fq2.status = 'pending' \
+             ORDER BY fq2.id ASC \
+             LIMIT 1 \
+             FOR UPDATE SKIP LOCKED \
+         ) \
+         RETURNING fq.id, fq.project_id, fq.commit_sha, fq.benchmark_name, \
+                   (SELECT upstream FROM projects WHERE id = fq.project_id)",
+    )
+    .bind(upstream)
+    .fetch_optional(&pool)
+    .await
+    .map_err(ise)?;
+
+    match row {
+        None => Ok((StatusCode::NO_CONTENT, Json(None))),
+        Some((id, project_id, commit_sha, benchmark_name, project_upstream)) => Ok((
+            StatusCode::OK,
+            Json(Some(wezel_types::ForagerQueueJob {
+                id: id as u64,
+                project_id: project_id as u64,
+                project_upstream,
+                commit_sha,
+                benchmark_name,
+            })),
+        )),
+    }
+}
+
+#[derive(Deserialize)]
+struct ForagerJobPatchBody {
+    status: String,
+    error: Option<String>,
+}
+
+async fn patch_forager_job(
+    State(pool): State<PgPool>,
+    Path(id): Path<i64>,
+    Json(body): Json<ForagerJobPatchBody>,
+) -> ApiResult<StatusCode> {
+    let status = body.status.trim();
+    if status != "complete" && status != "failed" {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let rows_affected = sqlx::query(
+        "UPDATE forager_queue \
+         SET status = $1, completed_at = now(), error_text = $2 \
+         WHERE id = $3",
+    )
+    .bind(status)
+    .bind(body.error.as_deref())
+    .bind(id)
+    .execute(&pool)
+    .await
+    .map_err(ise)?
+    .rows_affected();
+
+    if rows_affected == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(StatusCode::OK)
+}
+
+async fn get_project_benchmarks(
+    Path(project_id): Path<i64>,
+    State(pool): State<PgPool>,
+) -> ApiResult<Json<Vec<String>>> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT benchmark_name FROM (
+             SELECT benchmark_name FROM forager_queue WHERE project_id = $1
+             UNION
+             SELECT ft.benchmark_name FROM forager_tokens ft
+             JOIN commits c ON ft.commit_id = c.id
+             WHERE c.project_id = $1
+         ) t ORDER BY benchmark_name",
+    )
+    .bind(project_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(ise)?;
+    Ok(Json(rows.into_iter().map(|(n,)| n).collect()))
+}
+
 async fn get_health() -> Json<Value> {
     Json(serde_json::json!({"status": "ok"}))
 }
@@ -2153,6 +2338,10 @@ async fn main() {
         )
         .route("/api/project/{project_id}/user", get(get_users))
         .route(
+            "/api/project/{project_id}/benchmarks",
+            get(get_project_benchmarks),
+        )
+        .route(
             "/api/project/{project_id}/benchmark/pr",
             post(post_benchmark_pr),
         )
@@ -2179,6 +2368,9 @@ async fn main() {
         .route("/api/events", post(ingest_events))
         .route("/api/forager/claim", post(post_forager_claim))
         .route("/api/forager/run", post(post_forager_run))
+        .route("/api/forager/jobs", post(post_forager_jobs))
+        .route("/api/forager/jobs/next", post(post_forager_jobs_next))
+        .route("/api/forager/jobs/{id}", patch(patch_forager_job))
         .route("/api/pheromones", get(get_pheromones))
         .route(
             "/api/pheromone/{name}/binary/{target}",

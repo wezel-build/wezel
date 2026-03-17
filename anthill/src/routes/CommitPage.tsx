@@ -29,6 +29,7 @@ import {
 } from "../lib/data";
 import { useCommits, useGithubCommit, usePheromones } from "../lib/hooks";
 import { useProject } from "../lib/useProject";
+import { api } from "../lib/api";
 import { Badge } from "../components/Badge";
 import { DeltaBadge } from "../components/DeltaBadge";
 import { VizRenderer } from "../components/VizRenderer";
@@ -340,13 +341,17 @@ export default function CommitPage() {
   const hasProjectId = Number.isFinite(projectId);
 
   const navigate = useNavigate();
-  const { pApi } = useProject();
+  const { pApi, current } = useProject();
   const { commits } = useCommits();
   const { pheromones } = usePheromones();
   const vizMap = useMemo(() => buildVizMap(pheromones), [pheromones]);
 
-  const [scheduling, setScheduling] = useState(false);
-  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [knownBenchmarks, setKnownBenchmarks] = useState<string[]>([]);
+  const [benchmarkInput, setBenchmarkInput] = useState("");
+  const [enqueueing, setEnqueueing] = useState(false);
+  const [enqueueError, setEnqueueError] = useState<string | null>(null);
+  const [enqueueSuccess, setEnqueueSuccess] = useState(false);
 
   const commit = useMemo(
     () => commits.find((c) => c.shortSha === sha || c.sha === sha) ?? null,
@@ -418,17 +423,34 @@ export default function CommitPage() {
 
   const targetSha = githubCommit?.sha ?? commit?.sha ?? sha;
 
-  const onSchedule = async () => {
-    if (!targetSha || scheduling) return;
-    setScheduling(true);
-    setScheduleError(null);
+  const onClickSchedule = async () => {
+    if (!targetSha || showPicker) return;
+    setEnqueueError(null);
+    setEnqueueSuccess(false);
+    setShowPicker(true);
     try {
-      const created = await pApi.scheduleCommit(targetSha);
-      navigate(toCommit(created.shortSha));
+      const bms = await pApi.benchmarks();
+      setKnownBenchmarks(bms);
+      if (bms.length === 1) setBenchmarkInput(bms[0]);
+    } catch {
+      // Ignore — user can still type manually.
+    }
+  };
+
+  const onEnqueue = async () => {
+    const name = benchmarkInput.trim();
+    if (!targetSha || !name || !current || enqueueing) return;
+    setEnqueueing(true);
+    setEnqueueError(null);
+    try {
+      await api.enqueueForagerJob(current.upstream, targetSha, name);
+      setEnqueueSuccess(true);
+      setShowPicker(false);
+      setBenchmarkInput("");
     } catch (e) {
-      setScheduleError(String(e));
+      setEnqueueError(String(e));
     } finally {
-      setScheduling(false);
+      setEnqueueing(false);
     }
   };
 
@@ -532,22 +554,84 @@ export default function CommitPage() {
               )}
 
               <button
-                onClick={onSchedule}
-                disabled={scheduling || !targetSha}
+                onClick={onClickSchedule}
+                disabled={!targetSha || showPicker}
                 className="inline-flex items-center gap-[6px] text-[10px] font-mono border border-[var(--c-border)] rounded px-[8px] py-[4px] bg-surface2"
                 style={{
-                  color: scheduling || !targetSha ? C.textDim : C.text,
-                  cursor: scheduling || !targetSha ? "default" : "pointer",
+                  color: !targetSha || showPicker ? C.textDim : C.text,
+                  cursor: !targetSha || showPicker ? "default" : "pointer",
                 }}
               >
                 <Play size={11} />
-                {scheduling ? "Scheduling..." : "Schedule Forager run"}
+                {enqueueSuccess ? "Queued!" : "Schedule Forager run"}
               </button>
             </div>
 
-            {scheduleError && (
-              <div className="text-[10px] font-mono text-c-red">
-                failed to schedule run: {scheduleError}
+            {showPicker && (
+              <div className="flex flex-col gap-[6px] border-t border-[var(--c-border)] pt-[8px]">
+                {knownBenchmarks.length > 0 && (
+                  <div className="flex gap-[4px] flex-wrap">
+                    {knownBenchmarks.map((bm) => (
+                      <button
+                        key={bm}
+                        onClick={() => setBenchmarkInput(bm)}
+                        className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[2px]"
+                        style={{
+                          background:
+                            benchmarkInput === bm ? C.surface3 : C.surface2,
+                          color:
+                            benchmarkInput === bm ? C.accent : C.textMid,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {bm}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-[6px]">
+                  <input
+                    value={benchmarkInput}
+                    onChange={(e) => setBenchmarkInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && onEnqueue()}
+                    placeholder="benchmark name"
+                    className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[3px] bg-surface2 text-fg flex-1"
+                    style={{ outline: "none" }}
+                    autoFocus
+                  />
+                  <button
+                    onClick={onEnqueue}
+                    disabled={!benchmarkInput.trim() || enqueueing}
+                    className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[8px] py-[3px] bg-surface2"
+                    style={{
+                      color:
+                        !benchmarkInput.trim() || enqueueing
+                          ? C.textDim
+                          : C.accent,
+                      cursor:
+                        !benchmarkInput.trim() || enqueueing
+                          ? "default"
+                          : "pointer",
+                    }}
+                  >
+                    {enqueueing ? "Enqueueing…" : "Enqueue"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPicker(false);
+                      setBenchmarkInput("");
+                      setEnqueueError(null);
+                    }}
+                    className="text-[10px] font-mono text-dim border-0 bg-transparent cursor-pointer"
+                  >
+                    cancel
+                  </button>
+                </div>
+                {enqueueError && (
+                  <div className="text-[10px] font-mono" style={{ color: C.red }}>
+                    {enqueueError}
+                  </div>
+                )}
               </div>
             )}
           </div>

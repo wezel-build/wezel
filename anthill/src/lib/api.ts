@@ -65,6 +65,11 @@ export const authApi = {
   loginUrl: `${BASE}/auth/github`,
 };
 
+export interface ForagerJobStatus {
+  id: number;
+  status: string;
+}
+
 function projectApi(projectId: number) {
   const p = `/api/project/${projectId}`;
   return {
@@ -79,6 +84,7 @@ function projectApi(projectId: number) {
     scheduleCommit: (sha: string) =>
       post<ForagerCommit>(`${p}/commit`, { sha }),
     users: () => get<string[]>(`${p}/user`),
+    benchmarks: () => get<string[]>(`${p}/benchmarks`),
   };
 }
 
@@ -96,6 +102,16 @@ export const api = {
     patch<Project>(`/api/project/${id}`, { name }),
   forProject: projectApi,
   pheromones: () => get<Pheromone[]>("/api/pheromones"),
+  enqueueForagerJob: (
+    projectUpstream: string,
+    commitSha: string,
+    benchmarkName: string,
+  ) =>
+    post<ForagerJobStatus>("/api/forager/jobs", {
+      project_upstream: projectUpstream,
+      commit_sha: commitSha,
+      benchmark_name: benchmarkName,
+    }),
   admin: {
     pheromones: () => get<Pheromone[]>("/api/admin/pheromone"),
     registerPheromone: (githubRepo: string) =>

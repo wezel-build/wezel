@@ -23,6 +23,7 @@ export const nullApi: ProjectApi = {
   githubCommit: () => Promise.reject("no project"),
   scheduleCommit: () => Promise.reject("no project"),
   users: () => Promise.reject("no project"),
+  benchmarks: () => Promise.reject("no project"),
 };
 
 export const ProjectCtx = createContext<ProjectCtxValue>({

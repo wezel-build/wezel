@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
-use wezel_types::{ForagerJob, ForagerPluginEnvelope, ForagerRunReport, ForagerStepReport};
+use wezel_types::{ForagerJob, ForagerPluginEnvelope, ForagerQueueJob, ForagerRunReport, ForagerStepReport};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -200,6 +200,30 @@ fn git_apply_patch(project_dir: &Path, patch: &Path) -> Result<()> {
     Ok(())
 }
 
+fn git_fetch(repo_dir: &Path) -> Result<()> {
+    let status = Command::new("git")
+        .args(["fetch", "--quiet", "origin"])
+        .current_dir(repo_dir)
+        .status()
+        .context("running git fetch")?;
+    if !status.success() {
+        bail!("git fetch failed");
+    }
+    Ok(())
+}
+
+fn git_checkout_detached(repo_dir: &Path, sha: &str) -> Result<()> {
+    let status = Command::new("git")
+        .args(["checkout", "--detach", sha])
+        .current_dir(repo_dir)
+        .status()
+        .context("running git checkout --detach")?;
+    if !status.success() {
+        bail!("git checkout --detach {} failed", sha);
+    }
+    Ok(())
+}
+
 fn normalize_upstream(url: &str) -> String {
     let s = url
         .trim()
@@ -289,6 +313,15 @@ enum Cmd {
         #[arg(long)]
         project_dir: Option<PathBuf>,
     },
+    /// Poll burrow for queued jobs and run them.
+    Serve {
+        /// Path to the repository to check out and run benchmarks in.
+        #[arg(long)]
+        repo_dir: PathBuf,
+        /// Seconds to wait between polls when no job is available.
+        #[arg(long, default_value = "10")]
+        poll_interval: u64,
+    },
 }
 
 fn main() -> Result<()> {
@@ -300,6 +333,73 @@ fn main() -> Result<()> {
             benchmark,
             project_dir,
         } => run_benchmark(&benchmark, project_dir.as_deref()),
+        Cmd::Serve {
+            repo_dir,
+            poll_interval,
+        } => run_serve(&repo_dir, poll_interval),
+    }
+}
+
+fn run_serve(repo_dir: &Path, poll_interval: u64) -> Result<()> {
+    let config = load_config(repo_dir)?;
+    let project_upstream = git_upstream(repo_dir)?;
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(30))
+        .build();
+
+    log::info!(
+        "forager serve: upstream={} poll_interval={}s",
+        project_upstream,
+        poll_interval
+    );
+
+    loop {
+        let next_body = serde_json::json!({ "project_upstream": project_upstream });
+        let response = agent
+            .post(&format!("{}/api/forager/jobs/next", config.server_url))
+            .send_json(&next_body)
+            .context("polling for next job")?;
+
+        if response.status() == 204 {
+            log::debug!("no pending jobs; sleeping {}s", poll_interval);
+            std::thread::sleep(std::time::Duration::from_secs(poll_interval));
+            continue;
+        }
+
+        let job: ForagerQueueJob = response.into_json().context("parsing job response")?;
+        log::info!(
+            "claimed queue job {}: sha={} benchmark={}",
+            job.id,
+            &job.commit_sha[..7.min(job.commit_sha.len())],
+            job.benchmark_name
+        );
+
+        git_fetch(repo_dir).with_context(|| format!("git fetch before job {}", job.id))?;
+        git_checkout_detached(repo_dir, &job.commit_sha)
+            .with_context(|| format!("checkout {} for job {}", job.commit_sha, job.id))?;
+
+        let result = run_benchmark(&job.benchmark_name, Some(repo_dir));
+
+        let patch_body = match result {
+            Ok(()) => serde_json::json!({ "status": "complete" }),
+            Err(ref e) => serde_json::json!({ "status": "failed", "error": format!("{e:#}") }),
+        };
+
+        agent
+            .patch(&format!(
+                "{}/api/forager/jobs/{}",
+                config.server_url, job.id
+            ))
+            .send_json(&patch_body)
+            .with_context(|| format!("patching job {} status", job.id))?;
+
+        if let Err(e) = result {
+            log::warn!("job {} failed: {e:#}", job.id);
+        } else {
+            log::info!("job {} complete", job.id);
+        }
+        // No sleep — poll again immediately after handling a job.
     }
 }
 
