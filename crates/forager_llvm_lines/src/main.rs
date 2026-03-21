@@ -9,7 +9,9 @@ fn main() -> Result<()> {
             serde_json::json!({
                 "name": "llvm-lines",
                 "description": "Counts LLVM IR lines via cargo-llvm-lines",
-                "inputs": {},
+                "inputs": {
+                    "package": { "type": "string", "description": "Package name (required for workspaces)", "optional": true }
+                },
                 "output": {
                     "kind": "count",
                     "unit": "lines",
@@ -21,11 +23,18 @@ fn main() -> Result<()> {
     }
 
     let out_path = std::env::var("FORAGER_OUT").context("FORAGER_OUT not set")?;
+    let inputs_path = std::env::var("FORAGER_INPUTS").context("FORAGER_INPUTS not set")?;
+    let inputs: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&inputs_path)?)
+            .context("parsing FORAGER_INPUTS")?;
+    let package = inputs.get("package").and_then(|v| v.as_str());
 
-    let output = std::process::Command::new("cargo")
-        .args(["llvm-lines"])
-        .output()
-        .context("failed to run cargo llvm-lines")?;
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.arg("llvm-lines");
+    if let Some(pkg) = package {
+        cmd.args(["-p", pkg]);
+    }
+    let output = cmd.output().context("failed to run cargo llvm-lines")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
