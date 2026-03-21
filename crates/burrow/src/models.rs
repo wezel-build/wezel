@@ -203,6 +203,18 @@ pub struct OverviewJson {
     pub latest_commit_status: Option<String>,
 }
 
+#[derive(Serialize)]
+pub struct ForagerQueueJobStatus {
+    pub id: i64,
+    pub status: String,
+}
+
+#[derive(Serialize)]
+pub struct BenchmarkPrResponse {
+    #[serde(rename = "prUrl")]
+    pub pr_url: String,
+}
+
 // ── Pheromone registry ───────────────────────────────────────────────────────
 
 #[derive(FromRow)]

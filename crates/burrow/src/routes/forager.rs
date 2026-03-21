@@ -6,7 +6,7 @@ use axum::{
 use serde::Deserialize;
 use sqlx::PgPool;
 
-use crate::models::IdRow;
+use crate::models::{ForagerQueueJobStatus, IdRow};
 use crate::{ApiResult, ise};
 
 #[derive(Deserialize)]
@@ -224,7 +224,7 @@ pub struct ForagerEnqueueBody {
 pub async fn post_forager_jobs(
     State(pool): State<PgPool>,
     Json(body): Json<ForagerEnqueueBody>,
-) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+) -> ApiResult<(StatusCode, Json<ForagerQueueJobStatus>)> {
     let upstream = body.project_upstream.trim();
     let sha = body.commit_sha.trim();
     let benchmark_name = body.benchmark_name.trim();
@@ -272,7 +272,7 @@ pub async fn post_forager_jobs(
     {
         return Ok((
             StatusCode::CREATED,
-            Json(serde_json::json!({ "id": id, "status": status })),
+            Json(ForagerQueueJobStatus { id, status }),
         ));
     }
 
@@ -289,7 +289,7 @@ pub async fn post_forager_jobs(
 
     Ok((
         StatusCode::CREATED,
-        Json(serde_json::json!({ "id": id, "status": "pending" })),
+        Json(ForagerQueueJobStatus { id, status: "pending".to_string() }),
     ))
 }
 

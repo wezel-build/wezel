@@ -139,7 +139,7 @@ pub async fn post_benchmark_pr(
     Path(project_id): Path<i64>,
     State(pool): State<PgPool>,
     Json(body): Json<BenchmarkPrBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<BenchmarkPrResponse>> {
     let project =
         sqlx::query_as::<_, Project>("SELECT id, name, upstream FROM projects WHERE id = $1")
             .bind(project_id)
@@ -274,5 +274,5 @@ pub async fn post_benchmark_pr(
     .await?;
     let pr_url = pr["html_url"].as_str().ok_or(StatusCode::BAD_GATEWAY)?;
 
-    Ok(Json(serde_json::json!({ "prUrl": pr_url })))
+    Ok(Json(BenchmarkPrResponse { pr_url: pr_url.to_string() }))
 }
