@@ -66,6 +66,7 @@ pub struct Measurement {
 }
 
 #[derive(FromRow)]
+#[expect(unused)]
 pub struct ForagerToken {
     pub id: i64,
     pub commit_id: i64,

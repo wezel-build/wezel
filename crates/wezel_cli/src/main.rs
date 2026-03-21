@@ -429,11 +429,9 @@ fn main() -> ExitCode {
         Command::Daemon { foreground } => {
             if foreground {
                 daemon::run_daemon();
-            } else {
-                if let Err(e) = daemon::spawn_detached() {
-                    eprintln!("wezel: failed to spawn daemon: {e}");
-                    return ExitCode::FAILURE;
-                }
+            } else if let Err(e) = daemon::spawn_detached() {
+                eprintln!("wezel: failed to spawn daemon: {e}");
+                return ExitCode::FAILURE;
             }
             ExitCode::SUCCESS
         }

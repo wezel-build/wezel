@@ -45,8 +45,7 @@ fn remove_pid() {
 pub fn is_running() -> bool {
     let Some(pid) = read_pid() else { return false };
     // Send signal 0 to check if process exists.
-    let alive = unsafe { libc::kill(pid as libc::pid_t, 0) } == 0;
-    alive
+    (unsafe { libc::kill(pid as libc::pid_t, 0) } == 0)
 }
 
 #[cfg(not(unix))]
@@ -118,16 +117,16 @@ pub fn run_daemon() {
 /// Find a Config from any `.wezel/config.toml` walking up from CWD or home.
 fn find_any_config() -> Option<config::Config> {
     // Try CWD first.
-    if let Ok(cwd) = std::env::current_dir() {
-        if let Some((_, cfg)) = config::discover(&cwd) {
-            return Some(cfg);
-        }
+    if let Ok(cwd) = std::env::current_dir()
+        && let Some((_, cfg)) = config::discover(&cwd)
+    {
+        return Some(cfg);
     }
     // Try home dir.
-    if let Some(home) = dirs::home_dir() {
-        if let Some((_, cfg)) = config::discover(&home) {
-            return Some(cfg);
-        }
+    if let Some(home) = dirs::home_dir()
+        && let Some((_, cfg)) = config::discover(&home)
+    {
+        return Some(cfg);
     }
     None
 }

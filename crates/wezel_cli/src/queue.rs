@@ -14,13 +14,13 @@ pub fn queue_dir() -> PathBuf {
 
 /// Write a `BuildEvent` to the queue directory as `<tool>-<uuid>.json`.
 /// Returns the written path on success.
+#[expect(unused)]
 pub fn enqueue(tool: &str, event: &BuildEvent) -> std::io::Result<PathBuf> {
     let dir = queue_dir();
     std::fs::create_dir_all(&dir)?;
     let id = Uuid::new_v4();
     let path = dir.join(format!("{tool}-{id}.json"));
-    let json = serde_json::to_string(event)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let json = serde_json::to_string(event).map_err(std::io::Error::other)?;
     std::fs::write(&path, json)?;
     Ok(path)
 }
@@ -37,10 +37,10 @@ pub fn read_all(dir: &Path) -> Vec<(PathBuf, BuildEvent)> {
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            if let Ok(event) = serde_json::from_str::<BuildEvent>(&content) {
-                out.push((path, event));
-            }
+        if let Ok(content) = std::fs::read_to_string(&path)
+            && let Ok(event) = serde_json::from_str::<BuildEvent>(&content)
+        {
+            out.push((path, event));
         }
     }
     out

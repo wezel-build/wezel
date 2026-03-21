@@ -458,15 +458,16 @@ fn list_benchmarks(project_dir: &Path) -> Result<()> {
     for entry in std::fs::read_dir(&benchmarks_dir).context("reading benchmarks directory")? {
         let entry = entry?;
         let path = entry.path();
-        if path.is_dir() && path.join("benchmark.toml").is_file() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                let toml_path = path.join("benchmark.toml");
-                let description = std::fs::read_to_string(&toml_path)
-                    .ok()
-                    .and_then(|raw| toml::from_str::<BenchmarkToml>(&raw).ok())
-                    .and_then(|b| b.description);
-                found.push((name.to_string(), description));
-            }
+        if path.is_dir()
+            && path.join("benchmark.toml").is_file()
+            && let Some(name) = path.file_name().and_then(|n| n.to_str())
+        {
+            let toml_path = path.join("benchmark.toml");
+            let description = std::fs::read_to_string(&toml_path)
+                .ok()
+                .and_then(|raw| toml::from_str::<BenchmarkToml>(&raw).ok())
+                .and_then(|b| b.description);
+            found.push((name.to_string(), description));
         }
     }
 

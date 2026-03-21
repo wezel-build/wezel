@@ -15,6 +15,7 @@ use crate::db;
 
 #[derive(Clone)]
 pub struct AuthUser {
+    #[expect(unused)]
     pub login: String,
 }
 
