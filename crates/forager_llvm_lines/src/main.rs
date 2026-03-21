@@ -64,52 +64,61 @@ fn main() -> Result<()> {
 
 /// Parse `cargo llvm-lines` output.
 ///
-/// Expected format (header + data rows):
+/// Format:
+/// ```text
+///   Lines                 Copies               Function name
+///   -----                 ------               -------------
+///   361539                12556                (TOTAL)
+///     6639 (1.8%,  1.8%)     22 (0.2%,  0.2%)  <F as axum::handler::Handler<...>>::call
 /// ```
-///   Lines         Copies       Function name
-///   -----         ------       -------------
-///   6207 (100%)   186 (100%)   (TOTAL)
-///    405  (6.5%)    1  (0.5%)  std::rt::lang_start_internal
-///   ...
-/// ```
+///
+/// The TOTAL line is the first line after the `---` separator.
+/// Detail rows have: lines (pct, pct) copies (pct, pct) name
 fn parse_llvm_lines_output(s: &str) -> Result<(u64, Vec<MeasurementDetail>)> {
-    let mut total: u64 = 0;
-    let mut detail: Vec<MeasurementDetail> = Vec::new();
+    let mut lines = s.lines();
 
-    for line in s.lines() {
+    // Skip until the --- separator line.
+    loop {
+        match lines.next() {
+            None => bail!("unexpected end of cargo llvm-lines output: no separator line"),
+            Some(line) if line.trim().starts_with("-----") => break,
+            Some(_) => continue,
+        }
+    }
+
+    // Next line is the TOTAL row: <lines> <copies> (TOTAL)
+    let total_line = lines.next().context("no TOTAL line after separator")?;
+    let total_parts: Vec<&str> = total_line.split_whitespace().collect();
+    // total_parts: ["361539", "12556", "(TOTAL)"]
+    let total: u64 = total_parts
+        .first()
+        .and_then(|s| s.parse().ok())
+        .context("could not parse total line count")?;
+
+    // Remaining lines are detail rows.
+    let mut detail = Vec::new();
+    for line in lines {
+        if detail.len() >= 50 {
+            break;
+        }
         let trimmed = line.trim();
-        if trimmed.is_empty()
-            || trimmed.starts_with("Lines")
-            || trimmed.starts_with("-----")
-        {
+        if trimmed.is_empty() {
             continue;
         }
-
-        // Each data line: <count> (<pct>%)  <copies> (<pct>%)  <name>
-        let mut parts = trimmed.splitn(5, char::is_whitespace).filter(|s| !s.is_empty());
-        let Some(count_str) = parts.next() else { continue };
-        let count: u64 = count_str.parse().unwrap_or(0);
-
-        // Skip the percentage field "(X.X%)"
-        let _ = parts.next();
-        // Skip copies field
-        let _ = parts.next();
-        // Skip copies percentage
-        let _ = parts.next();
-        // Rest is the function/item name
-        let name = trimmed
-            .splitn(5, char::is_whitespace)
-            .filter(|s| !s.is_empty())
-            .nth(4)
-            .unwrap_or("")
-            .trim()
-            .to_string();
-
-        if name == "(TOTAL)" {
-            total = count;
-        } else if !name.is_empty() && detail.len() < 50 {
+        // First token is the line count.
+        let count_str = trimmed.split_whitespace().next().unwrap_or("");
+        let Ok(count) = count_str.parse::<u64>() else {
+            continue;
+        };
+        // Function name is the last whitespace-delimited "word" that doesn't
+        // look like a number or percentage. Find it after the last ')'.
+        let name = match trimmed.rfind(')') {
+            Some(pos) => trimmed[pos + 1..].trim(),
+            None => continue,
+        };
+        if !name.is_empty() {
             detail.push(MeasurementDetail {
-                name,
+                name: name.to_string(),
                 value: count as f64,
                 prev_value: None,
             });
