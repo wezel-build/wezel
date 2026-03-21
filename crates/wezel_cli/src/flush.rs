@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use log::{debug, warn};
+use log::debug;
 
 use crate::config::Config;
 use crate::wezel_dir;
@@ -92,7 +92,7 @@ pub fn flush_events(config: &Config) -> anyhow::Result<()> {
             }
         }
         Err(e) => {
-            warn!("failed to post events to {url}: {e}");
+            debug!("failed to post events to {url}: {e}");
         }
     }
 
