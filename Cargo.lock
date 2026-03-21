@@ -765,6 +765,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "toml",
  "ureq",
  "uuid",

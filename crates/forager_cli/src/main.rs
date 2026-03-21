@@ -241,23 +241,52 @@ fn normalize_upstream(url: &str) -> String {
 
 // ── Forager plugin invocation ─────────────────────────────────────────────────
 
+#[derive(Debug, thiserror::Error)]
+enum StepError {
+    #[error("`{binary}` not found on PATH — is it installed?")]
+    PluginNotFound { binary: String },
+
+    #[error("failed to spawn `{binary}`: {reason}")]
+    SpawnFailed { binary: String, reason: String },
+
+    #[error("step '{step}': `{binary}` exited with {status}")]
+    PluginFailed {
+        step: String,
+        binary: String,
+        status: std::process::ExitStatus,
+    },
+
+    #[error("step '{step}': `{binary}` did not write FORAGER_OUT")]
+    NoOutput { step: String, binary: String },
+
+    #[error("{0}")]
+    Other(#[from] anyhow::Error),
+}
+
+impl StepError {
+    fn is_hard(&self) -> bool {
+        matches!(self, Self::PluginNotFound { .. } | Self::SpawnFailed { .. })
+    }
+}
+
 fn invoke_forager(
     forager_name: &str,
     step_name: &str,
     inputs: &serde_json::Value,
     project_dir: &Path,
-) -> Result<Option<wezel_types::ForagerPluginOutput>> {
+) -> std::result::Result<Option<wezel_types::ForagerPluginOutput>, StepError> {
     let binary_name = format!("forager-{forager_name}");
-    let binary = which::which(&binary_name)
-        .with_context(|| format!("{binary_name} not found on PATH"))?;
+    let binary = which::which(&binary_name).map_err(|_| StepError::PluginNotFound {
+        binary: binary_name.clone(),
+    })?;
 
     // Write inputs to a temp file.
     let inputs_id = uuid::Uuid::new_v4();
     let inputs_path = std::env::temp_dir().join(format!("forager-inputs-{inputs_id}.json"));
     let out_path = std::env::temp_dir().join(format!("forager-out-{inputs_id}.json"));
 
-    std::fs::write(&inputs_path, serde_json::to_string(inputs)?)
-        .context("writing FORAGER_INPUTS file")?;
+    std::fs::write(&inputs_path, serde_json::to_string(inputs).unwrap())
+        .map_err(|e| StepError::Other(anyhow::anyhow!("writing FORAGER_INPUTS: {e}")))?;
 
     let status = Command::new(&binary)
         .env("FORAGER_INPUTS", &inputs_path)
@@ -265,26 +294,26 @@ fn invoke_forager(
         .env("FORAGER_STEP", step_name)
         .current_dir(project_dir)
         .status()
-        .with_context(|| format!("spawning {binary_name}"))?;
+        .map_err(|e| StepError::SpawnFailed {
+            binary: binary_name.clone(),
+            reason: e.to_string(),
+        })?;
 
     if !status.success() {
-        log::warn!(
-            "step '{}': {binary_name} exited with {status} — skipping measurement",
-            step_name,
-        );
-        return Ok(None);
+        return Err(StepError::PluginFailed {
+            step: step_name.to_string(),
+            binary: binary_name,
+            status,
+        });
     }
 
-    let envelope_raw = match std::fs::read_to_string(&out_path) {
-        Ok(s) => s,
-        Err(_) => {
-            log::warn!("step '{}': {binary_name} did not write FORAGER_OUT", step_name);
-            return Ok(None);
-        }
-    };
+    let envelope_raw = std::fs::read_to_string(&out_path).map_err(|_| StepError::NoOutput {
+        step: step_name.to_string(),
+        binary: binary_name.clone(),
+    })?;
 
     let envelope: ForagerPluginEnvelope = serde_json::from_str(&envelope_raw)
-        .with_context(|| format!("parsing output from {binary_name}"))?;
+        .map_err(|e| StepError::Other(anyhow::anyhow!("parsing output from {binary_name}: {e}")))?;
 
     // Best-effort cleanup of temp files.
     let _ = std::fs::remove_file(&inputs_path);
@@ -582,8 +611,9 @@ fn run_benchmark(
                     measurement: m,
                 });
             }
+            Err(e) if e.is_hard() => bail!("{e}"),
             Err(e) => {
-                log::warn!("step '{}' failed: {e:#}", step.name);
+                log::warn!("{e}");
                 step_reports.push(ForagerStepReport {
                     step: step.name.clone(),
                     measurement: None,
