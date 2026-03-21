@@ -276,9 +276,17 @@ fn invoke_forager(
     project_dir: &Path,
 ) -> std::result::Result<Option<wezel_types::ForagerPluginOutput>, StepError> {
     let binary_name = format!("forager-{forager_name}");
-    let binary = which::which(&binary_name).map_err(|_| StepError::PluginNotFound {
-        binary: binary_name.clone(),
-    })?;
+    // Look next to our own executable first, then fall back to PATH.
+    let binary = std::env::current_exe()
+        .ok()
+        .and_then(|exe| {
+            let sibling = exe.parent()?.join(&binary_name);
+            sibling.is_file().then_some(sibling)
+        })
+        .or_else(|| which::which(&binary_name).ok())
+        .ok_or_else(|| StepError::PluginNotFound {
+            binary: binary_name.clone(),
+        })?;
 
     // Write inputs to a temp file.
     let inputs_id = uuid::Uuid::new_v4();
