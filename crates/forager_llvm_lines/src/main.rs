@@ -1,5 +1,11 @@
 use anyhow::{Context, Result, bail};
+use serde::Deserialize;
 use wezel_types::{ForagerPluginEnvelope, ForagerPluginOutput, MeasurementDetail};
+
+#[derive(Deserialize)]
+struct LlvmLinesInputs {
+    package: Option<String>,
+}
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -24,14 +30,15 @@ fn main() -> Result<()> {
 
     let out_path = std::env::var("FORAGER_OUT").context("FORAGER_OUT not set")?;
     let inputs_path = std::env::var("FORAGER_INPUTS").context("FORAGER_INPUTS not set")?;
-    let inputs: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&inputs_path)?)
-            .context("parsing FORAGER_INPUTS")?;
-    let package = inputs.get("package").and_then(|v| v.as_str());
+    let inputs: LlvmLinesInputs = serde_json::from_str(
+        &std::fs::read_to_string(&inputs_path)
+            .with_context(|| format!("reading {inputs_path}"))?,
+    )
+    .context("parsing FORAGER_INPUTS")?;
 
     let mut cmd = std::process::Command::new("cargo");
     cmd.arg("llvm-lines");
-    if let Some(pkg) = package {
+    if let Some(pkg) = &inputs.package {
         cmd.args(["-p", pkg]);
     }
     let output = cmd.output().context("failed to run cargo llvm-lines")?;

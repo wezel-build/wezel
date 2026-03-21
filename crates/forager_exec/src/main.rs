@@ -2,6 +2,15 @@ use std::collections::HashMap;
 use std::process;
 
 use anyhow::{Context, Result};
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct ExecInputs {
+    cmd: String,
+    #[serde(default)]
+    env: HashMap<String, String>,
+    cwd: Option<String>,
+}
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -26,28 +35,18 @@ fn main() -> Result<()> {
         std::env::var("FORAGER_INPUTS").context("FORAGER_INPUTS not set")?;
     let out_path = std::env::var("FORAGER_OUT").context("FORAGER_OUT not set")?;
 
-    let inputs_raw = std::fs::read_to_string(&inputs_path)
-        .with_context(|| format!("reading {inputs_path}"))?;
-    let inputs: serde_json::Value =
-        serde_json::from_str(&inputs_raw).context("parsing FORAGER_INPUTS")?;
-
-    let cmd = inputs["cmd"]
-        .as_str()
-        .context("inputs.cmd is required for forager-exec")?;
-
-    let env_vars: HashMap<String, String> = inputs
-        .get("env")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-
-    let cwd = inputs.get("cwd").and_then(|v| v.as_str());
+    let inputs: ExecInputs = serde_json::from_str(
+        &std::fs::read_to_string(&inputs_path)
+            .with_context(|| format!("reading {inputs_path}"))?,
+    )
+    .context("parsing FORAGER_INPUTS")?;
 
     let mut child = process::Command::new("sh");
-    child.arg("-c").arg(cmd);
-    for (k, v) in &env_vars {
+    child.arg("-c").arg(&inputs.cmd);
+    for (k, v) in &inputs.env {
         child.env(k, v);
     }
-    if let Some(dir) = cwd {
+    if let Some(dir) = &inputs.cwd {
         child.current_dir(dir);
     }
 
