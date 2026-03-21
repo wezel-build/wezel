@@ -306,9 +306,9 @@ struct Cli {
 enum Cmd {
     /// Run a benchmark against the current checkout.
     Run {
-        /// Benchmark name (matches .wezel/benchmarks/<name>/).
+        /// Benchmark name (matches .wezel/benchmarks/<name>/). Omit to list available benchmarks.
         #[arg(short, long)]
-        benchmark: String,
+        benchmark: Option<String>,
         /// Project root directory (defaults to current directory).
         #[arg(long)]
         project_dir: Option<PathBuf>,
@@ -332,7 +332,14 @@ fn main() -> Result<()> {
         Cmd::Run {
             benchmark,
             project_dir,
-        } => run_benchmark(&benchmark, project_dir.as_deref()),
+        } => {
+            let project_dir = project_dir
+                .unwrap_or_else(|| std::env::current_dir().expect("getting current directory"));
+            match benchmark {
+                Some(name) => run_benchmark(&name, &project_dir, None),
+                None => list_benchmarks(&project_dir),
+            }
+        }
         Cmd::Serve {
             repo_dir,
             poll_interval,
@@ -342,9 +349,10 @@ fn main() -> Result<()> {
 
 fn run_serve(repo_dir: &Path, poll_interval: u64) -> Result<()> {
     let config = load_config(repo_dir)?;
+    let burrow = BurrowSession::from_config(&config);
     let project_upstream = git_upstream(repo_dir)?;
 
-    let agent = ureq::AgentBuilder::new()
+    let queue_agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(30))
         .build();
 
@@ -356,7 +364,7 @@ fn run_serve(repo_dir: &Path, poll_interval: u64) -> Result<()> {
 
     loop {
         let next_body = serde_json::json!({ "project_upstream": project_upstream });
-        let response = agent
+        let response = queue_agent
             .post(&format!("{}/api/forager/jobs/next", config.server_url))
             .send_json(&next_body)
             .context("polling for next job")?;
@@ -379,14 +387,14 @@ fn run_serve(repo_dir: &Path, poll_interval: u64) -> Result<()> {
         git_checkout_detached(repo_dir, &job.commit_sha)
             .with_context(|| format!("checkout {} for job {}", job.commit_sha, job.id))?;
 
-        let result = run_benchmark(&job.benchmark_name, Some(repo_dir));
+        let result = run_benchmark(&job.benchmark_name, repo_dir, Some(&burrow));
 
         let patch_body = match result {
             Ok(()) => serde_json::json!({ "status": "complete" }),
             Err(ref e) => serde_json::json!({ "status": "failed", "error": format!("{e:#}") }),
         };
 
-        agent
+        queue_agent
             .patch(&format!(
                 "{}/api/forager/jobs/{}",
                 config.server_url, job.id
@@ -403,13 +411,105 @@ fn run_serve(repo_dir: &Path, poll_interval: u64) -> Result<()> {
     }
 }
 
-fn run_benchmark(benchmark_name: &str, project_dir_arg: Option<&Path>) -> Result<()> {
-    let project_dir = match project_dir_arg {
-        Some(p) => p.to_path_buf(),
-        None => std::env::current_dir().context("getting current directory")?,
-    };
+fn list_benchmarks(project_dir: &Path) -> Result<()> {
+    let benchmarks_dir = project_dir.join(".wezel").join("benchmarks");
+    if !benchmarks_dir.is_dir() {
+        bail!("no benchmarks directory at {}", benchmarks_dir.display());
+    }
 
-    let config = load_config(&project_dir)?;
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(&benchmarks_dir).context("reading benchmarks directory")? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() && path.join("benchmark.toml").is_file() {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                let toml_path = path.join("benchmark.toml");
+                let description = std::fs::read_to_string(&toml_path)
+                    .ok()
+                    .and_then(|raw| toml::from_str::<BenchmarkToml>(&raw).ok())
+                    .and_then(|b| b.description);
+                found.push((name.to_string(), description));
+            }
+        }
+    }
+
+    if found.is_empty() {
+        println!("No benchmarks found in {}", benchmarks_dir.display());
+        return Ok(());
+    }
+
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    println!("Available benchmarks:\n");
+    for (name, desc) in &found {
+        match desc {
+            Some(d) => println!("  {name}  — {d}"),
+            None => println!("  {name}"),
+        }
+    }
+    println!("\nRun with: forager run -b <name>");
+
+    Ok(())
+}
+
+struct BurrowSession {
+    agent: ureq::Agent,
+    server_url: String,
+}
+
+impl BurrowSession {
+    fn from_config(config: &Config) -> Self {
+        Self {
+            agent: ureq::AgentBuilder::new()
+                .timeout(std::time::Duration::from_secs(30))
+                .build(),
+            server_url: config.server_url.clone(),
+        }
+    }
+
+    fn claim(
+        &self,
+        project_upstream: &str,
+        commit_sha: &str,
+        benchmark_name: &str,
+        commit_author: &str,
+        commit_message: &str,
+        commit_timestamp: &str,
+    ) -> Result<ForagerJob> {
+        let claim_body = serde_json::json!({
+            "project_upstream": project_upstream,
+            "commit_sha": commit_sha,
+            "benchmark_name": benchmark_name,
+            "commit_author": commit_author,
+            "commit_message": commit_message,
+            "commit_timestamp": commit_timestamp,
+        });
+
+        let job: ForagerJob = self
+            .agent
+            .post(&format!("{}/api/forager/claim", self.server_url))
+            .send_json(&claim_body)
+            .context("claiming job from Burrow")?
+            .into_json()
+            .context("parsing claim response")?;
+
+        log::info!("job claimed (token: {})", &job.token[..8.min(job.token.len())]);
+        Ok(job)
+    }
+
+    fn submit(&self, report: &ForagerRunReport) -> Result<()> {
+        self.agent
+            .post(&format!("{}/api/forager/run", self.server_url))
+            .send_json(report)
+            .context("submitting run report to Burrow")?;
+        Ok(())
+    }
+}
+
+fn run_benchmark(
+    benchmark_name: &str,
+    project_dir: &Path,
+    burrow: Option<&BurrowSession>,
+) -> Result<()> {
     let benchmark_dir = project_dir
         .join(".wezel")
         .join("benchmarks")
@@ -425,41 +525,32 @@ fn run_benchmark(benchmark_name: &str, project_dir_arg: Option<&Path>) -> Result
     let (_name, _description, steps) = parse_benchmark(&benchmark_dir)?;
 
     // Detect current commit info from git.
-    let commit_sha = git_current_sha(&project_dir)?;
-    let project_upstream = git_upstream(&project_dir)?;
-    let commit_author = git_commit_author(&project_dir);
-    let commit_message = git_commit_message(&project_dir);
-    let commit_timestamp = git_commit_timestamp(&project_dir);
+    let commit_sha = git_current_sha(project_dir)?;
+    let project_upstream = git_upstream(project_dir)?;
+    let commit_author = git_commit_author(project_dir);
+    let commit_message = git_commit_message(project_dir);
+    let commit_timestamp = git_commit_timestamp(project_dir);
 
-    log::info!(
-        "claiming job: upstream={} sha={} benchmark={}",
-        project_upstream,
-        &commit_sha[..7.min(commit_sha.len())],
-        benchmark_name
-    );
-
-    // Claim the job from Burrow.
-    let claim_body = serde_json::json!({
-        "project_upstream": project_upstream,
-        "commit_sha": commit_sha,
-        "benchmark_name": benchmark_name,
-        "commit_author": commit_author,
-        "commit_message": commit_message,
-        "commit_timestamp": commit_timestamp,
-    });
-
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(30))
-        .build();
-
-    let job: ForagerJob = agent
-        .post(&format!("{}/api/forager/claim", config.server_url))
-        .send_json(&claim_body)
-        .context("claiming job from Burrow")?
-        .into_json()
-        .context("parsing claim response")?;
-
-    log::info!("job claimed (token: {})", &job.token[..8.min(job.token.len())]);
+    // Claim from Burrow if we have a session.
+    let job = match burrow {
+        Some(b) => {
+            log::info!(
+                "claiming job: upstream={} sha={} benchmark={}",
+                project_upstream,
+                &commit_sha[..7.min(commit_sha.len())],
+                benchmark_name
+            );
+            Some(b.claim(
+                &project_upstream,
+                &commit_sha,
+                benchmark_name,
+                &commit_author,
+                &commit_message,
+                &commit_timestamp,
+            )?)
+        }
+        None => None,
+    };
 
     // Run each step.
     let mut step_reports: Vec<ForagerStepReport> = Vec::new();
@@ -472,7 +563,7 @@ fn run_benchmark(benchmark_name: &str, project_dir_arg: Option<&Path>) -> Result
         let patch_path = benchmark_dir.join(format!("{patch_stem}.patch"));
         if patch_path.is_file() {
             log::info!("  applying patch: {}", patch_path.display());
-            git_apply_patch(&project_dir, &patch_path)
+            git_apply_patch(project_dir, &patch_path)
                 .with_context(|| format!("applying patch for step '{}'", step.name))?;
         }
 
@@ -481,7 +572,7 @@ fn run_benchmark(benchmark_name: &str, project_dir_arg: Option<&Path>) -> Result
             &step.forager,
             &step.name,
             &step.inputs,
-            &project_dir,
+            project_dir,
         );
 
         match measurement {
@@ -501,19 +592,31 @@ fn run_benchmark(benchmark_name: &str, project_dir_arg: Option<&Path>) -> Result
         }
     }
 
-    // Submit results to Burrow.
-    let report = ForagerRunReport {
-        token: job.token.clone(),
-        steps: step_reports,
-    };
+    // Print results locally.
+    println!("Benchmark: {benchmark_name}");
+    println!("Commit:    {}", &commit_sha[..7.min(commit_sha.len())]);
+    for report in &step_reports {
+        match &report.measurement {
+            Some(m) => println!(
+                "  {} — {} = {} {}",
+                report.step,
+                m.name,
+                m.value,
+                m.unit.as_deref().unwrap_or("")
+            ),
+            None => println!("  {} — (no measurement)", report.step),
+        }
+    }
 
-    agent
-        .post(&format!("{}/api/forager/run", config.server_url))
-        .send_json(&report)
-        .context("submitting run report to Burrow")?;
-
-    log::info!("run complete — results submitted");
-    println!("Run complete.");
+    // Submit to Burrow if we have a session.
+    if let Some(job) = job {
+        let report = ForagerRunReport {
+            token: job.token,
+            steps: step_reports,
+        };
+        burrow.unwrap().submit(&report)?;
+        println!("Results submitted to Burrow.");
+    }
 
     Ok(())
 }
