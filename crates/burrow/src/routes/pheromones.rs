@@ -75,7 +75,9 @@ pub fn pheromone_json_from_row(row: &models::PheromoneRow) -> models::PheromoneJ
 }
 
 pub fn get_dev_dir() -> Option<std::path::PathBuf> {
-    std::env::var("WEZEL_PHEROMONE_DEV_DIR").ok().map(Into::into)
+    std::env::var("WEZEL_PHEROMONE_DEV_DIR")
+        .ok()
+        .map(Into::into)
 }
 
 async fn fetch_and_store_from_local(
@@ -137,7 +139,10 @@ async fn fetch_and_store_from_local(
 
 pub async fn load_dev_pheromones(pool: &PgPool, dev_dir: &std::path::Path) {
     let Ok(entries) = std::fs::read_dir(dev_dir) else {
-        tracing::warn!("WEZEL_PHEROMONE_DEV_DIR not readable: {}", dev_dir.display());
+        tracing::warn!(
+            "WEZEL_PHEROMONE_DEV_DIR not readable: {}",
+            dev_dir.display()
+        );
         return;
     };
     for entry in entries.flatten() {
@@ -151,15 +156,14 @@ pub async fn load_dev_pheromones(pool: &PgPool, dev_dir: &std::path::Path) {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         // Look up existing DB row to get stored github_repo; fall back to "dev/{name}".
-        let github_repo = sqlx::query_scalar::<_, String>(
-            "SELECT github_repo FROM pheromones WHERE name = $1",
-        )
-        .bind(name.as_ref())
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| format!("dev/{name}"));
+        let github_repo =
+            sqlx::query_scalar::<_, String>("SELECT github_repo FROM pheromones WHERE name = $1")
+                .bind(name.as_ref())
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| format!("dev/{name}"));
 
         if let Err(e) = fetch_and_store_pheromone(pool, &github_repo).await {
             tracing::warn!("failed to load dev pheromone {name}: {e:?}");
@@ -380,7 +384,9 @@ pub async fn get_pheromone_binary(
             row.github_repo, row.version, tarball_name
         );
         let client = Client::new();
-        let mut req = client.get(&download_url).header("User-Agent", "wezel-burrow");
+        let mut req = client
+            .get(&download_url)
+            .header("User-Agent", "wezel-burrow");
         if let Ok(token) = std::env::var("GITHUB_TOKEN") {
             let token = token.trim().to_string();
             if !token.is_empty() {

@@ -7,7 +7,9 @@ use clap::{Parser, Subcommand};
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
-use wezel_types::{ForagerJob, ForagerPluginEnvelope, ForagerQueueJob, ForagerRunReport, ForagerStepReport};
+use wezel_types::{
+    ForagerJob, ForagerPluginEnvelope, ForagerQueueJob, ForagerRunReport, ForagerStepReport,
+};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -24,10 +26,7 @@ struct Config {
 fn load_config(project_dir: &Path) -> Result<Config> {
     let config_path = project_dir.join(".wezel").join("config.toml");
     if !config_path.is_file() {
-        bail!(
-            "no .wezel/config.toml found at {}",
-            config_path.display()
-        );
+        bail!("no .wezel/config.toml found at {}", config_path.display());
     }
     let defaults = ProjectConfig { server_url: None };
     let resolved: ProjectConfig = Figment::new()
@@ -82,10 +81,7 @@ fn parse_benchmark(benchmark_dir: &Path) -> Result<(String, Option<String>, Vec<
         let forager = match raw_step.tool {
             Some(f) => f,
             None if raw_step.rest.contains_key("cmd") => "exec".to_string(),
-            None => bail!(
-                "step '{}' has no tool name and no cmd field",
-                raw_step.name
-            ),
+            None => bail!("step '{}' has no tool name and no cmd field", raw_step.name),
         };
 
         let inputs_map: serde_json::Map<String, serde_json::Value> = raw_step
@@ -530,7 +526,10 @@ impl BurrowSession {
             .into_json()
             .context("parsing claim response")?;
 
-        log::info!("job claimed (token: {})", &job.token[..8.min(job.token.len())]);
+        log::info!(
+            "job claimed (token: {})",
+            &job.token[..8.min(job.token.len())]
+        );
         Ok(job)
     }
 
@@ -554,10 +553,7 @@ fn run_benchmark(
         .join(benchmark_name);
 
     if !benchmark_dir.is_dir() {
-        bail!(
-            "benchmark directory not found: {}",
-            benchmark_dir.display()
-        );
+        bail!("benchmark directory not found: {}", benchmark_dir.display());
     }
 
     let (_name, _description, steps) = parse_benchmark(&benchmark_dir)?;
@@ -606,12 +602,7 @@ fn run_benchmark(
         }
 
         // Invoke the forager plugin.
-        let measurement = invoke_forager(
-            &step.forager,
-            &step.name,
-            &step.inputs,
-            project_dir,
-        );
+        let measurement = invoke_forager(&step.forager, &step.name, &step.inputs, project_dir);
 
         match measurement {
             Ok(m) => {

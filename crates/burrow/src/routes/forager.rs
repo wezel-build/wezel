@@ -57,43 +57,42 @@ pub async fn post_forager_claim(
 
     // Find or create commit.
     let short_sha: String = sha.chars().take(7).collect();
-    let commit_id: i64 =
-        match sqlx::query_as::<_, (i64,)>(
-            "SELECT id FROM commits WHERE project_id = $1 AND (sha = $2 OR short_sha = $3)",
-        )
-        .bind(project_id)
-        .bind(sha)
-        .bind(&short_sha)
-        .fetch_optional(&pool)
-        .await
-        .map_err(ise)?
-        {
-            Some((id,)) => id,
-            None => {
-                let author = body
-                    .commit_author
-                    .as_deref()
-                    .unwrap_or("unknown")
-                    .to_string();
-                let message = body.commit_message.as_deref().unwrap_or("").to_string();
-                let timestamp = body.commit_timestamp.as_deref().unwrap_or("").to_string();
-                sqlx::query_as::<_, IdRow>(
-                    "INSERT INTO commits \
+    let commit_id: i64 = match sqlx::query_as::<_, (i64,)>(
+        "SELECT id FROM commits WHERE project_id = $1 AND (sha = $2 OR short_sha = $3)",
+    )
+    .bind(project_id)
+    .bind(sha)
+    .bind(&short_sha)
+    .fetch_optional(&pool)
+    .await
+    .map_err(ise)?
+    {
+        Some((id,)) => id,
+        None => {
+            let author = body
+                .commit_author
+                .as_deref()
+                .unwrap_or("unknown")
+                .to_string();
+            let message = body.commit_message.as_deref().unwrap_or("").to_string();
+            let timestamp = body.commit_timestamp.as_deref().unwrap_or("").to_string();
+            sqlx::query_as::<_, IdRow>(
+                "INSERT INTO commits \
                      (project_id, sha, short_sha, author, message, timestamp, status) \
                      VALUES ($1, $2, $3, $4, $5, $6, 'not-started') RETURNING id",
-                )
-                .bind(project_id)
-                .bind(sha)
-                .bind(&short_sha)
-                .bind(&author)
-                .bind(&message)
-                .bind(&timestamp)
-                .fetch_one(&pool)
-                .await
-                .map_err(ise)?
-                .id
-            }
-        };
+            )
+            .bind(project_id)
+            .bind(sha)
+            .bind(&short_sha)
+            .bind(&author)
+            .bind(&message)
+            .bind(&timestamp)
+            .fetch_one(&pool)
+            .await
+            .map_err(ise)?
+            .id
+        }
+    };
 
     // Set commit status to running.
     sqlx::query("UPDATE commits SET status = 'running' WHERE id = $1")
@@ -141,12 +140,11 @@ pub async fn post_forager_run(
     let (commit_id,) = row.ok_or(StatusCode::UNAUTHORIZED)?;
 
     // Get project_id for prev_value lookups.
-    let (project_id,): (i64,) =
-        sqlx::query_as("SELECT project_id FROM commits WHERE id = $1")
-            .bind(commit_id)
-            .fetch_one(&pool)
-            .await
-            .map_err(ise)?;
+    let (project_id,): (i64,) = sqlx::query_as("SELECT project_id FROM commits WHERE id = $1")
+        .bind(commit_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(ise)?;
 
     // Insert measurements.
     for step_report in &body.steps {
@@ -289,7 +287,10 @@ pub async fn post_forager_jobs(
 
     Ok((
         StatusCode::CREATED,
-        Json(ForagerQueueJobStatus { id, status: "pending".to_string() }),
+        Json(ForagerQueueJobStatus {
+            id,
+            status: "pending".to_string(),
+        }),
     ))
 }
 

@@ -31,13 +31,11 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let inputs_path =
-        std::env::var("FORAGER_INPUTS").context("FORAGER_INPUTS not set")?;
+    let inputs_path = std::env::var("FORAGER_INPUTS").context("FORAGER_INPUTS not set")?;
     let out_path = std::env::var("FORAGER_OUT").context("FORAGER_OUT not set")?;
 
     let inputs: ExecInputs = serde_json::from_str(
-        &std::fs::read_to_string(&inputs_path)
-            .with_context(|| format!("reading {inputs_path}"))?,
+        &std::fs::read_to_string(&inputs_path).with_context(|| format!("reading {inputs_path}"))?,
     )
     .context("parsing FORAGER_INPUTS")?;
 

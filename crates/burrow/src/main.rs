@@ -100,8 +100,14 @@ async fn main() {
     let protected_api = Router::new()
         .route("/api/project", get(get_projects).post(create_project))
         .route("/api/project/{project_id}", patch(rename_project))
-        .route("/api/project/{project_id}/overview", get(get_project_overview))
-        .route("/api/project/{project_id}/observation", get(get_project_observations))
+        .route(
+            "/api/project/{project_id}/overview",
+            get(get_project_overview),
+        )
+        .route(
+            "/api/project/{project_id}/observation",
+            get(get_project_observations),
+        )
         .route(
             "/api/project/{project_id}/observation/{id}",
             get(get_project_observation),
@@ -114,7 +120,10 @@ async fn main() {
             "/api/project/{project_id}/commit",
             get(get_project_commits).post(schedule_project_commit),
         )
-        .route("/api/project/{project_id}/commit/{sha}", get(get_project_commit))
+        .route(
+            "/api/project/{project_id}/commit/{sha}",
+            get(get_project_commit),
+        )
         .route(
             "/api/project/{project_id}/github/commit/{sha}",
             get(get_project_github_commit),

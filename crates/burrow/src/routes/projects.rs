@@ -176,9 +176,7 @@ pub async fn post_benchmark_pr(
     let ref_info: Value = github_api(
         &client,
         reqwest::Method::GET,
-        &format!(
-            "https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{default_branch}"
-        ),
+        &format!("https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{default_branch}"),
         token,
         None,
     )
@@ -274,5 +272,7 @@ pub async fn post_benchmark_pr(
     .await?;
     let pr_url = pr["html_url"].as_str().ok_or(StatusCode::BAD_GATEWAY)?;
 
-    Ok(Json(BenchmarkPrResponse { pr_url: pr_url.to_string() }))
+    Ok(Json(BenchmarkPrResponse {
+        pr_url: pr_url.to_string(),
+    }))
 }

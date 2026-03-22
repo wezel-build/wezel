@@ -115,7 +115,10 @@ pub async fn get_project_commits(
     build_commit_list(commits, &pool).await
 }
 
-async fn build_commit_list(commits: Vec<Commit>, pool: &PgPool) -> ApiResult<Json<Vec<CommitJson>>> {
+async fn build_commit_list(
+    commits: Vec<Commit>,
+    pool: &PgPool,
+) -> ApiResult<Json<Vec<CommitJson>>> {
     if commits.is_empty() {
         return Ok(Json(vec![]));
     }

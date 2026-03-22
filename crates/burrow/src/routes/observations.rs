@@ -232,9 +232,7 @@ async fn fetch_observations(
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-pub async fn get_observations(
-    State(pool): State<PgPool>,
-) -> ApiResult<Json<Vec<ObservationJson>>> {
+pub async fn get_observations(State(pool): State<PgPool>) -> ApiResult<Json<Vec<ObservationJson>>> {
     Ok(Json(fetch_observations(&pool, None).await?))
 }
 
@@ -342,13 +340,11 @@ pub async fn ingest_events(
             };
 
         // Ensure user exists.
-        sqlx::query(
-            "INSERT INTO users (username) VALUES ($1) ON CONFLICT (username) DO NOTHING",
-        )
-        .bind(user)
-        .execute(&pool)
-        .await
-        .map_err(ise)?;
+        sqlx::query("INSERT INTO users (username) VALUES ($1) ON CONFLICT (username) DO NOTHING")
+            .bind(user)
+            .execute(&pool)
+            .await
+            .map_err(ise)?;
 
         // Process pheromone data if present.
         let Some(pheromone) = event.get("pheromone") else {
@@ -372,8 +368,7 @@ pub async fn ingest_events(
             .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
 
-        let scenario_platform: Option<&str> =
-            pheromone.get("platform").and_then(|v| v.as_str());
+        let scenario_platform: Option<&str> = pheromone.get("platform").and_then(|v| v.as_str());
 
         let benchmark_name = if packages.is_empty() {
             format!("{tool} {command}")
@@ -439,8 +434,7 @@ pub async fn ingest_events(
             for e in graph {
                 if let Some(name) = e.get("name").and_then(|v| v.as_str()) {
                     node_names.push(name);
-                    node_versions
-                        .push(e.get("version").and_then(|v| v.as_str()).unwrap_or(""));
+                    node_versions.push(e.get("version").and_then(|v| v.as_str()).unwrap_or(""));
                     node_externals
                         .push(e.get("external").and_then(|v| v.as_bool()).unwrap_or(false));
                 }

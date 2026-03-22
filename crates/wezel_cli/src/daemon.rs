@@ -68,8 +68,12 @@ pub fn run_daemon() {
     log::info!("daemon: starting (pid {})", std::process::id());
 
     let pheromone_dir = crate::pheromones_dir();
-    let mut last_flush = Instant::now().checked_sub(FLUSH_INTERVAL).unwrap_or(Instant::now());
-    let mut last_update = Instant::now().checked_sub(UPDATE_INTERVAL).unwrap_or(Instant::now());
+    let mut last_flush = Instant::now()
+        .checked_sub(FLUSH_INTERVAL)
+        .unwrap_or(Instant::now());
+    let mut last_update = Instant::now()
+        .checked_sub(UPDATE_INTERVAL)
+        .unwrap_or(Instant::now());
     let mut last_activity = Instant::now();
 
     loop {

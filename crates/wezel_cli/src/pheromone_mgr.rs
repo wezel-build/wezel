@@ -139,7 +139,11 @@ pub fn update_pheromones(server_url: &str, pheromone_dir: &Path) {
         let link = pheromone_dir.join(&entry.name);
 
         if !cached.exists() {
-            log::info!("pheromone_mgr: downloading {} {}", entry.name, entry.version);
+            log::info!(
+                "pheromone_mgr: downloading {} {}",
+                entry.name,
+                entry.version
+            );
             let binary_url = format!(
                 "{}/api/pheromone/{}/binary/{target}",
                 server_url.trim_end_matches('/'),
@@ -149,7 +153,10 @@ pub fn update_pheromones(server_url: &str, pheromone_dir: &Path) {
                 Ok(r) => {
                     let mut buf = Vec::new();
                     if let Err(e) = r.into_reader().read_to_end(&mut buf) {
-                        log::warn!("pheromone_mgr: failed to read tarball for {}: {e}", entry.name);
+                        log::warn!(
+                            "pheromone_mgr: failed to read tarball for {}: {e}",
+                            entry.name
+                        );
                         continue;
                     }
                     buf
