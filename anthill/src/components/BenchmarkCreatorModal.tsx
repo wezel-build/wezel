@@ -1,8 +1,16 @@
 import { useState, useEffect, useMemo } from "react";
 import { X, ExternalLink } from "lucide-react";
-import type { Observation, RegistryTemplate, RegistryAdapter } from "../lib/data";
+import type {
+  Observation,
+  RegistryTemplate,
+  RegistryAdapter,
+} from "../lib/data";
 import { detectToolchain } from "../lib/toolchain";
-import { fetchAdapter, generateBenchmarkToml, sortedCrateNames } from "../lib/registry";
+import {
+  fetchAdapter,
+  generateBenchmarkToml,
+  sortedCrateNames,
+} from "../lib/registry";
 import { benchmarkPrApi } from "../lib/api";
 import { computeHeat } from "../lib/data";
 import { C } from "../lib/colors";
@@ -22,7 +30,8 @@ export function BenchmarkCreatorModal({
 }: Props) {
   const [adapter, setAdapter] = useState<RegistryAdapter | null>(null);
   const [loadingAdapter, setLoadingAdapter] = useState(true);
-  const [selectedTemplate, setSelectedTemplate] = useState<RegistryTemplate | null>(null);
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<RegistryTemplate | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [benchmarkName, setBenchmarkName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -30,7 +39,11 @@ export function BenchmarkCreatorModal({
   const [error, setError] = useState<string | null>(null);
 
   const heat = useMemo(
-    () => computeHeat(observation.runs, observation.graph.map((c) => c.name)),
+    () =>
+      computeHeat(
+        observation.runs,
+        observation.graph.map((c) => c.name),
+      ),
     [observation],
   );
   const crateNames = useMemo(
@@ -66,7 +79,8 @@ export function BenchmarkCreatorModal({
       const defaults: Record<string, string> = {};
       for (const field of selectedTemplate.uiSchema?.fields ?? []) {
         if (field.default) defaults[field.id] = field.default;
-        if (field.id === "patchCrate" && initialCrate) defaults[field.id] = initialCrate;
+        if (field.id === "patchCrate" && initialCrate)
+          defaults[field.id] = initialCrate;
       }
       setFieldValues(defaults);
     }
@@ -74,7 +88,12 @@ export function BenchmarkCreatorModal({
 
   const benchmarkToml = useMemo(() => {
     if (!selectedTemplate || !benchmarkName) return "";
-    return generateBenchmarkToml(benchmarkName, selectedTemplate, fieldValues, observation.graph);
+    return generateBenchmarkToml(
+      benchmarkName,
+      selectedTemplate,
+      fieldValues,
+      observation.graph,
+    );
   }, [selectedTemplate, benchmarkName, fieldValues, observation.graph]);
 
   const benchmarkPath = `.wezel/benchmarks/${benchmarkName}/benchmark.toml`;
@@ -99,7 +118,9 @@ export function BenchmarkCreatorModal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: "rgba(0,0,0,0.6)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="flex flex-col rounded-lg shadow-2xl overflow-hidden"
@@ -131,11 +152,16 @@ export function BenchmarkCreatorModal({
           {/* Left: template selection + config */}
           <div className="flex flex-col flex-1 min-w-0 overflow-y-auto p-4 gap-4">
             {loadingAdapter ? (
-              <div className="text-dim text-[11px] font-mono">Loading adapter…</div>
+              <div className="text-dim text-[11px] font-mono">
+                Loading adapter…
+              </div>
             ) : !adapter ? (
               <div className="text-dim text-[11px] font-mono">
                 No adapter found for toolchain{" "}
-                <span className="font-semibold text-fg">{toolchain ?? "(unknown)"}</span>.
+                <span className="font-semibold text-fg">
+                  {toolchain ?? "(unknown)"}
+                </span>
+                .
               </div>
             ) : (
               <>
@@ -161,8 +187,12 @@ export function BenchmarkCreatorModal({
                           (e.currentTarget.style.borderColor = C.border)
                         }
                       >
-                        <div className="text-[12px] font-semibold text-fg font-mono">{t.name}</div>
-                        <div className="text-[11px] text-dim mt-[2px]">{t.description}</div>
+                        <div className="text-[12px] font-semibold text-fg font-mono">
+                          {t.name}
+                        </div>
+                        <div className="text-[11px] text-dim mt-[2px]">
+                          {t.description}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -186,7 +216,11 @@ export function BenchmarkCreatorModal({
                       </span>
                       <input
                         value={benchmarkName}
-                        onChange={(e) => setBenchmarkName(e.target.value.replace(/[^a-z0-9-_]/gi, "-"))}
+                        onChange={(e) =>
+                          setBenchmarkName(
+                            e.target.value.replace(/[^a-z0-9-_]/gi, "-"),
+                          )
+                        }
                         className="bg-surface2 border border-[var(--c-border)] rounded px-2 py-1 text-[11px] font-mono text-fg outline-none"
                         style={{ colorScheme: "dark" }}
                       />
@@ -207,7 +241,10 @@ export function BenchmarkCreatorModal({
                           <select
                             value={fieldValues[field.id] ?? ""}
                             onChange={(e) =>
-                              setFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))
+                              setFieldValues((prev) => ({
+                                ...prev,
+                                [field.id]: e.target.value,
+                              }))
                             }
                             className="bg-surface2 border border-[var(--c-border)] rounded px-2 py-1 text-[11px] font-mono text-fg outline-none"
                             style={{ colorScheme: "dark" }}
@@ -223,20 +260,28 @@ export function BenchmarkCreatorModal({
                           <select
                             value={fieldValues[field.id] ?? field.default ?? ""}
                             onChange={(e) =>
-                              setFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))
+                              setFieldValues((prev) => ({
+                                ...prev,
+                                [field.id]: e.target.value,
+                              }))
                             }
                             className="bg-surface2 border border-[var(--c-border)] rounded px-2 py-1 text-[11px] font-mono text-fg outline-none"
                             style={{ colorScheme: "dark" }}
                           >
                             {(field.options ?? []).map((opt) => (
-                              <option key={opt} value={opt}>{opt}</option>
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
                             ))}
                           </select>
                         ) : (
                           <input
                             value={fieldValues[field.id] ?? field.default ?? ""}
                             onChange={(e) =>
-                              setFieldValues((prev) => ({ ...prev, [field.id]: e.target.value }))
+                              setFieldValues((prev) => ({
+                                ...prev,
+                                [field.id]: e.target.value,
+                              }))
                             }
                             className="bg-surface2 border border-[var(--c-border)] rounded px-2 py-1 text-[11px] font-mono text-fg outline-none"
                           />

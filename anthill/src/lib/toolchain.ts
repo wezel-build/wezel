@@ -4,7 +4,13 @@
  */
 export function detectToolchain(observationName: string): string | null {
   const name = observationName.toLowerCase();
-  const cargoPatterns = ["cargo build", "cargo check", "cargo test", "cargo run", "cargo clippy"];
+  const cargoPatterns = [
+    "cargo build",
+    "cargo check",
+    "cargo test",
+    "cargo run",
+    "cargo clippy",
+  ];
   for (const pattern of cargoPatterns) {
     if (name.includes(pattern.toLowerCase())) return "cargo";
   }

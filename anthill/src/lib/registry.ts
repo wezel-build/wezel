@@ -1,4 +1,8 @@
-import type { RegistryAdapter, RegistryTemplate, RegistryUiField } from "./data";
+import type {
+  RegistryAdapter,
+  RegistryTemplate,
+  RegistryUiField,
+} from "./data";
 import type { CrateTopo } from "./data";
 
 /**
@@ -11,8 +15,10 @@ import type { CrateTopo } from "./data";
  * bundled default (wezel.dev).
  */
 const REGISTRY_URL =
-  (import.meta.env.VITE_REGISTRY_URL as string | undefined)?.replace(/\/$/, "") ??
-  "https://wezel.dev/registry";
+  (import.meta.env.VITE_REGISTRY_URL as string | undefined)?.replace(
+    /\/$/,
+    "",
+  ) ?? "https://wezel.dev/registry";
 
 /**
  * Fetch an adapter definition for the given toolchain from the configured
@@ -22,7 +28,9 @@ const REGISTRY_URL =
  * The registry is expected to serve adapters at:
  *   `{REGISTRY_URL}/adapters/{toolchain}.json`
  */
-export async function fetchAdapter(toolchain: string): Promise<RegistryAdapter | null> {
+export async function fetchAdapter(
+  toolchain: string,
+): Promise<RegistryAdapter | null> {
   const url = `${REGISTRY_URL}/adapters/${toolchain}.json`;
   try {
     const res = await fetch(url);
@@ -56,7 +64,8 @@ export function generateBenchmarkToml(
     const inputs: Record<string, unknown> = { ...step.inputs };
 
     // Inject UI field values into inputs
-    for (const field of (template.uiSchema?.fields ?? []) as RegistryUiField[]) {
+    for (const field of (template.uiSchema?.fields ??
+      []) as RegistryUiField[]) {
       const val = values[field.id];
       if (!val) continue;
       inputs[field.id] = val;

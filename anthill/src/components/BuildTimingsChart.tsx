@@ -280,7 +280,9 @@ export function BuildTimingsChart({
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       if (!onBenchmark) return;
-      const el = (e.target as HTMLElement).closest("[data-crate]") as HTMLElement | null;
+      const el = (e.target as HTMLElement).closest(
+        "[data-crate]",
+      ) as HTMLElement | null;
       if (!el) return;
       e.preventDefault();
       setContextMenu({ x: e.clientX, y: e.clientY, crate: el.dataset.crate! });
@@ -304,150 +306,155 @@ export function BuildTimingsChart({
 
   return (
     <>
-    <div
-      className="w-full h-full overflow-auto rounded"
-      style={{
-        background: bg,
-        border: `1px solid ${border}`,
-      }}
-      onMouseLeave={() => setHoveredCrate(null)}
-    >
-      <svg
-        width={svgW}
-        height={svgH}
-        style={{ display: "block" }}
-        onMouseOver={handleMouseOver}
-        onClick={handleClick}
-        onContextMenu={handleContextMenu}
-      >
-        {/* Axis hint */}
-        <text
-          x={LEFT_PAD}
-          y={16}
-          fontSize={9}
-          fontFamily={MONO}
-          fill="#666"
-          fontWeight={600}
-          style={{ letterSpacing: "0.6px" }}
-        >
-          ← CONSUMERS · · · FOUNDATIONS →
-        </text>
-
-        {/* Rows */}
-        {rows.map((row) => {
-          const colors = heatColor(row.heat);
-          const isHl = highlightedCrates?.has(row.name) ?? false;
-          const isActive = !dimmed || activeSet!.has(row.name);
-          const isFocused = row.name === focusedCrate;
-          const isHovered = row.name === hoveredCrate;
-          const accent = accentColor ?? colors.border;
-          const emphBorder = isHl || isFocused || isHovered;
-
-          const pillX = row.barX + 1;
-          const pillY = row.y + ROW_H - PILL_H - 1;
-          const pillW = row.tier.barW - 2;
-          const labelX = row.barX + row.tier.barW + LABEL_PAD;
-          const midY = row.y + ROW_H / 2 + 4;
-          const pAlpha = pillOpacity(row.heat, row.tier);
-
-          return (
-            <g
-              key={row.name}
-              data-crate={row.name}
-              style={{ cursor: "pointer", opacity: isActive ? 1 : 0.12 }}
-            >
-              {/* Bar */}
-              <rect
-                x={row.barX}
-                y={row.y}
-                width={row.tier.barW}
-                height={ROW_H}
-                rx={3}
-                fill={colors.bg}
-                stroke={emphBorder ? accent : colors.border}
-                strokeWidth={emphBorder ? 2 : 1}
-                strokeDasharray={row.external ? "4 3" : undefined}
-              />
-
-              {/* Pill — thin strip at bottom, opacity = position within tier */}
-              {row.tier.hasPill && (
-                <rect
-                  x={pillX}
-                  y={pillY}
-                  width={pillW}
-                  height={PILL_H}
-                  rx={1}
-                  fill={colors.border}
-                  stroke="none"
-                  opacity={pAlpha}
-                  style={{ pointerEvents: "none" }}
-                />
-              )}
-
-              {/* Label: name + exact heat% */}
-              <text
-                x={labelX}
-                y={midY}
-                fontSize={11}
-                fontFamily={MONO}
-                fill={isActive ? colors.text : "#444"}
-                style={{ pointerEvents: "none" }}
-              >
-                {row.name}
-                {row.version && (
-                  <tspan dx={4} fontSize={9} fill={colors.border} opacity={0.7}>
-                    v{row.version}
-                  </tspan>
-                )}
-                <tspan dx={5} fontSize={9} fill={colors.border}>
-                  {row.heat}%
-                </tspan>
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-
-    {contextMenu && (
       <div
-        ref={menuRef}
+        className="w-full h-full overflow-auto rounded"
         style={{
-          position: "fixed",
-          top: contextMenu.y,
-          left: contextMenu.x,
-          zIndex: 200,
-          background: "var(--c-surface)",
-          border: "1px solid var(--c-border)",
-          borderRadius: 6,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
-          minWidth: 200,
+          background: bg,
+          border: `1px solid ${border}`,
         }}
+        onMouseLeave={() => setHoveredCrate(null)}
       >
-        <button
-          onClick={() => {
-            onBenchmark?.(contextMenu.crate);
-            setContextMenu(null);
-          }}
+        <svg
+          width={svgW}
+          height={svgH}
+          style={{ display: "block" }}
+          onMouseOver={handleMouseOver}
+          onClick={handleClick}
+          onContextMenu={handleContextMenu}
+        >
+          {/* Axis hint */}
+          <text
+            x={LEFT_PAD}
+            y={16}
+            fontSize={9}
+            fontFamily={MONO}
+            fill="#666"
+            fontWeight={600}
+            style={{ letterSpacing: "0.6px" }}
+          >
+            ← CONSUMERS · · · FOUNDATIONS →
+          </text>
+
+          {/* Rows */}
+          {rows.map((row) => {
+            const colors = heatColor(row.heat);
+            const isHl = highlightedCrates?.has(row.name) ?? false;
+            const isActive = !dimmed || activeSet!.has(row.name);
+            const isFocused = row.name === focusedCrate;
+            const isHovered = row.name === hoveredCrate;
+            const accent = accentColor ?? colors.border;
+            const emphBorder = isHl || isFocused || isHovered;
+
+            const pillX = row.barX + 1;
+            const pillY = row.y + ROW_H - PILL_H - 1;
+            const pillW = row.tier.barW - 2;
+            const labelX = row.barX + row.tier.barW + LABEL_PAD;
+            const midY = row.y + ROW_H / 2 + 4;
+            const pAlpha = pillOpacity(row.heat, row.tier);
+
+            return (
+              <g
+                key={row.name}
+                data-crate={row.name}
+                style={{ cursor: "pointer", opacity: isActive ? 1 : 0.12 }}
+              >
+                {/* Bar */}
+                <rect
+                  x={row.barX}
+                  y={row.y}
+                  width={row.tier.barW}
+                  height={ROW_H}
+                  rx={3}
+                  fill={colors.bg}
+                  stroke={emphBorder ? accent : colors.border}
+                  strokeWidth={emphBorder ? 2 : 1}
+                  strokeDasharray={row.external ? "4 3" : undefined}
+                />
+
+                {/* Pill — thin strip at bottom, opacity = position within tier */}
+                {row.tier.hasPill && (
+                  <rect
+                    x={pillX}
+                    y={pillY}
+                    width={pillW}
+                    height={PILL_H}
+                    rx={1}
+                    fill={colors.border}
+                    stroke="none"
+                    opacity={pAlpha}
+                    style={{ pointerEvents: "none" }}
+                  />
+                )}
+
+                {/* Label: name + exact heat% */}
+                <text
+                  x={labelX}
+                  y={midY}
+                  fontSize={11}
+                  fontFamily={MONO}
+                  fill={isActive ? colors.text : "#444"}
+                  style={{ pointerEvents: "none" }}
+                >
+                  {row.name}
+                  {row.version && (
+                    <tspan
+                      dx={4}
+                      fontSize={9}
+                      fill={colors.border}
+                      opacity={0.7}
+                    >
+                      v{row.version}
+                    </tspan>
+                  )}
+                  <tspan dx={5} fontSize={9} fill={colors.border}>
+                    {row.heat}%
+                  </tspan>
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      {contextMenu && (
+        <div
+          ref={menuRef}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            width: "100%",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            padding: "8px 12px",
-            fontFamily: "var(--font-mono, monospace)",
-            fontSize: 11,
-            color: "var(--c-text)",
-            textAlign: "left",
+            position: "fixed",
+            top: contextMenu.y,
+            left: contextMenu.x,
+            zIndex: 200,
+            background: "var(--c-surface)",
+            border: "1px solid var(--c-border)",
+            borderRadius: 6,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
+            minWidth: 200,
           }}
         >
-          🚀 Benchmark changes to <strong>{contextMenu.crate}</strong>
-        </button>
-      </div>
-    )}
+          <button
+            onClick={() => {
+              onBenchmark?.(contextMenu.crate);
+              setContextMenu(null);
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              width: "100%",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "8px 12px",
+              fontFamily: "var(--font-mono, monospace)",
+              fontSize: 11,
+              color: "var(--c-text)",
+              textAlign: "left",
+            }}
+          >
+            🚀 Benchmark changes to <strong>{contextMenu.crate}</strong>
+          </button>
+        </div>
+      )}
     </>
   );
 }

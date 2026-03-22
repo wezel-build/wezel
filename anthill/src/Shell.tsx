@@ -270,7 +270,9 @@ export default function Shell() {
               to="/admin/pheromones"
               title="Pheromone admin"
               className="flex items-center no-underline"
-              style={{ color: onAdminPage ? "var(--c-accent)" : "var(--c-text-dim)" }}
+              style={{
+                color: onAdminPage ? "var(--c-accent)" : "var(--c-text-dim)",
+              }}
             >
               <Settings size={13} />
             </Link>

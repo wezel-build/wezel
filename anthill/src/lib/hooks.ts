@@ -82,7 +82,12 @@ export function useObservations() {
     [pApi, refetch],
   );
 
-  return { observations: data ?? EMPTY_OBSERVATIONS, loading, error, togglePin };
+  return {
+    observations: data ?? EMPTY_OBSERVATIONS,
+    loading,
+    error,
+    togglePin,
+  };
 }
 
 export function useObservation(id: number | null) {

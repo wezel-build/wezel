@@ -41,8 +41,15 @@ export function DetailView({
   userFilter?: string[];
 }) {
   const { current: currentProject } = useProject();
-  const { observation: rawObservation, loading, error } = useObservation(observationId);
-  const [benchmarkModal, setBenchmarkModal] = useState<{ open: boolean; initialCrate?: string }>({
+  const {
+    observation: rawObservation,
+    loading,
+    error,
+  } = useObservation(observationId);
+  const [benchmarkModal, setBenchmarkModal] = useState<{
+    open: boolean;
+    initialCrate?: string;
+  }>({
     open: false,
   });
 

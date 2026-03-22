@@ -4,7 +4,11 @@ import { useKeyboardNav } from "../lib/useKeyboardNav";
 import { ArrowLeft, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { C, alpha } from "../lib/colors";
 import { fmtValue } from "../lib/format";
-import { type Measurement, type MeasurementDetail, buildVizMap } from "../lib/data";
+import {
+  type Measurement,
+  type MeasurementDetail,
+  buildVizMap,
+} from "../lib/data";
 import { useCommits, usePheromones } from "../lib/hooks";
 import { useProject } from "../lib/useProject";
 import { DeltaBadge } from "../components/DeltaBadge";

@@ -25,7 +25,9 @@ export default function PheromoneAdminPage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
@@ -67,7 +69,9 @@ export default function PheromoneAdminPage() {
   return (
     <div className="flex flex-col flex-1 overflow-y-auto p-6 gap-6 max-w-3xl">
       <div>
-        <h1 className="text-[16px] font-semibold font-mono text-fg m-0">Pheromone Registry</h1>
+        <h1 className="text-[16px] font-semibold font-mono text-fg m-0">
+          Pheromone Registry
+        </h1>
         <p className="text-[12px] text-dim font-mono mt-1 m-0">
           Manage pheromone tools and their field schemas.
         </p>
@@ -77,7 +81,10 @@ export default function PheromoneAdminPage() {
       <form
         onSubmit={handleRegister}
         className="flex flex-col gap-2 p-4 rounded"
-        style={{ background: "var(--c-surface2)", border: "1px solid var(--c-border)" }}
+        style={{
+          background: "var(--c-surface2)",
+          border: "1px solid var(--c-border)",
+        }}
       >
         <div className="text-[10px] font-semibold uppercase tracking-wider text-dim font-mono">
           Register pheromone
@@ -116,9 +123,13 @@ export default function PheromoneAdminPage() {
       {loading ? (
         <div className="text-dim text-[11px] font-mono">Loading…</div>
       ) : error ? (
-        <div className="text-[11px] font-mono" style={{ color: C.red }}>{error}</div>
+        <div className="text-[11px] font-mono" style={{ color: C.red }}>
+          {error}
+        </div>
       ) : pheromones.length === 0 ? (
-        <div className="text-dim text-[11px] font-mono">No pheromones registered yet.</div>
+        <div className="text-dim text-[11px] font-mono">
+          No pheromones registered yet.
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
           {pheromones.map((p) => (
@@ -133,7 +144,9 @@ export default function PheromoneAdminPage() {
                 style={{ background: "var(--c-surface2)" }}
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-[12px] font-semibold font-mono text-fg">{p.name}</span>
+                  <span className="text-[12px] font-semibold font-mono text-fg">
+                    {p.name}
+                  </span>
                   <span
                     className="text-[10px] font-mono px-[5px] py-[1px] rounded"
                     style={{
@@ -161,11 +174,16 @@ export default function PheromoneAdminPage() {
                     className="flex items-center gap-[4px] bg-transparent border-none cursor-pointer text-dim text-[10px] font-mono"
                     style={{ opacity: refreshing === p.id ? 0.5 : 1 }}
                   >
-                    <RefreshCw size={11} className={refreshing === p.id ? "animate-spin" : ""} />
+                    <RefreshCw
+                      size={11}
+                      className={refreshing === p.id ? "animate-spin" : ""}
+                    />
                     {refreshing === p.id ? "Fetching…" : "Refresh"}
                   </button>
                   <button
-                    onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
+                    onClick={() =>
+                      setExpandedId(expandedId === p.id ? null : p.id)
+                    }
                     className="bg-transparent border-none cursor-pointer text-dim text-[10px] font-mono"
                   >
                     {expandedId === p.id ? "▲ hide fields" : "▼ fields"}
@@ -206,14 +224,16 @@ export default function PheromoneAdminPage() {
                   <table className="w-full text-[10px] font-mono border-collapse">
                     <thead>
                       <tr style={{ borderBottom: "1px solid var(--c-border)" }}>
-                        {["field", "type", "description", "deprecated"].map((h) => (
-                          <th
-                            key={h}
-                            className="text-left px-4 py-2 text-[9px] uppercase tracking-wider text-dim font-semibold"
-                          >
-                            {h}
-                          </th>
-                        ))}
+                        {["field", "type", "description", "deprecated"].map(
+                          (h) => (
+                            <th
+                              key={h}
+                              className="text-left px-4 py-2 text-[9px] uppercase tracking-wider text-dim font-semibold"
+                            >
+                              {h}
+                            </th>
+                          ),
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -225,9 +245,13 @@ export default function PheromoneAdminPage() {
                             opacity: f.deprecated ? 0.55 : 1,
                           }}
                         >
-                          <td className="px-4 py-2 text-fg font-semibold">{f.name}</td>
+                          <td className="px-4 py-2 text-fg font-semibold">
+                            {f.name}
+                          </td>
                           <td className="px-4 py-2 text-dim">{f.type}</td>
-                          <td className="px-4 py-2 text-dim">{f.description ?? "—"}</td>
+                          <td className="px-4 py-2 text-dim">
+                            {f.description ?? "—"}
+                          </td>
                           <td className="px-4 py-2">
                             {f.deprecated ? (
                               <span style={{ color: C.amber }}>

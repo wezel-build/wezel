@@ -27,7 +27,10 @@ export function VizRenderer({ spec, data, unit }: Props) {
         >
           {spec.label}
         </span>
-        <span className="text-[15px] font-bold font-mono" style={{ color: C.text }}>
+        <span
+          className="text-[15px] font-bold font-mono"
+          style={{ color: C.text }}
+        >
           {value != null ? fmtValue(value, unit) : "—"}
         </span>
       </div>

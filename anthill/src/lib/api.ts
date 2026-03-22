@@ -127,9 +127,9 @@ export function benchmarkPrApi(projectId: number) {
       benchmarkName: string,
       files: Record<string, string>,
     ): Promise<BenchmarkPrResponse> =>
-      post<BenchmarkPrResponse>(
-        `/api/project/${projectId}/benchmark/pr`,
-        { benchmarkName, files },
-      ),
+      post<BenchmarkPrResponse>(`/api/project/${projectId}/benchmark/pr`, {
+        benchmarkName,
+        files,
+      }),
   };
 }

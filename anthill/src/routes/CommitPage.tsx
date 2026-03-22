@@ -579,8 +579,7 @@ export default function CommitPage() {
                         style={{
                           background:
                             benchmarkInput === bm ? C.surface3 : C.surface2,
-                          color:
-                            benchmarkInput === bm ? C.accent : C.textMid,
+                          color: benchmarkInput === bm ? C.accent : C.textMid,
                           cursor: "pointer",
                         }}
                       >
@@ -628,7 +627,10 @@ export default function CommitPage() {
                   </button>
                 </div>
                 {enqueueError && (
-                  <div className="text-[10px] font-mono" style={{ color: C.red }}>
+                  <div
+                    className="text-[10px] font-mono"
+                    style={{ color: C.red }}
+                  >
                     {enqueueError}
                   </div>
                 )}

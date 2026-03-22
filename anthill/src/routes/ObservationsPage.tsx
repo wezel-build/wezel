@@ -49,7 +49,10 @@ export default function ObservationsPage() {
   );
 
   const filtered = useMemo(() => {
-    let list: { observation: ObservationSummary; result: Fuzzysort.Result | null }[];
+    let list: {
+      observation: ObservationSummary;
+      result: Fuzzysort.Result | null;
+    }[];
     if (search) {
       const results = fuzzysort.go(search, observations, {
         key: "name",
@@ -61,7 +64,8 @@ export default function ObservationsPage() {
     }
     if (profileFilter)
       list = list.filter((item) => item.observation.profile === profileFilter);
-    if (!search) list.sort((a, b) => getFreq(b.observation) - getFreq(a.observation));
+    if (!search)
+      list.sort((a, b) => getFreq(b.observation) - getFreq(a.observation));
     return list;
   }, [observations, search, profileFilter, getFreq]);
 
