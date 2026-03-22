@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useKeyboardNav } from "../lib/useKeyboardNav";
 import {
   useParams,
@@ -374,8 +374,11 @@ export default function CommitPage() {
     commitIdx < commits.length - 1 ? commits[commitIdx + 1] : null;
 
   const toProjectHome = hasProjectId ? `/project/${projectId}` : "/";
-  const toCommit = (s: string) =>
-    hasProjectId ? `/project/${projectId}/commit/${s}` : `/commit/${s}`;
+  const toCommit = useCallback(
+    (s: string) =>
+      hasProjectId ? `/project/${projectId}/commit/${s}` : `/commit/${s}`,
+    [hasProjectId, projectId],
+  );
 
   const keyMap = useMemo(
     () => ({

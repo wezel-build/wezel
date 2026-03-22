@@ -102,19 +102,6 @@ export function DetailView({
   );
   const prevDisplayedOriginalIndices = useRef<number[]>([]);
 
-  const toggleRun = useCallback(
-    (i: number) => {
-      const key = runKey(runs[i]);
-      setSelectedKeys((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        return next;
-      });
-    },
-    [runs],
-  );
-
   // Visible runs after crate filter
   const visibleRunIndices = useMemo(() => {
     if (!crateFilter) return null; // null = show all
@@ -145,22 +132,29 @@ export function DetailView({
   }, [displayedOriginalIndices, selectedKeys, runs]);
 
   const handleToggleDisplayed = useCallback(
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization
     (displayIdx: number) => {
       const origIdx = displayedOriginalIndices[displayIdx];
       if (origIdx == null) return;
-      toggleRun(origIdx);
+      const key = runKey(runs[origIdx]);
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
     },
-    [displayedOriginalIndices, toggleRun],
+    [displayedOriginalIndices, runs],
   );
 
-  const handleSelectAllDisplayed = useCallback(() => {
+  const handleSelectAllDisplayed = () => {
     setSelectedKeys((prev) => {
       const next = new Set(prev);
       for (const origIdx of displayedOriginalIndices)
         next.add(runKey(runs[origIdx]));
       return next;
     });
-  }, [displayedOriginalIndices, runs]);
+  };
 
   // Keyboard nav for runs when this panel is active
   const runKeyMap = useMemo(() => {
@@ -266,14 +260,14 @@ export function DetailView({
     });
   }, [displayedOriginalIndices]);
 
-  const handleSelectNoneDisplayed = useCallback(() => {
+  const handleSelectNoneDisplayed = () => {
     setSelectedKeys((prev) => {
       const next = new Set(prev);
       for (const origIdx of displayedOriginalIndices)
         next.delete(runKey(runs[origIdx]));
       return next;
     });
-  }, [displayedOriginalIndices, runs]);
+  };
 
   const selectedRuns = useMemo(
     () =>
@@ -307,13 +301,13 @@ export function DetailView({
     return new Set(displayedRuns[hlRunIdx].dirtyCrates);
   }, [hlRunIdx, displayedRuns]);
 
-  const handleNodeClick = useCallback((crateName: string) => {
+  const handleNodeClick = (crateName: string) => {
     setCrateFilter((prev) => (prev === crateName ? null : crateName));
-  }, []);
+  };
 
-  const handleNodeFocus = useCallback((crateName: string | null) => {
+  const handleNodeFocus = (crateName: string | null) => {
     setFocusedCrate((prev) => (prev === crateName ? null : crateName));
-  }, []);
+  };
 
   const handleBenchmarkCrate = useCallback((crateName: string) => {
     setBenchmarkModal({ open: true, initialCrate: crateName });

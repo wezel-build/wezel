@@ -48,7 +48,6 @@ export function generateBenchmarkToml(
   benchmarkName: string,
   template: RegistryTemplate,
   values: Record<string, string>,
-  _graph: CrateTopo[],
 ): string {
   const lines: string[] = [
     `name = "${benchmarkName}"`,

@@ -92,9 +92,8 @@ export function BenchmarkCreatorModal({
       benchmarkName,
       selectedTemplate,
       fieldValues,
-      observation.graph,
     );
-  }, [selectedTemplate, benchmarkName, fieldValues, observation.graph]);
+  }, [selectedTemplate, benchmarkName, fieldValues]);
 
   const benchmarkPath = `.wezel/benchmarks/${benchmarkName}/benchmark.toml`;
 

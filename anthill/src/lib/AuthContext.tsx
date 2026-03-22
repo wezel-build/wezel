@@ -27,7 +27,14 @@ const AuthContext = createContext<AuthState>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [forbidden, setForbidden] = useState(false);
+  const [forbidden] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "forbidden") {
+      window.history.replaceState({}, "", window.location.pathname);
+      return true;
+    }
+    return false;
+  });
   const [authRequired, setAuthRequired] = useState(true);
 
   useEffect(() => {
@@ -39,13 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthRequired(cfg.auth_required);
       setLoading(false);
     });
-
-    // Check for ?error=forbidden in the URL (set by the callback redirect)
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("error") === "forbidden") {
-      setForbidden(true);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
   }, []);
 
   const logout = useCallback(async () => {
@@ -62,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   return useContext(AuthContext);
 }
