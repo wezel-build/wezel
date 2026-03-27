@@ -196,6 +196,26 @@ fn git_apply_patch(project_dir: &Path, patch: &Path) -> Result<()> {
     Ok(())
 }
 
+fn git_reset_worktree(repo_dir: &Path) -> Result<()> {
+    let status = Command::new("git")
+        .args(["checkout", "."])
+        .current_dir(repo_dir)
+        .status()
+        .context("running git checkout .")?;
+    if !status.success() {
+        bail!("git checkout . failed");
+    }
+    let status = Command::new("git")
+        .args(["clean", "-fd"])
+        .current_dir(repo_dir)
+        .status()
+        .context("running git clean -fd")?;
+    if !status.success() {
+        bail!("git clean -fd failed");
+    }
+    Ok(())
+}
+
 fn git_fetch(repo_dir: &Path) -> Result<()> {
     let status = Command::new("git")
         .args(["fetch", "--quiet", "origin"])
@@ -416,6 +436,8 @@ fn run_serve(repo_dir: &Path, poll_interval: u64) -> Result<()> {
             job.benchmark_name
         );
 
+        git_reset_worktree(repo_dir)
+            .with_context(|| format!("resetting worktree before job {}", job.id))?;
         git_fetch(repo_dir).with_context(|| format!("git fetch before job {}", job.id))?;
         git_checkout_detached(repo_dir, &job.commit_sha)
             .with_context(|| format!("checkout {} for job {}", job.commit_sha, job.id))?;
