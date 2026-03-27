@@ -1,6 +1,6 @@
+mod daemon;
 mod lint;
 mod run;
-mod daemon;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -82,9 +82,7 @@ pub struct ParsedStep {
     pub inputs: serde_json::Value,
 }
 
-pub fn parse_benchmark(
-    benchmark_dir: &Path,
-) -> Result<(String, Option<String>, Vec<ParsedStep>)> {
+pub fn parse_benchmark(benchmark_dir: &Path) -> Result<(String, Option<String>, Vec<ParsedStep>)> {
     let toml_path = benchmark_dir.join("benchmark.toml");
     let raw = std::fs::read_to_string(&toml_path)
         .with_context(|| format!("reading {}", toml_path.display()))?;

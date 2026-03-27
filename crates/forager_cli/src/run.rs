@@ -3,8 +3,8 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use wezel_types::{ForagerJob, ForagerRunReport, ForagerStepReport};
 
-use crate::{BenchmarkToml, Config, invoke_forager, parse_benchmark};
 use crate::git;
+use crate::{BenchmarkToml, Config, invoke_forager, parse_benchmark};
 
 pub struct BurrowSession {
     agent: ureq::Agent,

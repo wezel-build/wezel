@@ -156,12 +156,7 @@ pub fn run_lint(project_dir: &Path) -> Result<()> {
                 if d.step.is_empty() {
                     eprintln!("    {} {}", "-".red(), d.message);
                 } else {
-                    eprintln!(
-                        "    {} {}: {}",
-                        "-".red(),
-                        d.step.dimmed(),
-                        d.message,
-                    );
+                    eprintln!("    {} {}: {}", "-".red(), d.step.dimmed(), d.message,);
                 }
             }
         }

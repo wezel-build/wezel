@@ -253,21 +253,9 @@ fn run_status() -> Result<()> {
         format!("pid {}", status.pid).dimmed(),
         "running".green().bold(),
     );
-    println!(
-        "  {} {}",
-        "upstream:".dimmed(),
-        status.upstream,
-    );
-    println!(
-        "  {}  {}",
-        "burrow:".dimmed(),
-        status.server_url,
-    );
-    println!(
-        "  {} {}",
-        "started:".dimmed(),
-        status.started_at,
-    );
+    println!("  {} {}", "upstream:".dimmed(), status.upstream,);
+    println!("  {}  {}", "burrow:".dimmed(), status.server_url,);
+    println!("  {} {}", "started:".dimmed(), status.started_at,);
 
     println!();
     match &status.current_job {
