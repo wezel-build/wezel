@@ -1,6 +1,6 @@
 mod lint;
 mod run;
-mod serve;
+mod daemon;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -404,8 +404,17 @@ enum Cmd {
         #[arg(long)]
         project_dir: Option<PathBuf>,
     },
-    /// Poll burrow for queued jobs and run them.
-    Serve {
+    /// Manage the forager daemon.
+    Daemon {
+        #[command(subcommand)]
+        cmd: DaemonCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DaemonCmd {
+    /// Start polling burrow for queued jobs and run them.
+    Start {
         /// Path to the repository to check out and run benchmarks in.
         #[arg(long)]
         repo_dir: PathBuf,
@@ -413,6 +422,8 @@ enum Cmd {
         #[arg(long, default_value = "10")]
         poll_interval: u64,
     },
+    /// Show current daemon status and active job.
+    Status,
 }
 
 fn main() -> Result<()> {
@@ -436,9 +447,6 @@ fn main() -> Result<()> {
                 .unwrap_or_else(|| std::env::current_dir().expect("getting current directory"));
             lint::run_lint(&project_dir)
         }
-        Cmd::Serve {
-            repo_dir,
-            poll_interval,
-        } => serve::run_serve(&repo_dir, poll_interval),
+        Cmd::Daemon { cmd } => daemon::run_daemon(cmd),
     }
 }
