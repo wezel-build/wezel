@@ -25,3 +25,4 @@ uuid = { workspace = true }
 wezel_types = { workspace = true }
 which = { workspace = true }
 whoami = { workspace = true }
+owo-colors = { version = "4.3.0", features = ["supports-colors"] }

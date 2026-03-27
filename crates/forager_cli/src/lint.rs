@@ -1,0 +1,190 @@
+use std::collections::HashSet;
+use std::path::Path;
+use std::process::Command;
+
+use anyhow::{Context, Result, bail};
+use owo_colors::OwoColorize;
+
+use crate::{parse_benchmark, resolve_plugin};
+
+struct LintDiagnostic {
+    step: String,
+    message: String,
+}
+
+struct BenchmarkResult {
+    name: String,
+    step_count: usize,
+    diagnostics: Vec<LintDiagnostic>,
+}
+
+pub fn run_lint(project_dir: &Path) -> Result<()> {
+    let benchmarks_dir = project_dir.join(".wezel").join("benchmarks");
+    if !benchmarks_dir.is_dir() {
+        bail!("no benchmarks directory at {}", benchmarks_dir.display());
+    }
+
+    let mut dirs: Vec<_> = std::fs::read_dir(&benchmarks_dir)
+        .context("reading benchmarks directory")?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir() && e.path().join("benchmark.toml").is_file())
+        .collect();
+    dirs.sort_by_key(|e| e.file_name());
+
+    if dirs.is_empty() {
+        bail!("no benchmarks found in {}", benchmarks_dir.display());
+    }
+
+    let mut results: Vec<BenchmarkResult> = Vec::new();
+    let mut warned_plugins: HashSet<String> = HashSet::new();
+
+    for entry in &dirs {
+        let benchmark_dir = entry.path();
+        let benchmark_name = entry.file_name().to_string_lossy().to_string();
+
+        // Parse the TOML.
+        let steps = match parse_benchmark(&benchmark_dir) {
+            Ok((_name, _desc, steps)) => steps,
+            Err(e) => {
+                results.push(BenchmarkResult {
+                    name: benchmark_name,
+                    step_count: 0,
+                    diagnostics: vec![LintDiagnostic {
+                        step: String::new(),
+                        message: format!("failed to parse: {e}"),
+                    }],
+                });
+                continue;
+            }
+        };
+
+        let mut diagnostics = Vec::new();
+
+        for step in &steps {
+            // Check patch file exists when declared.
+            if let Some(ref patch_stem) = step.diff {
+                let patch_path = benchmark_dir.join(format!("{patch_stem}.patch"));
+                if !patch_path.is_file() {
+                    diagnostics.push(LintDiagnostic {
+                        step: step.name.clone(),
+                        message: format!("{patch_stem}.patch not found"),
+                    });
+                }
+            }
+
+            // Check plugin is on PATH.
+            if resolve_plugin(&step.forager).is_none()
+                && warned_plugins.insert(step.forager.clone())
+            {
+                diagnostics.push(LintDiagnostic {
+                    step: step.name.clone(),
+                    message: format!("plugin `forager-{}` not found on PATH", step.forager),
+                });
+            }
+
+            // If plugin is available, validate its --schema output.
+            if let Some(binary) = resolve_plugin(&step.forager) {
+                match Command::new(&binary).arg("--schema").output() {
+                    Ok(o) if o.status.success() => {
+                        let stdout = String::from_utf8_lossy(&o.stdout);
+                        if serde_json::from_str::<serde_json::Value>(&stdout).is_err() {
+                            diagnostics.push(LintDiagnostic {
+                                step: step.name.clone(),
+                                message: format!(
+                                    "`forager-{} --schema` returned invalid JSON",
+                                    step.forager
+                                ),
+                            });
+                        }
+                    }
+                    Ok(o) => {
+                        diagnostics.push(LintDiagnostic {
+                            step: step.name.clone(),
+                            message: format!(
+                                "`forager-{} --schema` exited with {}",
+                                step.forager, o.status
+                            ),
+                        });
+                    }
+                    Err(e) => {
+                        diagnostics.push(LintDiagnostic {
+                            step: step.name.clone(),
+                            message: format!(
+                                "failed to run `forager-{} --schema`: {e}",
+                                step.forager
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+
+        results.push(BenchmarkResult {
+            name: benchmark_name,
+            step_count: steps.len(),
+            diagnostics,
+        });
+    }
+
+    // Render output.
+    let total_errors: usize = results.iter().map(|r| r.diagnostics.len()).sum();
+    let total_benchmarks = results.len();
+
+    for result in &results {
+        let ok = result.diagnostics.is_empty() && result.step_count > 0;
+        let steps_label = format!(
+            "{} step{}",
+            result.step_count,
+            if result.step_count == 1 { "" } else { "s" }
+        );
+
+        if ok {
+            println!(
+                "  {} {} {}",
+                result.name.bold(),
+                steps_label.dimmed(),
+                "ok".green().bold(),
+            );
+        } else {
+            println!(
+                "  {} {} {}",
+                result.name.bold(),
+                steps_label.dimmed(),
+                "FAIL".red().bold(),
+            );
+            for d in &result.diagnostics {
+                if d.step.is_empty() {
+                    eprintln!("    {} {}", "-".red(), d.message);
+                } else {
+                    eprintln!(
+                        "    {} {}: {}",
+                        "-".red(),
+                        d.step.dimmed(),
+                        d.message,
+                    );
+                }
+            }
+        }
+    }
+
+    println!();
+    if total_errors == 0 {
+        println!(
+            "{}",
+            format!(
+                "{total_benchmarks} benchmark{} validated, no errors.",
+                if total_benchmarks == 1 { "" } else { "s" }
+            )
+            .green()
+        );
+        Ok(())
+    } else {
+        let msg = format!(
+            "{total_benchmarks} benchmark{} checked, {total_errors} error{} found.",
+            if total_benchmarks == 1 { "" } else { "s" },
+            if total_errors == 1 { "" } else { "s" },
+        );
+        eprintln!("{}", msg.red());
+        bail!("{msg}");
+    }
+}
