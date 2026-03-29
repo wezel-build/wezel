@@ -436,7 +436,7 @@ fn main() -> Result<()> {
             let project_dir = project_dir
                 .unwrap_or_else(|| std::env::current_dir().expect("getting current directory"));
             match benchmark {
-                Some(name) => run::run_benchmark(&name, &project_dir, None),
+                Some(name) => run::run_benchmark(&name, &project_dir).map(|_| ()),
                 None => run::list_benchmarks(&project_dir),
             }
         }

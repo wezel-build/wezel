@@ -154,26 +154,19 @@ pub struct StepDef {
     pub inputs: serde_json::Value,
 }
 
-/// A job from the forager queue, returned by `POST /api/forager/jobs/next`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ForagerQueueJob {
-    pub id: u64,
-    pub project_id: u64,
-    pub project_upstream: String,
-    pub commit_sha: String,
-    pub benchmark_name: String,
-}
-
-/// Response from `POST /api/forager/claim`.
+/// A forager job with claim token, returned by `POST /api/forager/jobs/next`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ForagerJob {
+    pub id: u64,
     pub token: String,
     pub commit_sha: String,
     pub project_id: u64,
     pub project_upstream: String,
     pub benchmark_name: String,
+    /// Set when this job is part of a bisection run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bisection_id: Option<u64>,
 }
 
 /// Measurement written by a forager plugin to `FORAGER_OUT`.
@@ -207,6 +200,9 @@ pub struct ForagerStepReport {
 pub struct ForagerRunReport {
     pub token: String,
     pub steps: Vec<ForagerStepReport>,
+    /// Forwarded from the job; lets burrow progress a bisection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bisection_id: Option<u64>,
 }
 
 // ── Benchmark PR ─────────────────────────────────────────────────────────────

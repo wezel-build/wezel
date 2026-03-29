@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use wezel_types::{ForagerJob, ForagerRunReport, ForagerStepReport};
+use wezel_types::{ForagerRunReport, ForagerStepReport};
 
 use crate::git;
 use crate::{BenchmarkToml, Config, invoke_forager, parse_benchmark};
@@ -19,39 +19,6 @@ impl BurrowSession {
                 .build(),
             server_url: config.server_url.clone(),
         }
-    }
-
-    pub fn claim(
-        &self,
-        project_upstream: &str,
-        commit_sha: &str,
-        benchmark_name: &str,
-        commit_author: &str,
-        commit_message: &str,
-        commit_timestamp: &str,
-    ) -> Result<ForagerJob> {
-        let claim_body = serde_json::json!({
-            "project_upstream": project_upstream,
-            "commit_sha": commit_sha,
-            "benchmark_name": benchmark_name,
-            "commit_author": commit_author,
-            "commit_message": commit_message,
-            "commit_timestamp": commit_timestamp,
-        });
-
-        let job: ForagerJob = self
-            .agent
-            .post(&format!("{}/api/forager/claim", self.server_url))
-            .send_json(&claim_body)
-            .context("claiming job from Burrow")?
-            .into_json()
-            .context("parsing claim response")?;
-
-        log::info!(
-            "job claimed (token: {})",
-            &job.token[..8.min(job.token.len())]
-        );
-        Ok(job)
     }
 
     pub fn submit(&self, report: &ForagerRunReport) -> Result<()> {
@@ -104,11 +71,14 @@ pub fn list_benchmarks(project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Run a benchmark and return the step reports.
+///
+/// This function is pure execution — it knows nothing about Burrow.  The
+/// caller (daemon or CLI) decides whether/how to submit results.
 pub fn run_benchmark(
     benchmark_name: &str,
     project_dir: &Path,
-    burrow: Option<&BurrowSession>,
-) -> Result<()> {
+) -> Result<Vec<ForagerStepReport>> {
     let benchmark_dir = project_dir
         .join(".wezel")
         .join("benchmarks")
@@ -120,33 +90,7 @@ pub fn run_benchmark(
 
     let (_name, _description, steps) = parse_benchmark(&benchmark_dir)?;
 
-    // Detect current commit info from git.
     let commit_sha = git::current_sha(project_dir)?;
-    let project_upstream = git::upstream(project_dir)?;
-    let commit_author = git::commit_author(project_dir);
-    let commit_message = git::commit_message(project_dir);
-    let commit_timestamp = git::commit_timestamp(project_dir);
-
-    // Claim from Burrow if we have a session.
-    let job = match burrow {
-        Some(b) => {
-            log::info!(
-                "claiming job: upstream={} sha={} benchmark={}",
-                project_upstream,
-                &commit_sha[..7.min(commit_sha.len())],
-                benchmark_name
-            );
-            Some(b.claim(
-                &project_upstream,
-                &commit_sha,
-                benchmark_name,
-                &commit_author,
-                &commit_message,
-                &commit_timestamp,
-            )?)
-        }
-        None => None,
-    };
 
     // Run each step.
     let mut step_reports: Vec<ForagerStepReport> = Vec::new();
@@ -199,15 +143,5 @@ pub fn run_benchmark(
         }
     }
 
-    // Submit to Burrow if we have a session.
-    if let Some(job) = job {
-        let report = ForagerRunReport {
-            token: job.token,
-            steps: step_reports,
-        };
-        burrow.unwrap().submit(&report)?;
-        println!("Results submitted to Burrow.");
-    }
-
-    Ok(())
+    Ok(step_reports)
 }

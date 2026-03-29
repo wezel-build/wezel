@@ -158,7 +158,6 @@ async fn main() {
         .merge(protected_api)
         // Unauthenticated: ingest, forager, and auth routes.
         .route("/api/events", post(ingest_events))
-        .route("/api/forager/claim", post(post_forager_claim))
         .route("/api/forager/run", post(post_forager_run))
         .route("/api/forager/jobs", post(post_forager_jobs))
         .route("/api/forager/jobs/next", post(post_forager_jobs_next))

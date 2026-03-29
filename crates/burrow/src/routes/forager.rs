@@ -9,17 +9,6 @@ use sqlx::PgPool;
 use crate::models::{ForagerQueueJobStatus, IdRow};
 use crate::{ApiResult, ise};
 
-#[derive(Deserialize)]
-pub struct ForagerClaimBody {
-    project_upstream: String,
-    commit_sha: String,
-    benchmark_name: String,
-    // Optional commit metadata for when GitHub API is not available.
-    commit_author: Option<String>,
-    commit_message: Option<String>,
-    commit_timestamp: Option<String>,
-}
-
 /// Find or create a repo + project from an upstream URL, returning (repo_id, project_id).
 async fn find_or_create_project(pool: &PgPool, upstream: &str) -> Result<(i64, i64), StatusCode> {
     let project_name = upstream.rsplit('/').next().unwrap_or(upstream);
@@ -66,81 +55,6 @@ async fn find_or_create_project(pool: &PgPool, upstream: &str) -> Result<(i64, i
         };
 
     Ok((repo_id, project_id))
-}
-
-pub async fn post_forager_claim(
-    State(pool): State<PgPool>,
-    Json(body): Json<ForagerClaimBody>,
-) -> ApiResult<Json<wezel_types::ForagerJob>> {
-    let upstream = body.project_upstream.trim();
-    let sha = body.commit_sha.trim();
-    let benchmark_name = body.benchmark_name.trim();
-
-    if upstream.is_empty() || sha.is_empty() || benchmark_name.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-
-    let (repo_id, project_id) = find_or_create_project(&pool, upstream).await?;
-
-    // Find or create commit.
-    let short_sha: String = sha.chars().take(7).collect();
-    let commit_id: i64 = match sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM commits WHERE repo_id = $1 AND (sha = $2 OR short_sha = $3)",
-    )
-    .bind(repo_id)
-    .bind(sha)
-    .bind(&short_sha)
-    .fetch_optional(&pool)
-    .await
-    .map_err(ise)?
-    {
-        Some((id,)) => id,
-        None => {
-            let author = body
-                .commit_author
-                .as_deref()
-                .unwrap_or("unknown")
-                .to_string();
-            let message = body.commit_message.as_deref().unwrap_or("").to_string();
-            let timestamp = body.commit_timestamp.as_deref().unwrap_or("").to_string();
-            sqlx::query_as::<_, IdRow>(
-                "INSERT INTO commits \
-                     (repo_id, sha, short_sha, author, message, timestamp) \
-                     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-            )
-            .bind(repo_id)
-            .bind(sha)
-            .bind(&short_sha)
-            .bind(&author)
-            .bind(&message)
-            .bind(&timestamp)
-            .fetch_one(&pool)
-            .await
-            .map_err(ise)?
-            .id
-        }
-    };
-
-    // Create forager token (expires in 4 hours).
-    let token = uuid::Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO forager_tokens (commit_id, benchmark_name, token, expires_at) \
-         VALUES ($1, $2, $3, now() + interval '4 hours')",
-    )
-    .bind(commit_id)
-    .bind(benchmark_name)
-    .bind(&token)
-    .execute(&pool)
-    .await
-    .map_err(ise)?;
-
-    Ok(Json(wezel_types::ForagerJob {
-        token,
-        commit_sha: sha.to_string(),
-        project_id: project_id as u64,
-        project_upstream: upstream.to_string(),
-        benchmark_name: benchmark_name.to_string(),
-    }))
 }
 
 pub async fn post_forager_run(
@@ -285,12 +199,13 @@ pub struct ForagerJobsNextBody {
 pub async fn post_forager_jobs_next(
     State(pool): State<PgPool>,
     Json(body): Json<ForagerJobsNextBody>,
-) -> ApiResult<(StatusCode, Json<Option<wezel_types::ForagerQueueJob>>)> {
+) -> ApiResult<(StatusCode, Json<Option<wezel_types::ForagerJob>>)> {
     let upstream = body.project_upstream.trim();
     if upstream.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
 
+    // Atomically claim the next pending job.
     let row = sqlx::query_as::<_, (i64, i64, String, String, String)>(
         "UPDATE forager_queue fq \
          SET status = 'running', claimed_at = now() \
@@ -310,19 +225,52 @@ pub async fn post_forager_jobs_next(
     .await
     .map_err(ise)?;
 
-    match row {
-        None => Ok((StatusCode::NO_CONTENT, Json(None))),
-        Some((id, project_id, commit_sha, benchmark_name, project_upstream)) => Ok((
-            StatusCode::OK,
-            Json(Some(wezel_types::ForagerQueueJob {
-                id: id as u64,
-                project_id: project_id as u64,
-                project_upstream,
-                commit_sha,
-                benchmark_name,
-            })),
-        )),
-    }
+    let Some((job_id, project_id, commit_sha, benchmark_name, project_upstream)) = row else {
+        return Ok((StatusCode::NO_CONTENT, Json(None)));
+    };
+
+    // Look up the commit — it must already exist (created by webhook).
+    let (repo_id,): (i64,) =
+        sqlx::query_as("SELECT repo_id FROM projects WHERE id = $1")
+            .bind(project_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(ise)?;
+
+    let (commit_id,): (i64,) = sqlx::query_as(
+        "SELECT id FROM commits WHERE repo_id = $1 AND sha = $2",
+    )
+    .bind(repo_id)
+    .bind(&commit_sha)
+    .fetch_one(&pool)
+    .await
+    .map_err(ise)?;
+
+    // Create forager token (expires in 4 hours).
+    let token = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO forager_tokens (commit_id, benchmark_name, token, expires_at) \
+         VALUES ($1, $2, $3, now() + interval '4 hours')",
+    )
+    .bind(commit_id)
+    .bind(&benchmark_name)
+    .bind(&token)
+    .execute(&pool)
+    .await
+    .map_err(ise)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(Some(wezel_types::ForagerJob {
+            id: job_id as u64,
+            token,
+            commit_sha,
+            project_id: project_id as u64,
+            project_upstream,
+            benchmark_name,
+            bisection_id: None,
+        })),
+    ))
 }
 
 #[derive(Deserialize)]
