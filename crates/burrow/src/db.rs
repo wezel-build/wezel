@@ -123,12 +123,29 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             expires_at TIMESTAMPTZ NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS bisections (
+            id                BIGSERIAL PRIMARY KEY,
+            project_id        BIGINT NOT NULL REFERENCES projects(id),
+            benchmark_name    TEXT NOT NULL,
+            measurement_name  TEXT NOT NULL,
+            branch            TEXT NOT NULL,
+            good_sha          TEXT NOT NULL,
+            bad_sha           TEXT NOT NULL,
+            good_value        DOUBLE PRECISION NOT NULL,
+            bad_value         DOUBLE PRECISION NOT NULL,
+            status            TEXT NOT NULL DEFAULT 'active'
+                              CHECK(status IN ('active', 'complete', 'abandoned')),
+            culprit_sha       TEXT,
+            created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+            completed_at      TIMESTAMPTZ
+        );
         CREATE TABLE IF NOT EXISTS forager_queue (
             id             BIGSERIAL PRIMARY KEY,
             project_id     BIGINT NOT NULL REFERENCES projects(id),
             commit_sha     TEXT NOT NULL,
             benchmark_name TEXT NOT NULL,
             branch         TEXT NOT NULL DEFAULT 'main',
+            bisection_id   BIGINT REFERENCES bisections(id),
             status         TEXT NOT NULL DEFAULT 'pending'
                            CHECK(status IN ('pending', 'running', 'complete', 'failed')),
             claimed_at     TIMESTAMPTZ,
@@ -136,6 +153,13 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             error_text     TEXT,
             created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
         );
+        CREATE TABLE IF NOT EXISTS bisection_measurements (
+            bisection_id   BIGINT NOT NULL REFERENCES bisections(id),
+            measurement_id BIGINT NOT NULL REFERENCES measurements(id),
+            PRIMARY KEY (bisection_id, measurement_id)
+        );
+        ALTER TABLE forager_queue
+            ADD COLUMN IF NOT EXISTS bisection_id BIGINT REFERENCES bisections(id);
         ",
     )
     .execute(pool)

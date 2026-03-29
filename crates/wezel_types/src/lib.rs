@@ -130,6 +130,34 @@ pub struct ForagerCommit {
     pub measurements: Vec<Measurement>,
 }
 
+// ── Bisection ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BisectionStatus {
+    Active,
+    Complete,
+    Abandoned,
+}
+
+/// A bisection tracking regression between two commits.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Bisection {
+    pub id: u64,
+    pub project_id: u64,
+    pub benchmark_name: String,
+    pub measurement_name: String,
+    pub branch: String,
+    pub good_sha: String,
+    pub bad_sha: String,
+    pub good_value: f64,
+    pub bad_value: f64,
+    pub status: BisectionStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culprit_sha: Option<String>,
+}
+
 // ── Forager runner types ─────────────────────────────────────────────────────
 
 /// Benchmark definition parsed from `.wezel/benchmarks/<name>/benchmark.toml`.

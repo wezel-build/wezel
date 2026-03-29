@@ -88,7 +88,16 @@ pub async fn post_forager_run(
             .await
             .map_err(ise)?;
 
-    // Insert measurements.
+    // Get the commit SHA for later use.
+    let (commit_sha,): (String,) = sqlx::query_as("SELECT sha FROM commits WHERE id = $1")
+        .bind(commit_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(ise)?;
+
+    // Insert measurements, collecting (name, value) pairs for regression detection.
+    let mut inserted: Vec<(i64, String, f64)> = Vec::new();
+
     for step_report in &body.steps {
         let Some(ref m) = step_report.measurement else {
             continue;
@@ -123,9 +132,344 @@ pub async fn post_forager_run(
             .await
             .map_err(ise)?;
         }
+
+        inserted.push((measurement_id, m.name.clone(), m.value));
+    }
+
+    // Get the benchmark_name from the token row.
+    let (benchmark_name,): (String,) =
+        sqlx::query_as("SELECT benchmark_name FROM forager_tokens WHERE token = $1")
+            .bind(&body.token)
+            .fetch_one(&pool)
+            .await
+            .map_err(ise)?;
+
+    if let Some(bisection_id) = body.bisection_id {
+        // ── Bisection progression ────────────────────────────────────────
+        progress_bisection(&pool, bisection_id as i64, repo_id, &inserted).await?;
+    } else {
+        // ── Regression detection (normal runs only) ──────────────────────
+        detect_regressions(
+            &pool,
+            repo_id,
+            project_id,
+            commit_id,
+            &commit_sha,
+            &benchmark_name,
+            &inserted,
+        )
+        .await?;
     }
 
     Ok(StatusCode::OK)
+}
+
+/// Regression threshold: >5% increase triggers a bisection.
+const REGRESSION_THRESHOLD: f64 = 0.05;
+
+/// After inserting measurements for a normal run, compare each measurement
+/// against the parent commit's value. If a regression is detected, create a
+/// bisection and enqueue the midpoint.
+async fn detect_regressions(
+    pool: &PgPool,
+    repo_id: i64,
+    project_id: i64,
+    commit_id: i64,
+    commit_sha: &str,
+    benchmark_name: &str,
+    inserted: &[(i64, String, f64)],
+) -> Result<(), StatusCode> {
+    // Get the parent commit.
+    let parent = sqlx::query_as::<_, (i64, String)>(
+        "SELECT p.id, p.sha FROM commits c \
+         JOIN commits p ON p.repo_id = c.repo_id AND p.sha = c.parent_sha \
+         WHERE c.id = $1",
+    )
+    .bind(commit_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(ise)?;
+
+    let Some((parent_commit_id, parent_sha)) = parent else {
+        return Ok(()); // No parent — root commit, nothing to compare.
+    };
+
+    // Get the branch for this commit (from queue or fallback to 'main').
+    let branch: String = sqlx::query_as::<_, (String,)>(
+        "SELECT branch FROM forager_queue \
+         WHERE project_id = $1 AND commit_sha = $2 \
+         ORDER BY id DESC LIMIT 1",
+    )
+    .bind(project_id)
+    .bind(commit_sha)
+    .fetch_optional(pool)
+    .await
+    .map_err(ise)?
+    .map(|(b,)| b)
+    .unwrap_or_else(|| "main".to_string());
+
+    for &(_, ref measurement_name, new_value) in inserted {
+        // Get parent's measurement with the same name for this project.
+        let parent_measurement = sqlx::query_as::<_, (f64,)>(
+            "SELECT value FROM measurements \
+             WHERE commit_id = $1 AND project_id = $2 AND name = $3 \
+               AND value IS NOT NULL \
+             ORDER BY id DESC LIMIT 1",
+        )
+        .bind(parent_commit_id)
+        .bind(project_id)
+        .bind(measurement_name)
+        .fetch_optional(pool)
+        .await
+        .map_err(ise)?;
+
+        let Some((old_value,)) = parent_measurement else {
+            continue; // No parent measurement to compare against.
+        };
+
+        if old_value == 0.0 {
+            continue;
+        }
+
+        let change = (new_value - old_value) / old_value.abs();
+        if change <= REGRESSION_THRESHOLD {
+            continue; // Not a regression.
+        }
+
+        // Check no active bisection already covers this measurement.
+        let existing: Option<(i64,)> = sqlx::query_as(
+            "SELECT id FROM bisections \
+             WHERE project_id = $1 AND benchmark_name = $2 AND measurement_name = $3 \
+               AND status = 'active' \
+             LIMIT 1",
+        )
+        .bind(project_id)
+        .bind(benchmark_name)
+        .bind(measurement_name)
+        .fetch_optional(pool)
+        .await
+        .map_err(ise)?;
+
+        if existing.is_some() {
+            continue; // Already being bisected.
+        }
+
+        tracing::info!(
+            "regression detected: {} changed {:.1}% ({} -> {}), bisecting {parent_sha}..{commit_sha}",
+            measurement_name,
+            change * 100.0,
+            old_value,
+            new_value,
+        );
+
+        // Create bisection.
+        let (bisection_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO bisections \
+             (project_id, benchmark_name, measurement_name, branch, \
+              good_sha, bad_sha, good_value, bad_value) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+        )
+        .bind(project_id)
+        .bind(benchmark_name)
+        .bind(measurement_name)
+        .bind(&branch)
+        .bind(&parent_sha)
+        .bind(commit_sha)
+        .bind(old_value)
+        .bind(new_value)
+        .fetch_one(pool)
+        .await
+        .map_err(ise)?;
+
+        // Find midpoint and enqueue.
+        enqueue_midpoint(pool, bisection_id, project_id, repo_id, benchmark_name, &parent_sha, commit_sha).await?;
+    }
+
+    Ok(())
+}
+
+/// Progress a bisection after receiving measurement results.
+async fn progress_bisection(
+    pool: &PgPool,
+    bisection_id: i64,
+    repo_id: i64,
+    inserted: &[(i64, String, f64)],
+) -> Result<(), StatusCode> {
+    // Load the bisection.
+    let bisection = sqlx::query_as::<_, (i64, String, String, String, String, f64, f64, String)>(
+        "SELECT project_id, benchmark_name, measurement_name, good_sha, bad_sha, \
+                good_value, bad_value, status \
+         FROM bisections WHERE id = $1",
+    )
+    .bind(bisection_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(ise)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let (project_id, benchmark_name, measurement_name, good_sha, bad_sha, good_value, bad_value, status) =
+        bisection;
+
+    if status != "active" {
+        return Ok(()); // Already finished.
+    }
+
+    // Find the matching measurement from this run.
+    let matching = inserted
+        .iter()
+        .find(|(_, name, _)| name == &measurement_name);
+
+    let Some(&(measurement_id, _, value)) = matching else {
+        tracing::warn!("bisection {bisection_id}: no matching measurement '{measurement_name}' in run");
+        return Ok(());
+    };
+
+    // Link measurement to bisection.
+    sqlx::query(
+        "INSERT INTO bisection_measurements (bisection_id, measurement_id) \
+         VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    )
+    .bind(bisection_id)
+    .bind(measurement_id)
+    .execute(pool)
+    .await
+    .map_err(ise)?;
+
+    // Classify: "good" if value <= good_value * (1 + threshold), else "bad".
+    let is_good = value <= good_value * (1.0 + REGRESSION_THRESHOLD);
+
+    // Get the SHA of the commit we just measured.
+    let (tested_sha,): (String,) = sqlx::query_as(
+        "SELECT c.sha FROM measurements m \
+         JOIN commits c ON c.id = m.commit_id \
+         WHERE m.id = $1",
+    )
+    .bind(measurement_id)
+    .fetch_one(pool)
+    .await
+    .map_err(ise)?;
+
+    let (new_good_sha, new_bad_sha) = if is_good {
+        (tested_sha.clone(), bad_sha.clone())
+    } else {
+        (good_sha.clone(), tested_sha.clone())
+    };
+
+    tracing::info!(
+        "bisection {bisection_id}: {tested_sha} classified as {} (value={value}, good={good_value}, bad={bad_value})",
+        if is_good { "good" } else { "bad" },
+    );
+
+    // Check if good and bad are adjacent in the commit chain.
+    let adjacent = are_adjacent(pool, repo_id, &new_good_sha, &new_bad_sha).await?;
+
+    if adjacent {
+        // Bisection complete — culprit is the bad commit.
+        sqlx::query(
+            "UPDATE bisections \
+             SET good_sha = $2, bad_sha = $3, status = 'complete', \
+                 culprit_sha = $3, completed_at = now() \
+             WHERE id = $1",
+        )
+        .bind(bisection_id)
+        .bind(&new_good_sha)
+        .bind(&new_bad_sha)
+        .execute(pool)
+        .await
+        .map_err(ise)?;
+
+        tracing::info!("bisection {bisection_id} complete: culprit is {new_bad_sha}");
+    } else {
+        // Narrow the range and enqueue next midpoint.
+        sqlx::query(
+            "UPDATE bisections SET good_sha = $2, bad_sha = $3 WHERE id = $1",
+        )
+        .bind(bisection_id)
+        .bind(&new_good_sha)
+        .bind(&new_bad_sha)
+        .execute(pool)
+        .await
+        .map_err(ise)?;
+
+        enqueue_midpoint(pool, bisection_id, project_id, repo_id, &benchmark_name, &new_good_sha, &new_bad_sha).await?;
+    }
+
+    Ok(())
+}
+
+/// Check if good_sha is the direct parent of bad_sha.
+async fn are_adjacent(pool: &PgPool, repo_id: i64, good_sha: &str, bad_sha: &str) -> Result<bool, StatusCode> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT parent_sha FROM commits WHERE repo_id = $1 AND sha = $2",
+    )
+    .bind(repo_id)
+    .bind(bad_sha)
+    .fetch_optional(pool)
+    .await
+    .map_err(ise)?;
+
+    Ok(row.is_some_and(|(parent,)| parent == good_sha))
+}
+
+/// Walk the commit chain from bad_sha to good_sha via recursive CTE,
+/// pick the midpoint, and enqueue it.
+async fn enqueue_midpoint(
+    pool: &PgPool,
+    bisection_id: i64,
+    project_id: i64,
+    repo_id: i64,
+    benchmark_name: &str,
+    good_sha: &str,
+    bad_sha: &str,
+) -> Result<(), StatusCode> {
+    // Walk the chain from bad back to good.
+    let chain: Vec<(String, i32)> = sqlx::query_as(
+        "WITH RECURSIVE chain AS ( \
+             SELECT sha, parent_sha, 0 AS depth \
+             FROM commits WHERE sha = $1 AND repo_id = $3 \
+           UNION ALL \
+             SELECT c.sha, c.parent_sha, ch.depth + 1 \
+             FROM commits c \
+             JOIN chain ch ON c.sha = ch.parent_sha AND c.repo_id = $3 \
+             WHERE ch.sha != $2 \
+         ) \
+         SELECT sha, depth FROM chain ORDER BY depth",
+    )
+    .bind(bad_sha)
+    .bind(good_sha)
+    .bind(repo_id)
+    .fetch_all(pool)
+    .await
+    .map_err(ise)?;
+
+    if chain.len() <= 2 {
+        // Adjacent or missing — nothing to bisect further.
+        return Ok(());
+    }
+
+    // Pick the midpoint (skip first which is bad_sha itself).
+    let mid_idx = chain.len() / 2;
+    let mid_sha = &chain[mid_idx].0;
+
+    tracing::info!(
+        "bisection {bisection_id}: enqueuing midpoint {mid_sha} (chain len={})",
+        chain.len()
+    );
+
+    // Enqueue with bisection_id.
+    sqlx::query(
+        "INSERT INTO forager_queue (project_id, commit_sha, benchmark_name, bisection_id) \
+         VALUES ($1, $2, $3, $4)",
+    )
+    .bind(project_id)
+    .bind(mid_sha)
+    .bind(benchmark_name)
+    .bind(bisection_id)
+    .execute(pool)
+    .await
+    .map_err(ise)?;
+
+    Ok(())
 }
 
 // ── Job queue ─────────────────────────────────────────────────────────────────
@@ -206,7 +550,7 @@ pub async fn post_forager_jobs_next(
     }
 
     // Atomically claim the next pending job.
-    let row = sqlx::query_as::<_, (i64, i64, String, String, String)>(
+    let row = sqlx::query_as::<_, (i64, i64, String, String, String, Option<i64>)>(
         "UPDATE forager_queue fq \
          SET status = 'running', claimed_at = now() \
          WHERE fq.id = ( \
@@ -218,14 +562,17 @@ pub async fn post_forager_jobs_next(
              FOR UPDATE SKIP LOCKED \
          ) \
          RETURNING fq.id, fq.project_id, fq.commit_sha, fq.benchmark_name, \
-                   (SELECT upstream FROM projects WHERE id = fq.project_id)",
+                   (SELECT upstream FROM projects WHERE id = fq.project_id), \
+                   fq.bisection_id",
     )
     .bind(upstream)
     .fetch_optional(&pool)
     .await
     .map_err(ise)?;
 
-    let Some((job_id, project_id, commit_sha, benchmark_name, project_upstream)) = row else {
+    let Some((job_id, project_id, commit_sha, benchmark_name, project_upstream, bisection_id)) =
+        row
+    else {
         return Ok((StatusCode::NO_CONTENT, Json(None)));
     };
 
@@ -268,7 +615,7 @@ pub async fn post_forager_jobs_next(
             project_id: project_id as u64,
             project_upstream,
             benchmark_name,
-            bisection_id: None,
+            bisection_id: bisection_id.map(|id| id as u64),
         })),
     ))
 }

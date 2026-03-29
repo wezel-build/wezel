@@ -19,6 +19,7 @@ use std::sync::OnceLock;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
+use routes::bisections::*;
 use routes::commits::*;
 use routes::forager::*;
 use routes::observations::*;
@@ -132,6 +133,14 @@ async fn main() {
         .route(
             "/api/project/{project_id}/benchmarks",
             get(get_project_benchmarks),
+        )
+        .route(
+            "/api/project/{project_id}/bisections",
+            get(get_project_bisections),
+        )
+        .route(
+            "/api/project/{project_id}/bisections/{bisection_id}",
+            get(get_project_bisection).patch(patch_project_bisection),
         )
         .route(
             "/api/project/{project_id}/benchmark/pr",

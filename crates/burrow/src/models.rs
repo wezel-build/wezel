@@ -206,6 +206,58 @@ pub struct BenchmarkPrResponse {
     pub pr_url: String,
 }
 
+// ── Bisections ──────────────────────────────────────────────────────────────
+
+#[derive(FromRow)]
+pub struct Bisection {
+    pub id: i64,
+    pub project_id: i64,
+    pub benchmark_name: String,
+    pub measurement_name: String,
+    pub branch: String,
+    pub good_sha: String,
+    pub bad_sha: String,
+    pub good_value: f64,
+    pub bad_value: f64,
+    pub status: String,
+    pub culprit_sha: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BisectionJson {
+    pub id: i64,
+    pub project_id: i64,
+    pub benchmark_name: String,
+    pub measurement_name: String,
+    pub branch: String,
+    pub good_sha: String,
+    pub bad_sha: String,
+    pub good_value: f64,
+    pub bad_value: f64,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culprit_sha: Option<String>,
+}
+
+impl From<Bisection> for BisectionJson {
+    fn from(b: Bisection) -> Self {
+        Self {
+            id: b.id,
+            project_id: b.project_id,
+            benchmark_name: b.benchmark_name,
+            measurement_name: b.measurement_name,
+            branch: b.branch,
+            good_sha: b.good_sha,
+            bad_sha: b.bad_sha,
+            good_value: b.good_value,
+            bad_value: b.bad_value,
+            status: b.status,
+            culprit_sha: b.culprit_sha,
+        }
+    }
+}
+
 // ── Pheromone registry ───────────────────────────────────────────────────────
 
 #[derive(FromRow)]
