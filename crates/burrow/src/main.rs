@@ -22,6 +22,7 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 use routes::bisections::*;
+use routes::branches::*;
 use routes::commits::*;
 use routes::forager::*;
 use routes::observations::*;
@@ -150,6 +151,14 @@ async fn main() {
         .route(
             "/api/project/{project_id}/bisections/{bisection_id}",
             get(get_project_bisection).patch(patch_project_bisection),
+        )
+        .route(
+            "/api/project/{project_id}/branch/{branch}/timeline",
+            get(get_branch_timeline),
+        )
+        .route(
+            "/api/project/{project_id}/compare",
+            get(get_project_compare),
         )
         .route(
             "/api/project/{project_id}/benchmark/pr",
