@@ -93,8 +93,6 @@ pub enum MeasurementStatus {
 pub struct MeasurementDetail {
     pub name: String,
     pub value: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub prev_value: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,8 +104,6 @@ pub struct Measurement {
     pub status: MeasurementStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub prev_value: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -131,7 +127,6 @@ pub struct ForagerCommit {
     pub author: String,
     pub message: String,
     pub timestamp: String,
-    pub status: CommitStatus,
     pub measurements: Vec<Measurement>,
 }
 

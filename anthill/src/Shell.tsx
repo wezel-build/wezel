@@ -252,9 +252,6 @@ export default function Shell() {
                 >
                   <GitCommit size={11} />
                   commits
-                  {overview.latestCommitStatus === "running" && (
-                    <span className="w-[6px] h-[6px] rounded-[3px] bg-c-amber inline-block" />
-                  )}
                 </Link>
               </>
             )}

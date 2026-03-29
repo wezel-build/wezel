@@ -6,7 +6,6 @@ use axum::{
     http::StatusCode,
 };
 use reqwest::Client;
-use serde::Deserialize;
 use sqlx::PgPool;
 
 use crate::github::{get_or_fetch_github_commit, github_owner_repo};
@@ -17,7 +16,8 @@ use crate::{ApiResult, ise};
 
 async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> {
     let c = sqlx::query_as::<_, Commit>(
-        "SELECT id, sha, short_sha, author, message, timestamp, status FROM commits WHERE id = $1",
+        "SELECT id, repo_id, sha, short_sha, parent_sha, author, message, timestamp \
+         FROM commits WHERE id = $1",
     )
     .bind(commit_id)
     .fetch_one(pool)
@@ -25,7 +25,7 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
     .map_err(ise)?;
 
     let measurements = sqlx::query_as::<_, Measurement>(
-        "SELECT id, commit_id, name, kind, status, value, prev_value, unit, step \
+        "SELECT id, commit_id, project_id, name, kind, status, value, unit, step \
          FROM measurements WHERE commit_id = $1 ORDER BY id",
     )
     .bind(commit_id)
@@ -36,7 +36,7 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
     let m_ids: Vec<i64> = measurements.iter().map(|m| m.id).collect();
 
     let details = sqlx::query_as::<_, MeasurementDetail>(
-        "SELECT measurement_id, name, value, prev_value \
+        "SELECT measurement_id, name, value \
          FROM measurement_details WHERE measurement_id = ANY($1) ORDER BY id",
     )
     .bind(&m_ids)
@@ -52,7 +52,6 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
             .push(MeasurementDetailJson {
                 name: d.name,
                 value: d.value,
-                prev_value: d.prev_value,
             });
     }
 
@@ -66,7 +65,6 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
                 kind: m.kind,
                 status: m.status,
                 value: m.value,
-                prev_value: m.prev_value,
                 unit: m.unit,
                 detail,
                 step: m.step,
@@ -80,7 +78,6 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
         author: c.author,
         message: c.message,
         timestamp: c.timestamp,
-        status: c.status,
         measurements: measurements_json,
     })
 }
@@ -89,7 +86,7 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
 
 pub async fn get_commits(State(pool): State<PgPool>) -> ApiResult<Json<Vec<CommitJson>>> {
     let commits = sqlx::query_as::<_, Commit>(
-        "SELECT id, sha, short_sha, author, message, timestamp, status \
+        "SELECT id, repo_id, sha, short_sha, parent_sha, author, message, timestamp \
          FROM commits ORDER BY timestamp",
     )
     .fetch_all(&pool)
@@ -103,9 +100,13 @@ pub async fn get_project_commits(
     Path((project_id,)): Path<(i64,)>,
     State(pool): State<PgPool>,
 ) -> ApiResult<Json<Vec<CommitJson>>> {
+    // Get commits that have measurements for this project.
     let commits = sqlx::query_as::<_, Commit>(
-        "SELECT id, sha, short_sha, author, message, timestamp, status \
-         FROM commits WHERE project_id = $1 ORDER BY timestamp",
+        "SELECT DISTINCT c.id, c.repo_id, c.sha, c.short_sha, c.parent_sha, \
+                c.author, c.message, c.timestamp \
+         FROM commits c \
+         JOIN measurements m ON m.commit_id = c.id AND m.project_id = $1 \
+         ORDER BY c.timestamp",
     )
     .bind(project_id)
     .fetch_all(&pool)
@@ -126,7 +127,7 @@ async fn build_commit_list(
     let commit_ids: Vec<i64> = commits.iter().map(|c| c.id).collect();
 
     let measurements = sqlx::query_as::<_, Measurement>(
-        "SELECT id, commit_id, name, kind, status, value, prev_value, unit, step \
+        "SELECT id, commit_id, project_id, name, kind, status, value, unit, step \
          FROM measurements WHERE commit_id = ANY($1) ORDER BY id",
     )
     .bind(&commit_ids)
@@ -137,7 +138,7 @@ async fn build_commit_list(
     let m_ids: Vec<i64> = measurements.iter().map(|m| m.id).collect();
 
     let details = sqlx::query_as::<_, MeasurementDetail>(
-        "SELECT measurement_id, name, value, prev_value \
+        "SELECT measurement_id, name, value \
          FROM measurement_details WHERE measurement_id = ANY($1) ORDER BY id",
     )
     .bind(&m_ids)
@@ -153,7 +154,6 @@ async fn build_commit_list(
             .push(MeasurementDetailJson {
                 name: d.name,
                 value: d.value,
-                prev_value: d.prev_value,
             });
     }
 
@@ -168,7 +168,6 @@ async fn build_commit_list(
                 kind: m.kind,
                 status: m.status,
                 value: m.value,
-                prev_value: m.prev_value,
                 unit: m.unit,
                 detail: detail_map.remove(&m.id).unwrap_or_default(),
                 step: m.step,
@@ -183,7 +182,6 @@ async fn build_commit_list(
             author: c.author,
             message: c.message,
             timestamp: c.timestamp,
-            status: c.status,
             measurements: measurements_by_commit.remove(&c.id).unwrap_or_default(),
         })
         .collect();
@@ -213,8 +211,12 @@ pub async fn get_project_commit(
     Path((project_id, sha)): Path<(i64, String)>,
     State(pool): State<PgPool>,
 ) -> ApiResult<Json<CommitJson>> {
+    // Find commit by SHA, but only if it has measurements for this project.
     let row: Option<(i64,)> = sqlx::query_as(
-        "SELECT id FROM commits WHERE project_id = $1 AND (sha = $2 OR short_sha = $3)",
+        "SELECT DISTINCT c.id FROM commits c \
+         JOIN projects p ON p.repo_id = c.repo_id \
+         WHERE p.id = $1 AND (c.sha = $2 OR c.short_sha = $3) \
+         LIMIT 1",
     )
     .bind(project_id)
     .bind(&sha)
@@ -233,13 +235,14 @@ pub async fn get_project_github_commit(
     Path((project_id, sha)): Path<(i64, String)>,
     State(pool): State<PgPool>,
 ) -> ApiResult<Json<GithubCommitJson>> {
-    let project =
-        sqlx::query_as::<_, Project>("SELECT id, name, upstream FROM projects WHERE id = $1")
-            .bind(project_id)
-            .fetch_optional(&pool)
-            .await
-            .map_err(ise)?
-            .ok_or(StatusCode::NOT_FOUND)?;
+    let project = sqlx::query_as::<_, Project>(
+        "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
+    )
+    .bind(project_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(ise)?
+    .ok_or(StatusCode::NOT_FOUND)?;
 
     let (owner, repo) = github_owner_repo(&project.upstream).ok_or(StatusCode::BAD_REQUEST)?;
     let client = Client::new();
@@ -247,7 +250,7 @@ pub async fn get_project_github_commit(
     Ok(Json(commit))
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 pub struct ScheduleCommitBody {
     sha: Option<String>,
 }
@@ -265,18 +268,19 @@ pub async fn schedule_project_commit(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let project =
-        sqlx::query_as::<_, Project>("SELECT id, name, upstream FROM projects WHERE id = $1")
-            .bind(project_id)
-            .fetch_optional(&pool)
-            .await
-            .map_err(ise)?
-            .ok_or(StatusCode::NOT_FOUND)?;
-
-    let existing: Option<(i64,)> = sqlx::query_as(
-        "SELECT id FROM commits WHERE project_id = $1 AND (sha = $2 OR short_sha = $3) LIMIT 1",
+    let project = sqlx::query_as::<_, Project>(
+        "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
     )
     .bind(project_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(ise)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let existing: Option<(i64,)> = sqlx::query_as(
+        "SELECT id FROM commits WHERE repo_id = $1 AND (sha = $2 OR short_sha = $3) LIMIT 1",
+    )
+    .bind(project.repo_id)
     .bind(sha)
     .bind(sha)
     .fetch_optional(&pool)
@@ -292,10 +296,10 @@ pub async fn schedule_project_commit(
     let gh = get_or_fetch_github_commit(&client, &owner, &repo, sha).await?;
 
     let commit_row: (i64,) = sqlx::query_as(
-        "INSERT INTO commits (project_id, sha, short_sha, author, message, timestamp, status) \
-         VALUES ($1, $2, $3, $4, $5, $6, 'not-started') RETURNING id",
+        "INSERT INTO commits (repo_id, sha, short_sha, author, message, timestamp) \
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
     )
-    .bind(project_id)
+    .bind(project.repo_id)
     .bind(&gh.sha)
     .bind(&gh.short_sha)
     .bind(&gh.author)

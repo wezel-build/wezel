@@ -32,24 +32,6 @@ function sortDetails(
         return m * a.name.localeCompare(b.name);
       case "value":
         return m * (a.value - b.value);
-      case "prev":
-        return m * ((a.prevValue ?? 0) - (b.prevValue ?? 0));
-      case "delta":
-        return (
-          m *
-          (a.value -
-            (a.prevValue ?? a.value) -
-            (b.value - (b.prevValue ?? b.value)))
-        );
-      case "pct": {
-        const pa = a.prevValue
-          ? ((a.value - a.prevValue) / a.prevValue) * 100
-          : 0;
-        const pb = b.prevValue
-          ? ((b.value - b.prevValue) / b.prevValue) * 100
-          : 0;
-        return m * (pa - pb);
-      }
       default:
         return 0;
     }
@@ -237,8 +219,6 @@ export default function MeasurementDetailPage() {
     );
   }
 
-  const hasPrev = sorted.some((d) => d.prevValue != null);
-
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {error && (
@@ -286,14 +266,6 @@ export default function MeasurementDetailPage() {
             {measurement.unit && (
               <span className="text-[10px] text-dim">{measurement.unit}</span>
             )}
-            {measurement.prevValue != null && (
-              <DeltaBadge
-                current={measurement.value!}
-                baseline={measurement.prevValue}
-                unit={measurement.unit}
-                style={{ fontSize: 11 }}
-              />
-            )}
           </div>
         )}
       </div>
@@ -306,7 +278,6 @@ export default function MeasurementDetailPage() {
             data={sorted.map((d) => ({
               name: d.name,
               value: d.value,
-              prevValue: d.prevValue,
             }))}
             unit={measurement.unit}
           />
@@ -320,9 +291,7 @@ export default function MeasurementDetailPage() {
           <div
             className="grid gap-[8px] px-[12px] py-[8px] border-b border-[var(--c-border)] sticky top-0 bg-bg z-[1]"
             style={{
-              gridTemplateColumns: hasPrev
-                ? "1fr 80px minmax(80px, 160px) 80px 100px"
-                : "1fr 80px minmax(100px, 200px)",
+              gridTemplateColumns: "1fr 80px minmax(100px, 200px)",
             }}
           >
             <SortHeader
@@ -342,41 +311,15 @@ export default function MeasurementDetailPage() {
             />
             {/* Bar column — no sort header */}
             <span />
-            {hasPrev && (
-              <>
-                <SortHeader
-                  label="Prev"
-                  sortKey="prev"
-                  currentKey={sortKey}
-                  currentDir={sortDir}
-                  onSort={handleSort}
-                  align="right"
-                />
-                <SortHeader
-                  label="Δ"
-                  sortKey="delta"
-                  currentKey={sortKey}
-                  currentDir={sortDir}
-                  onSort={handleSort}
-                  align="right"
-                />
-              </>
-            )}
           </div>
 
           {/* Rows */}
-          {sorted.map((d, i) => {
-            const diff = d.prevValue != null ? d.value - d.prevValue : null;
-            const isRegression = diff != null && diff > 0;
-
-            return (
+          {sorted.map((d, i) => (
               <div
                 key={i}
                 className="grid gap-[8px] px-[12px] py-[6px] items-center text-[11px] font-mono"
                 style={{
-                  gridTemplateColumns: hasPrev
-                    ? "1fr 80px minmax(80px, 160px) 80px 100px"
-                    : "1fr 80px minmax(100px, 200px)",
+                  gridTemplateColumns: "1fr 80px minmax(100px, 200px)",
                   borderBottom: `1px solid ${alpha(C.border, 13)}`,
                   background: hoveredIdx === i ? C.surface2 : "transparent",
                 }}
@@ -400,39 +343,10 @@ export default function MeasurementDetailPage() {
                 <ValueBar
                   value={d.value}
                   max={maxValue}
-                  color={
-                    isRegression
-                      ? C.red
-                      : diff != null && diff < 0
-                        ? C.green
-                        : C.accent
-                  }
+                  color={C.accent}
                 />
-
-                {/* Prev value */}
-                {hasPrev && (
-                  <span className="text-dim text-right text-[10px]">
-                    {d.prevValue != null
-                      ? fmtValue(d.prevValue, measurement.unit)
-                      : "—"}
-                  </span>
-                )}
-
-                {/* Delta */}
-                {hasPrev &&
-                  (diff != null && diff !== 0 ? (
-                    <DeltaBadge
-                      current={d.value}
-                      baseline={d.prevValue!}
-                      unit={measurement.unit}
-                      style={{ textAlign: "right", fontSize: 10 }}
-                    />
-                  ) : (
-                    <span className="text-right text-dim text-[10px]">—</span>
-                  ))}
               </div>
-            );
-          })}
+          ))}
         </div>
       </div>
     </div>

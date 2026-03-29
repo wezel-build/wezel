@@ -13,7 +13,6 @@ const EMPTY_OVERVIEW: Overview = {
   observationCount: 0,
   trackedCount: 0,
   latestCommitShortSha: null,
-  latestCommitStatus: null,
 };
 
 interface AsyncState<T> {

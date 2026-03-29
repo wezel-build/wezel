@@ -48,7 +48,6 @@ export type MeasurementStatus =
 export interface MeasurementDetail {
   name: string;
   value: number;
-  prevValue?: number;
 }
 
 export interface Measurement {
@@ -57,7 +56,6 @@ export interface Measurement {
   kind: string;
   status: MeasurementStatus;
   value?: number;
-  prevValue?: number;
   unit?: string;
   detail?: MeasurementDetail[];
 }
@@ -68,7 +66,6 @@ export interface ForagerCommit {
   author: string;
   message: string;
   timestamp: string;
-  status: "not-started" | "running" | "complete";
   measurements: Measurement[];
 }
 

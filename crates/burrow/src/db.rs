@@ -11,9 +11,17 @@ pub async fn connect(url: &str) -> sqlx::Result<PgPool> {
 async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
     sqlx::raw_sql(
         "
+        CREATE TABLE IF NOT EXISTS repos (
+            id BIGSERIAL PRIMARY KEY,
+            upstream TEXT NOT NULL UNIQUE,
+            webhook_secret TEXT,
+            enqueue_interval_secs INT NOT NULL DEFAULT 3600
+        );
         CREATE TABLE IF NOT EXISTS projects (
             id BIGSERIAL PRIMARY KEY,
+            repo_id BIGINT NOT NULL REFERENCES repos(id),
             name TEXT NOT NULL,
+            subdir TEXT NOT NULL DEFAULT '',
             upstream TEXT NOT NULL UNIQUE
         );
         CREATE TABLE IF NOT EXISTS users (
@@ -26,7 +34,8 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             name TEXT NOT NULL,
             profile TEXT NOT NULL CHECK(profile IN ('dev', 'release')),
             pinned BOOLEAN NOT NULL DEFAULT FALSE,
-            platform TEXT
+            platform TEXT,
+            pheromone_version TEXT
         );
         CREATE TABLE IF NOT EXISTS graph_nodes (
             id BIGSERIAL PRIMARY KEY,
@@ -58,30 +67,31 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
         );
         CREATE TABLE IF NOT EXISTS commits (
             id BIGSERIAL PRIMARY KEY,
-            project_id BIGINT NOT NULL REFERENCES projects(id),
+            repo_id BIGINT NOT NULL REFERENCES repos(id),
             sha TEXT NOT NULL,
             short_sha TEXT NOT NULL,
-            author TEXT NOT NULL,
-            message TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            status TEXT NOT NULL
+            parent_sha TEXT,
+            author TEXT NOT NULL DEFAULT '',
+            message TEXT NOT NULL DEFAULT '',
+            timestamp TEXT NOT NULL DEFAULT '',
+            UNIQUE(repo_id, sha)
         );
         CREATE TABLE IF NOT EXISTS measurements (
             id BIGSERIAL PRIMARY KEY,
             commit_id BIGINT NOT NULL REFERENCES commits(id),
+            project_id BIGINT NOT NULL REFERENCES projects(id),
             name TEXT NOT NULL,
             kind TEXT NOT NULL,
             status TEXT NOT NULL,
             value DOUBLE PRECISION,
-            prev_value DOUBLE PRECISION,
-            unit TEXT
+            unit TEXT,
+            step TEXT
         );
         CREATE TABLE IF NOT EXISTS measurement_details (
             id BIGSERIAL PRIMARY KEY,
             measurement_id BIGINT NOT NULL REFERENCES measurements(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
-            value DOUBLE PRECISION NOT NULL,
-            prev_value DOUBLE PRECISION NOT NULL
+            value DOUBLE PRECISION NOT NULL
         );
         CREATE TABLE IF NOT EXISTS sessions (
             id TEXT PRIMARY KEY,
@@ -94,6 +104,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             github_repo TEXT NOT NULL,
             version     TEXT NOT NULL,
             schema_json TEXT NOT NULL,
+            viz_json    TEXT,
             fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
         );
         CREATE TABLE IF NOT EXISTS pheromone_schema_history (
@@ -112,46 +123,12 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             expires_at TIMESTAMPTZ NOT NULL
         );
-        ",
-    )
-    .execute(pool)
-    .await?;
-
-    // Incremental migrations for columns added after initial schema.
-    sqlx::raw_sql(
-        "
-        ALTER TABLE graph_nodes ADD COLUMN IF NOT EXISTS version TEXT NOT NULL DEFAULT '';
-        ALTER TABLE graph_nodes ADD COLUMN IF NOT EXISTS external BOOLEAN NOT NULL DEFAULT FALSE;
-        ALTER TABLE graph_edges DROP CONSTRAINT IF EXISTS graph_edges_pkey;
-        ALTER TABLE graph_edges ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'normal';
-        ALTER TABLE graph_edges ADD PRIMARY KEY (source_id, target_id, kind);
-        ALTER TABLE measurements ADD COLUMN IF NOT EXISTS step TEXT;
-        ALTER TABLE observations ADD COLUMN IF NOT EXISTS pheromone_version TEXT;
-        DO $$ BEGIN
-            IF EXISTS (
-                SELECT 1 FROM information_schema.tables
-                WHERE table_schema = 'public' AND table_name = 'scenarios'
-            ) AND NOT EXISTS (
-                SELECT 1 FROM information_schema.tables
-                WHERE table_schema = 'public' AND table_name = 'observations'
-            ) THEN
-                ALTER TABLE scenarios RENAME TO observations;
-            END IF;
-        END $$;
-        DO $$ BEGIN
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'forager_tokens' AND column_name = 'scenario_name'
-            ) THEN
-                ALTER TABLE forager_tokens RENAME COLUMN scenario_name TO benchmark_name;
-            END IF;
-        END $$;
-        ALTER TABLE pheromones ADD COLUMN IF NOT EXISTS viz_json TEXT;
         CREATE TABLE IF NOT EXISTS forager_queue (
             id             BIGSERIAL PRIMARY KEY,
             project_id     BIGINT NOT NULL REFERENCES projects(id),
             commit_sha     TEXT NOT NULL,
             benchmark_name TEXT NOT NULL,
+            branch         TEXT NOT NULL DEFAULT 'main',
             status         TEXT NOT NULL DEFAULT 'pending'
                            CHECK(status IN ('pending', 'running', 'complete', 'failed')),
             claimed_at     TIMESTAMPTZ,

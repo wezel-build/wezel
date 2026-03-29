@@ -4,9 +4,17 @@ use sqlx::FromRow;
 // ── DB rows ──────────────────────────────────────────────────────────────────
 
 #[derive(FromRow, Serialize)]
+pub struct Repo {
+    pub id: i64,
+    pub upstream: String,
+}
+
+#[derive(FromRow, Serialize)]
 pub struct Project {
     pub id: i64,
+    pub repo_id: i64,
     pub name: String,
+    pub subdir: String,
     pub upstream: String,
 }
 
@@ -44,34 +52,26 @@ pub struct DirtyCrate {
 #[derive(FromRow)]
 pub struct Commit {
     pub id: i64,
+    pub repo_id: i64,
     pub sha: String,
     pub short_sha: String,
+    pub parent_sha: Option<String>,
     pub author: String,
     pub message: String,
     pub timestamp: String,
-    pub status: String,
 }
 
 #[derive(FromRow)]
 pub struct Measurement {
     pub id: i64,
     pub commit_id: i64,
+    pub project_id: i64,
     pub name: String,
     pub kind: String,
     pub status: String,
     pub value: Option<f64>,
-    pub prev_value: Option<f64>,
     pub unit: Option<String>,
     pub step: Option<String>,
-}
-
-#[derive(FromRow)]
-#[expect(unused)]
-pub struct ForagerToken {
-    pub id: i64,
-    pub commit_id: i64,
-    pub benchmark_name: String,
-    pub token: String,
 }
 
 #[derive(FromRow, Serialize)]
@@ -79,7 +79,6 @@ pub struct MeasurementDetail {
     pub measurement_id: i64,
     pub name: String,
     pub value: f64,
-    pub prev_value: f64,
 }
 
 #[derive(FromRow)]
@@ -110,7 +109,6 @@ pub struct IdNameRow {
 #[derive(FromRow)]
 pub struct LatestCommit {
     pub short_sha: String,
-    pub status: String,
 }
 
 // ── API responses ────────────────────────────────────────────────────────────
@@ -157,8 +155,6 @@ pub struct ObservationJson {
 pub struct MeasurementDetailJson {
     pub name: String,
     pub value: f64,
-    #[serde(rename = "prevValue")]
-    pub prev_value: f64,
 }
 
 #[derive(Serialize)]
@@ -169,8 +165,6 @@ pub struct MeasurementJson {
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "prevValue")]
-    pub prev_value: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -187,7 +181,6 @@ pub struct CommitJson {
     pub author: String,
     pub message: String,
     pub timestamp: String,
-    pub status: String,
     pub measurements: Vec<MeasurementJson>,
 }
 
@@ -199,8 +192,6 @@ pub struct OverviewJson {
     pub tracked_count: i64,
     #[serde(rename = "latestCommitShortSha")]
     pub latest_commit_short_sha: Option<String>,
-    #[serde(rename = "latestCommitStatus")]
-    pub latest_commit_status: Option<String>,
 }
 
 #[derive(Serialize)]

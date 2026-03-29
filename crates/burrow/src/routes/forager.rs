@@ -20,6 +20,54 @@ pub struct ForagerClaimBody {
     commit_timestamp: Option<String>,
 }
 
+/// Find or create a repo + project from an upstream URL, returning (repo_id, project_id).
+async fn find_or_create_project(pool: &PgPool, upstream: &str) -> Result<(i64, i64), StatusCode> {
+    let project_name = upstream.rsplit('/').next().unwrap_or(upstream);
+
+    // Find or create repo.
+    let repo_id: i64 = match sqlx::query_as::<_, (i64,)>("SELECT id FROM repos WHERE upstream = $1")
+        .bind(upstream)
+        .fetch_optional(pool)
+        .await
+        .map_err(ise)?
+    {
+        Some((id,)) => id,
+        None => {
+            sqlx::query_as::<_, IdRow>("INSERT INTO repos (upstream) VALUES ($1) RETURNING id")
+                .bind(upstream)
+                .fetch_one(pool)
+                .await
+                .map_err(ise)?
+                .id
+        }
+    };
+
+    // Find or create project.
+    let project_id: i64 =
+        match sqlx::query_as::<_, (i64,)>(
+            "SELECT id FROM projects WHERE repo_id = $1 AND subdir = ''",
+        )
+        .bind(repo_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(ise)?
+        {
+            Some((id,)) => id,
+            None => sqlx::query_as::<_, IdRow>(
+                "INSERT INTO projects (repo_id, name, upstream) VALUES ($1, $2, $3) RETURNING id",
+            )
+            .bind(repo_id)
+            .bind(project_name)
+            .bind(upstream)
+            .fetch_one(pool)
+            .await
+            .map_err(ise)?
+            .id,
+        };
+
+    Ok((repo_id, project_id))
+}
+
 pub async fn post_forager_claim(
     State(pool): State<PgPool>,
     Json(body): Json<ForagerClaimBody>,
@@ -32,35 +80,14 @@ pub async fn post_forager_claim(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Find or create project.
-    let project_name = upstream.rsplit('/').next().unwrap_or(upstream);
-    let project_id: i64 =
-        match sqlx::query_as::<_, (i64,)>("SELECT id FROM projects WHERE upstream = $1")
-            .bind(upstream)
-            .fetch_optional(&pool)
-            .await
-            .map_err(ise)?
-        {
-            Some((id,)) => id,
-            None => {
-                sqlx::query_as::<_, IdRow>(
-                    "INSERT INTO projects (name, upstream) VALUES ($1, $2) RETURNING id",
-                )
-                .bind(project_name)
-                .bind(upstream)
-                .fetch_one(&pool)
-                .await
-                .map_err(ise)?
-                .id
-            }
-        };
+    let (repo_id, project_id) = find_or_create_project(&pool, upstream).await?;
 
     // Find or create commit.
     let short_sha: String = sha.chars().take(7).collect();
     let commit_id: i64 = match sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM commits WHERE project_id = $1 AND (sha = $2 OR short_sha = $3)",
+        "SELECT id FROM commits WHERE repo_id = $1 AND (sha = $2 OR short_sha = $3)",
     )
-    .bind(project_id)
+    .bind(repo_id)
     .bind(sha)
     .bind(&short_sha)
     .fetch_optional(&pool)
@@ -78,10 +105,10 @@ pub async fn post_forager_claim(
             let timestamp = body.commit_timestamp.as_deref().unwrap_or("").to_string();
             sqlx::query_as::<_, IdRow>(
                 "INSERT INTO commits \
-                     (project_id, sha, short_sha, author, message, timestamp, status) \
-                     VALUES ($1, $2, $3, $4, $5, $6, 'not-started') RETURNING id",
+                     (repo_id, sha, short_sha, author, message, timestamp) \
+                     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
             )
-            .bind(project_id)
+            .bind(repo_id)
             .bind(sha)
             .bind(&short_sha)
             .bind(&author)
@@ -93,13 +120,6 @@ pub async fn post_forager_claim(
             .id
         }
     };
-
-    // Set commit status to running.
-    sqlx::query("UPDATE commits SET status = 'running' WHERE id = $1")
-        .bind(commit_id)
-        .execute(&pool)
-        .await
-        .map_err(ise)?;
 
     // Create forager token (expires in 4 hours).
     let token = uuid::Uuid::new_v4().to_string();
@@ -139,12 +159,20 @@ pub async fn post_forager_run(
 
     let (commit_id,) = row.ok_or(StatusCode::UNAUTHORIZED)?;
 
-    // Get project_id for prev_value lookups.
-    let (project_id,): (i64,) = sqlx::query_as("SELECT project_id FROM commits WHERE id = $1")
+    // Get repo_id → project_id for measurements.
+    let (repo_id,): (i64,) = sqlx::query_as("SELECT repo_id FROM commits WHERE id = $1")
         .bind(commit_id)
         .fetch_one(&pool)
         .await
         .map_err(ise)?;
+
+    // Find the default project for this repo (subdir = '').
+    let (project_id,): (i64,) =
+        sqlx::query_as("SELECT id FROM projects WHERE repo_id = $1 AND subdir = '' LIMIT 1")
+            .bind(repo_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(ise)?;
 
     // Insert measurements.
     for step_report in &body.steps {
@@ -152,33 +180,16 @@ pub async fn post_forager_run(
             continue;
         };
 
-        // Look up prev value from most recent complete measurement with same name.
-        let prev_value: Option<f64> = sqlx::query_as::<_, (Option<f64>,)>(
-            "SELECT m.value FROM measurements m \
-             JOIN commits c ON m.commit_id = c.id \
-             WHERE c.project_id = $1 AND m.name = $2 AND m.commit_id != $3 \
-             AND m.status = 'complete' \
-             ORDER BY c.timestamp DESC, m.id DESC \
-             LIMIT 1",
-        )
-        .bind(project_id)
-        .bind(&m.name)
-        .bind(commit_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(ise)?
-        .and_then(|(v,)| v);
-
         let (measurement_id,): (i64,) = sqlx::query_as(
             "INSERT INTO measurements \
-             (commit_id, name, kind, status, value, prev_value, unit, step) \
-             VALUES ($1, $2, $3, 'complete', $4, $5, $6, $7) RETURNING id",
+             (commit_id, project_id, name, kind, status, value, unit, step) \
+             VALUES ($1, $2, $3, $4, 'complete', $5, $6, $7) RETURNING id",
         )
         .bind(commit_id)
+        .bind(project_id)
         .bind(&m.name)
         .bind(&m.kind)
         .bind(m.value)
-        .bind(prev_value)
         .bind(&m.unit)
         .bind(&step_report.step)
         .fetch_one(&pool)
@@ -188,8 +199,8 @@ pub async fn post_forager_run(
         // Insert detail rows.
         for detail in &m.detail {
             sqlx::query(
-                "INSERT INTO measurement_details (measurement_id, name, value, prev_value) \
-                 VALUES ($1, $2, $3, 0)",
+                "INSERT INTO measurement_details (measurement_id, name, value) \
+                 VALUES ($1, $2, $3)",
             )
             .bind(measurement_id)
             .bind(&detail.name)
@@ -199,13 +210,6 @@ pub async fn post_forager_run(
             .map_err(ise)?;
         }
     }
-
-    // Mark commit complete.
-    sqlx::query("UPDATE commits SET status = 'complete' WHERE id = $1")
-        .bind(commit_id)
-        .execute(&pool)
-        .await
-        .map_err(ise)?;
 
     Ok(StatusCode::OK)
 }
@@ -231,28 +235,7 @@ pub async fn post_forager_jobs(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Find or create project.
-    let project_name = upstream.rsplit('/').next().unwrap_or(upstream);
-    let project_id: i64 =
-        match sqlx::query_as::<_, (i64,)>("SELECT id FROM projects WHERE upstream = $1")
-            .bind(upstream)
-            .fetch_optional(&pool)
-            .await
-            .map_err(ise)?
-        {
-            Some((id,)) => id,
-            None => {
-                sqlx::query_as::<_, IdRow>(
-                    "INSERT INTO projects (name, upstream) VALUES ($1, $2) RETURNING id",
-                )
-                .bind(project_name)
-                .bind(upstream)
-                .fetch_one(&pool)
-                .await
-                .map_err(ise)?
-                .id
-            }
-        };
+    let (_repo_id, project_id) = find_or_create_project(&pool, upstream).await?;
 
     // Return existing pending/running job if one already exists.
     if let Some((id, status)) = sqlx::query_as::<_, (i64, String)>(
@@ -388,7 +371,8 @@ pub async fn get_project_benchmarks(
              UNION
              SELECT ft.benchmark_name FROM forager_tokens ft
              JOIN commits c ON ft.commit_id = c.id
-             WHERE c.project_id = $1
+             JOIN projects p ON p.repo_id = c.repo_id
+             WHERE p.id = $1
          ) t ORDER BY benchmark_name",
     )
     .bind(project_id)

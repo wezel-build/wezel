@@ -13,7 +13,6 @@ export interface Overview {
   observationCount: number;
   trackedCount: number;
   latestCommitShortSha: string | null;
-  latestCommitStatus: string | null;
 }
 
 /** Observation as returned by the list endpoint (no graph). */

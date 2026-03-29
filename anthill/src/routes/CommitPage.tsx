@@ -132,8 +132,6 @@ function MeasurementRow({
   navigate: NavigateFunction;
 }) {
   const [hovered, setHovered] = useState(false);
-  const hasDelta =
-    m.status === "complete" && m.value != null && m.prevValue != null;
   const isDone = m.status === "complete" && m.value != null;
   const hasDetail = m.detail != null && m.detail.length > 0;
 
@@ -174,17 +172,7 @@ function MeasurementRow({
         {isDone && m.unit ? m.unit : ""}
       </span>
 
-      <span>
-        {hasDelta ? (
-          <DeltaBadge
-            current={m.value!}
-            baseline={m.prevValue!}
-            unit={m.unit}
-          />
-        ) : (
-          <span className="text-dim text-[10px]">—</span>
-        )}
-      </span>
+      <span className="text-dim text-[10px]">—</span>
     </div>
   );
 }
@@ -192,9 +180,6 @@ function MeasurementRow({
 // ── Commit header ────────────────────────────────────────────────────────────
 
 function CommitHeader({ commit }: { commit: ForagerCommit }) {
-  const isRunning = commit.status === "running";
-  const isNotStarted = commit.status === "not-started";
-
   const completedMs = commit.measurements.filter(
     (m) => m.status === "complete" && m.value != null && m.unit === "ms",
   );
@@ -204,27 +189,6 @@ function CommitHeader({ commit }: { commit: ForagerCommit }) {
       ? completedMs.reduce((s, m) => s + (m.value ?? 0), 0)
       : null;
 
-  const totalPrevMs =
-    completedMs.length > 0 && completedMs.every((m) => m.prevValue != null)
-      ? completedMs.reduce((s, m) => s + (m.prevValue ?? 0), 0)
-      : null;
-
-  const regressions = commit.measurements.filter(
-    (m) =>
-      m.status === "complete" &&
-      m.value != null &&
-      m.prevValue != null &&
-      m.value > m.prevValue,
-  ).length;
-
-  const improvements = commit.measurements.filter(
-    (m) =>
-      m.status === "complete" &&
-      m.value != null &&
-      m.prevValue != null &&
-      m.value < m.prevValue,
-  ).length;
-
   return (
     <div className="flex flex-col gap-[12px] px-[20px] py-[16px] bg-surface border-b border-[var(--c-border)] rounded-t-md">
       <div className="flex items-center justify-between">
@@ -233,22 +197,6 @@ function CommitHeader({ commit }: { commit: ForagerCommit }) {
           <span className="text-sm font-bold font-mono text-accent tracking-[-0.3px]">
             {commit.shortSha}
           </span>
-          <Badge
-            color={isNotStarted ? C.textDim : isRunning ? C.amber : C.green}
-            bg={
-              isNotStarted
-                ? C.surface3
-                : isRunning
-                  ? alpha(C.amber, 9)
-                  : alpha(C.green, 9)
-            }
-          >
-            {isNotStarted
-              ? "not started"
-              : isRunning
-                ? "in-flight"
-                : "complete"}
-          </Badge>
         </div>
         <span className="text-[10px] font-mono text-dim">
           {fmtTime(commit.timestamp)}
@@ -264,71 +212,30 @@ function CommitHeader({ commit }: { commit: ForagerCommit }) {
         </span>
       </div>
 
-      {isRunning && <ProgressBar measurements={commit.measurements} />}
-
-      {commit.status === "complete" && (
-        <div className="flex gap-[20px] items-end flex-wrap">
-          {totalMs != null && (
-            <div className="flex flex-col gap-[1px]">
-              <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
-                Σ timed measurements
-              </span>
-              <div className="flex items-center gap-[8px]">
-                <span className="text-lg font-bold font-mono text-fg">
-                  {fmtValue(totalMs, "ms")}
-                </span>
-                {totalPrevMs != null && (
-                  <DeltaBadge
-                    current={totalMs}
-                    baseline={totalPrevMs}
-                    unit="ms"
-                  />
-                )}
-              </div>
-            </div>
-          )}
-
+      <div className="flex gap-[20px] items-end flex-wrap">
+        {totalMs != null && (
           <div className="flex flex-col gap-[1px]">
             <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
-              Measurements
+              Σ timed measurements
             </span>
-            <span
-              className="text-lg font-bold font-mono"
-              style={{ color: C.pink }}
-            >
-              {commit.measurements.length}
+            <span className="text-lg font-bold font-mono text-fg">
+              {fmtValue(totalMs, "ms")}
             </span>
           </div>
+        )}
 
-          {regressions > 0 && (
-            <div className="flex flex-col gap-[1px]">
-              <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
-                Regressions
-              </span>
-              <span
-                className="text-lg font-bold font-mono"
-                style={{ color: C.red }}
-              >
-                {regressions}
-              </span>
-            </div>
-          )}
-
-          {improvements > 0 && (
-            <div className="flex flex-col gap-[1px]">
-              <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
-                Improvements
-              </span>
-              <span
-                className="text-lg font-bold font-mono"
-                style={{ color: C.green }}
-              >
-                {improvements}
-              </span>
-            </div>
-          )}
+        <div className="flex flex-col gap-[1px]">
+          <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
+            Measurements
+          </span>
+          <span
+            className="text-lg font-bold font-mono"
+            style={{ color: C.pink }}
+          >
+            {commit.measurements.length}
+          </span>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -674,7 +581,6 @@ export default function CommitPage() {
                           data={completedMs.map((m) => ({
                             name: m.name,
                             value: m.value,
-                            prevValue: m.prevValue,
                           }))}
                           unit={completedMs[0]?.unit}
                         />

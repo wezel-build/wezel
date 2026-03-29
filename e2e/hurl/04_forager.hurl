@@ -49,16 +49,14 @@ Content-Type: application/json
 }
 HTTP 200
 
-# Verify measurements are stored; no prevValue on first run
+# Verify measurements are stored
 GET {{base_url}}/api/project/{{project_id}}/commit/aabbccd1234567
 HTTP 200
 [Asserts]
-jsonpath "$.status" == "complete"
 jsonpath "$.measurements" count == 1
 jsonpath "$.measurements[0].name" == "build-time"
 jsonpath "$.measurements[0].value" == 1234.5
 jsonpath "$.measurements[0].step" == "baseline"
-jsonpath "$.measurements[0].prevValue" not exists
 
 # --- Second run ---
 
@@ -96,10 +94,9 @@ Content-Type: application/json
 }
 HTTP 200
 
-# Second commit should have prevValue populated from the first run
+# Second commit should have value stored (no prevValue — comparisons are frontend-driven)
 GET {{base_url}}/api/project/{{project_id}}/commit/bbccdd11234567
 HTTP 200
 [Asserts]
-jsonpath "$.status" == "complete"
 jsonpath "$.measurements[0].value" == 2000.0
-jsonpath "$.measurements[0].prevValue" == 1234.5
+jsonpath "$.measurements[0].prevValue" not exists
