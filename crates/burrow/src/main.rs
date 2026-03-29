@@ -2,6 +2,7 @@ mod auth;
 mod db;
 mod github;
 mod models;
+pub mod regression;
 mod routes;
 
 use axum::{
@@ -92,6 +93,10 @@ async fn main() {
     let pool = db::connect(&db_url)
         .await
         .expect("could not connect to database");
+
+    regression::set_detector(std::sync::Arc::new(
+        regression::ThresholdDetector::default(),
+    ));
 
     if let Some(dev_dir) = get_dev_dir() {
         load_dev_pheromones(&pool, &dev_dir).await;

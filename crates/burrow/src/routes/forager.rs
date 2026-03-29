@@ -164,11 +164,8 @@ pub async fn post_forager_run(
     Ok(StatusCode::OK)
 }
 
-/// Regression threshold: >5% increase triggers a bisection.
-const REGRESSION_THRESHOLD: f64 = 0.05;
-
 /// After inserting measurements for a normal run, compare each measurement
-/// against the parent commit's value. If a regression is detected, create a
+/// against recent history. If the regression detector fires, create a
 /// bisection and enqueue the midpoint.
 async fn detect_regressions(
     pool: &PgPool,
@@ -179,19 +176,46 @@ async fn detect_regressions(
     benchmark_name: &str,
     inserted: &[(i64, String, f64)],
 ) -> Result<(), StatusCode> {
-    // Get the parent commit.
-    let parent = sqlx::query_as::<_, (i64, String)>(
-        "SELECT p.id, p.sha FROM commits c \
-         JOIN commits p ON p.repo_id = c.repo_id AND p.sha = c.parent_sha \
-         WHERE c.id = $1",
+    let detector = crate::regression::detector();
+
+    // We need ancestor commits to gather history.  Walk back via parent_sha.
+    let history_len = detector.history_len();
+    let ancestor_ids: Vec<(i64,)> = sqlx::query_as(
+        "WITH RECURSIVE chain AS ( \
+             SELECT parent_sha, 0 AS depth FROM commits WHERE id = $1 \
+           UNION ALL \
+             SELECT c.parent_sha, ch.depth + 1 \
+             FROM commits c \
+             JOIN chain ch ON c.sha = ch.parent_sha AND c.repo_id = $2 \
+             WHERE ch.depth < $3 AND ch.parent_sha IS NOT NULL \
+         ) \
+         SELECT c.id FROM chain ch \
+         JOIN commits c ON c.sha = ch.parent_sha AND c.repo_id = $2 \
+         ORDER BY ch.depth",
     )
     .bind(commit_id)
-    .fetch_optional(pool)
+    .bind(repo_id)
+    .bind(history_len as i64)
+    .fetch_all(pool)
     .await
     .map_err(ise)?;
 
-    let Some((parent_commit_id, parent_sha)) = parent else {
-        return Ok(()); // No parent — root commit, nothing to compare.
+    if ancestor_ids.is_empty() {
+        return Ok(()); // No ancestors — nothing to compare.
+    }
+
+    // We need the direct parent SHA for bisection range endpoints.
+    let parent_sha: Option<String> = sqlx::query_as::<_, (Option<String>,)>(
+        "SELECT parent_sha FROM commits WHERE id = $1",
+    )
+    .bind(commit_id)
+    .fetch_one(pool)
+    .await
+    .map_err(ise)?
+    .0;
+
+    let Some(parent_sha) = parent_sha else {
+        return Ok(());
     };
 
     // Get the branch for this commit (from queue or fallback to 'main').
@@ -208,32 +232,28 @@ async fn detect_regressions(
     .map(|(b,)| b)
     .unwrap_or_else(|| "main".to_string());
 
+    // Build the list of ancestor commit IDs for the history query.
+    let ancestor_commit_ids: Vec<i64> = ancestor_ids.into_iter().map(|(id,)| id).collect();
+
     for &(_, ref measurement_name, new_value) in inserted {
-        // Get parent's measurement with the same name for this project.
-        let parent_measurement = sqlx::query_as::<_, (f64,)>(
-            "SELECT value FROM measurements \
-             WHERE commit_id = $1 AND project_id = $2 AND name = $3 \
-               AND value IS NOT NULL \
-             ORDER BY id DESC LIMIT 1",
+        // Get historical values for this measurement across ancestor commits (oldest first).
+        let history: Vec<(f64,)> = sqlx::query_as(
+            "SELECT m.value FROM measurements m \
+             WHERE m.commit_id = ANY($1) AND m.project_id = $2 AND m.name = $3 \
+               AND m.value IS NOT NULL \
+             ORDER BY m.commit_id ASC",
         )
-        .bind(parent_commit_id)
+        .bind(&ancestor_commit_ids)
         .bind(project_id)
         .bind(measurement_name)
-        .fetch_optional(pool)
+        .fetch_all(pool)
         .await
         .map_err(ise)?;
 
-        let Some((old_value,)) = parent_measurement else {
-            continue; // No parent measurement to compare against.
-        };
+        let history_values: Vec<f64> = history.into_iter().map(|(v,)| v).collect();
 
-        if old_value == 0.0 {
+        if !detector.is_regression(&history_values, new_value) {
             continue;
-        }
-
-        let change = (new_value - old_value) / old_value.abs();
-        if change <= REGRESSION_THRESHOLD {
-            continue; // Not a regression.
         }
 
         // Check no active bisection already covers this measurement.
@@ -254,12 +274,9 @@ async fn detect_regressions(
             continue; // Already being bisected.
         }
 
+        let baseline = history_values.last().copied().unwrap_or(0.0);
         tracing::info!(
-            "regression detected: {} changed {:.1}% ({} -> {}), bisecting {parent_sha}..{commit_sha}",
-            measurement_name,
-            change * 100.0,
-            old_value,
-            new_value,
+            "regression detected: {measurement_name} ({baseline} -> {new_value}), bisecting {parent_sha}..{commit_sha}",
         );
 
         // Create bisection.
@@ -275,7 +292,7 @@ async fn detect_regressions(
         .bind(&branch)
         .bind(&parent_sha)
         .bind(commit_sha)
-        .bind(old_value)
+        .bind(baseline)
         .bind(new_value)
         .fetch_one(pool)
         .await
@@ -335,8 +352,8 @@ async fn progress_bisection(
     .await
     .map_err(ise)?;
 
-    // Classify: "good" if value <= good_value * (1 + threshold), else "bad".
-    let is_good = value <= good_value * (1.0 + REGRESSION_THRESHOLD);
+    let detector = crate::regression::detector();
+    let is_good = detector.is_good(good_value, bad_value, value);
 
     // Get the SHA of the commit we just measured.
     let (tested_sha,): (String,) = sqlx::query_as(
