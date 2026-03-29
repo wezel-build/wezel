@@ -123,6 +123,14 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             expires_at TIMESTAMPTZ NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS branches (
+            id BIGSERIAL PRIMARY KEY,
+            repo_id BIGINT NOT NULL REFERENCES repos(id),
+            name TEXT NOT NULL,
+            head_sha TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE(repo_id, name)
+        );
         CREATE TABLE IF NOT EXISTS bisections (
             id                BIGSERIAL PRIMARY KEY,
             project_id        BIGINT NOT NULL REFERENCES projects(id),

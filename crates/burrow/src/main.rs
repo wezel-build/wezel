@@ -26,6 +26,7 @@ use routes::forager::*;
 use routes::observations::*;
 use routes::pheromones::*;
 use routes::projects::*;
+use routes::webhooks::*;
 
 #[derive(Parser)]
 #[command(name = "burrow", about = "Wezel API server")]
@@ -186,6 +187,7 @@ async fn main() {
         .route("/auth/me", get(auth::me))
         .route("/auth/config", get(auth::config))
         .route("/auth/logout", post(auth::logout))
+        .route("/api/webhooks/github", post(post_github_webhook))
         .route("/health", get(get_health))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
