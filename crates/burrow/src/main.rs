@@ -4,6 +4,7 @@ mod github;
 mod models;
 pub mod regression;
 mod routes;
+mod scheduler;
 
 use axum::{
     Json, Router,
@@ -102,6 +103,8 @@ async fn main() {
     if let Some(dev_dir) = get_dev_dir() {
         load_dev_pheromones(&pool, &dev_dir).await;
     }
+
+    scheduler::spawn(pool.clone());
 
     // Protected API routes (all except /api/events and forager/auth routes).
     let protected_api = Router::new()
