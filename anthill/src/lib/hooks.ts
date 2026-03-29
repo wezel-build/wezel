@@ -2,7 +2,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useProject } from "./useProject";
 import { api } from "./api";
 import type { Overview, ObservationSummary, GithubCommit } from "./api";
-import type { Observation, ForagerCommit, Pheromone } from "./data";
+import type {
+  Observation,
+  ForagerCommit,
+  Pheromone,
+  BranchTimeline,
+  Bisection,
+  CompareResponse,
+} from "./data";
 
 const EMPTY_OBSERVATIONS: ObservationSummary[] = [];
 const EMPTY_COMMITS: ForagerCommit[] = [];
@@ -148,6 +155,80 @@ export function usePheromones() {
   return {
     pheromones: result.data ?? EMPTY_PHEROMONES,
     loading: result.loading,
+    error: result.error,
+  };
+}
+
+// ── Branch timeline ─────────────────────────────────────────────────────────
+
+export function useBranchTimeline(
+  branch: string | undefined,
+  limit?: number,
+) {
+  const { pApi, current } = useProject();
+  const result = useAsync(
+    () =>
+      branch
+        ? pApi.branchTimeline(branch, limit)
+        : Promise.reject("no branch"),
+    [branch, limit, current?.id],
+  );
+  return {
+    timeline: result.data as BranchTimeline | null,
+    loading: !!branch && result.loading,
+    error: result.error,
+  };
+}
+
+// ── Compare ─────────────────────────────────────────────────────────────────
+
+export function useCompare(
+  baseSha: string | null,
+  headSha: string | null,
+) {
+  const { pApi, current } = useProject();
+  const result = useAsync(
+    () =>
+      baseSha && headSha
+        ? pApi.compare(baseSha, headSha)
+        : Promise.reject("missing sha"),
+    [baseSha, headSha, current?.id],
+  );
+  return {
+    compare: result.data as CompareResponse | null,
+    loading: !!(baseSha && headSha) && result.loading,
+    error: result.error,
+  };
+}
+
+// ── Bisections ──────────────────────────────────────────────────────────────
+
+const EMPTY_BISECTIONS: Bisection[] = [];
+
+export function useBisections(status?: string, branch?: string) {
+  const { pApi, current } = useProject();
+  const result = useAsync(
+    () => pApi.bisections(status, branch),
+    [status, branch, current?.id],
+  );
+  return {
+    bisections: result.data ?? EMPTY_BISECTIONS,
+    loading: result.loading,
+    error: result.error,
+    refetch: result.refetch,
+  };
+}
+
+export function useBisection(id: number | undefined) {
+  const { pApi, current } = useProject();
+  const result = useAsync(
+    () =>
+      id != null ? pApi.bisection(id) : Promise.reject("no id"),
+    [id, current?.id],
+  );
+  return {
+    bisection: result.data as Bisection | null,
+    loading: id != null && result.loading,
     error: result.error,
   };
 }

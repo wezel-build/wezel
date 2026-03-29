@@ -1,4 +1,12 @@
-import type { Observation, ForagerCommit, Project, Pheromone } from "./data";
+import type {
+  Observation,
+  ForagerCommit,
+  Project,
+  Pheromone,
+  BranchTimeline,
+  CompareResponse,
+  Bisection,
+} from "./data";
 
 export interface GithubCommit {
   sha: string;
@@ -84,6 +92,26 @@ function projectApi(projectId: number) {
       post<ForagerCommit>(`${p}/commit`, { sha }),
     users: () => get<string[]>(`${p}/user`),
     benchmarks: () => get<string[]>(`${p}/benchmarks`),
+    branchTimeline: (branch: string, limit?: number) => {
+      const q = limit ? `?limit=${limit}` : "";
+      return get<BranchTimeline>(
+        `${p}/branch/${encodeURIComponent(branch)}/timeline${q}`,
+      );
+    },
+    compare: (baseSha: string, headSha: string) =>
+      get<CompareResponse>(
+        `${p}/compare?base_sha=${encodeURIComponent(baseSha)}&head_sha=${encodeURIComponent(headSha)}`,
+      ),
+    bisections: (status?: string, branch?: string) => {
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (branch) params.set("branch", branch);
+      const qs = params.toString();
+      return get<Bisection[]>(`${p}/bisections${qs ? `?${qs}` : ""}`);
+    },
+    bisection: (id: number) => get<Bisection>(`${p}/bisections/${id}`),
+    abandonBisection: (id: number) =>
+      patch<Bisection>(`${p}/bisections/${id}`, { status: "abandoned" }),
   };
 }
 

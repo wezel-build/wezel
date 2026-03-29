@@ -109,9 +109,16 @@ export default function Shell() {
   }, [projectOpen]);
 
   const { overview } = useOverview();
-  const onCommitPage =
-    current != null &&
-    location.pathname.startsWith(`/project/${current.id}/commit`);
+  const section =
+    current != null
+      ? location.pathname.includes("/branch/")
+        ? "timeline"
+        : location.pathname.includes("/bisections")
+          ? "bisections"
+          : location.pathname.includes("/commit")
+            ? "commits"
+            : "observations"
+      : null;
   const onNewPage = location.pathname === "/projects/create";
   const onAdminPage = location.pathname.startsWith("/admin");
 
@@ -234,9 +241,10 @@ export default function Shell() {
                   to={current ? `/project/${current.id}` : "/"}
                   className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
                   style={{
-                    color: !onCommitPage
-                      ? "var(--c-accent)"
-                      : "var(--c-text-dim)",
+                    color:
+                      section === "observations"
+                        ? "var(--c-accent)"
+                        : "var(--c-text-dim)",
                   }}
                 >
                   observations
@@ -245,13 +253,44 @@ export default function Shell() {
                   to={current ? `/project/${current.id}/commits` : "/"}
                   className="flex items-center gap-[4px] no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
                   style={{
-                    color: onCommitPage
-                      ? "var(--c-accent)"
-                      : "var(--c-text-dim)",
+                    color:
+                      section === "commits"
+                        ? "var(--c-accent)"
+                        : "var(--c-text-dim)",
                   }}
                 >
                   <GitCommit size={11} />
                   commits
+                </Link>
+                <Link
+                  to={
+                    current
+                      ? `/project/${current.id}/branch/main/timeline`
+                      : "/"
+                  }
+                  className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  style={{
+                    color:
+                      section === "timeline"
+                        ? "var(--c-accent)"
+                        : "var(--c-text-dim)",
+                  }}
+                >
+                  timeline
+                </Link>
+                <Link
+                  to={
+                    current ? `/project/${current.id}/bisections` : "/"
+                  }
+                  className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  style={{
+                    color:
+                      section === "bisections"
+                        ? "var(--c-accent)"
+                        : "var(--c-text-dim)",
+                  }}
+                >
+                  bisections
                 </Link>
               </>
             )}

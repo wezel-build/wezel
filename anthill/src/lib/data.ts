@@ -69,6 +69,38 @@ export interface ForagerCommit {
   measurements: Measurement[];
 }
 
+// ── Branch timeline ─────────────────────────────────────────────────────────
+
+export interface BranchTimeline {
+  branch: string;
+  commits: ForagerCommit[];
+}
+
+// ── Compare ─────────────────────────────────────────────────────────────────
+
+export interface CompareResponse {
+  base: ForagerCommit;
+  head: ForagerCommit;
+}
+
+// ── Bisections ──────────────────────────────────────────────────────────────
+
+export type BisectionStatus = "active" | "complete" | "abandoned";
+
+export interface Bisection {
+  id: number;
+  projectId: number;
+  benchmarkName: string;
+  measurementName: string;
+  branch: string;
+  goodSha: string;
+  badSha: string;
+  goodValue: number;
+  badValue: number;
+  status: BisectionStatus;
+  culpritSha?: string;
+}
+
 // ── Pheromone registry ───────────────────────────────────────────────────────
 
 export interface PheromoneField {
