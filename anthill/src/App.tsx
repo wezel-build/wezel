@@ -26,10 +26,22 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <ObservationsPage />,
+        element: (
+          <Suspense>
+            <CommitsListPage />
+          </Suspense>
+        ),
       },
       {
         path: "project/:projectId",
+        element: (
+          <Suspense>
+            <CommitsListPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "project/:projectId/observations",
         element: <ObservationsPage />,
       },
       {

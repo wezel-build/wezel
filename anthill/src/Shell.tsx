@@ -115,9 +115,9 @@ export default function Shell() {
         ? "timeline"
         : location.pathname.includes("/bisections")
           ? "bisections"
-          : location.pathname.includes("/commit")
-            ? "commits"
-            : "observations"
+          : location.pathname.includes("/observation")
+            ? "observations"
+            : "commits"
       : null;
   const onNewPage = location.pathname === "/projects/create";
   const onAdminPage = location.pathname.startsWith("/admin");
@@ -239,18 +239,6 @@ export default function Shell() {
                 <div className="w-[1px] h-[16px] bg-[var(--c-border)]" />
                 <Link
                   to={current ? `/project/${current.id}` : "/"}
-                  className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
-                  style={{
-                    color:
-                      section === "observations"
-                        ? "var(--c-accent)"
-                        : "var(--c-text-dim)",
-                  }}
-                >
-                  observations
-                </Link>
-                <Link
-                  to={current ? `/project/${current.id}/commits` : "/"}
                   className="flex items-center gap-[4px] no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
                   style={{
                     color:
@@ -261,6 +249,18 @@ export default function Shell() {
                 >
                   <GitCommit size={11} />
                   commits
+                </Link>
+                <Link
+                  to={current ? `/project/${current.id}/observations` : "/"}
+                  className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  style={{
+                    color:
+                      section === "observations"
+                        ? "var(--c-accent)"
+                        : "var(--c-text-dim)",
+                  }}
+                >
+                  observations
                 </Link>
                 <Link
                   to={

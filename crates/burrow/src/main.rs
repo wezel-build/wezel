@@ -28,6 +28,7 @@ use routes::forager::*;
 use routes::observations::*;
 use routes::pheromones::*;
 use routes::projects::*;
+use routes::repos::*;
 use routes::webhooks::*;
 
 #[derive(Parser)]
@@ -171,6 +172,11 @@ async fn main() {
         .route(
             "/api/admin/pheromone/{name}/fetch",
             post(post_admin_pheromone_fetch),
+        )
+        .route("/api/repo", get(get_repos))
+        .route(
+            "/api/repo/{repo_id}/webhook",
+            post(setup_webhook),
         )
         .route("/api/overview", get(get_overview))
         .route("/api/observation", get(get_observations))

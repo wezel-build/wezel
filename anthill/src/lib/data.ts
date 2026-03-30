@@ -1,7 +1,26 @@
+// ── Repo ─────────────────────────────────────────────────────────────────────
+
+export interface Repo {
+  id: number;
+  upstream: string;
+  webhookRegistered: boolean;
+  projectCount: number;
+}
+
+export interface WebhookSetup {
+  id: number;
+  upstream: string;
+  webhookSecret: string;
+  webhookUrl: string;
+  /** Whether the webhook was auto-registered on GitHub. */
+  registered: boolean;
+}
+
 // ── Project ──────────────────────────────────────────────────────────────────
 
 export interface Project {
   id: number;
+  repo_id: number;
   name: string;
   upstream: string;
 }

@@ -9,6 +9,34 @@ pub struct Repo {
     pub upstream: String,
 }
 
+#[derive(FromRow)]
+pub struct RepoRow {
+    pub id: i64,
+    pub upstream: String,
+    pub webhook_registered: bool,
+    pub project_count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoJson {
+    pub id: i64,
+    pub upstream: String,
+    pub webhook_registered: bool,
+    pub project_count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebhookSetupJson {
+    pub id: i64,
+    pub upstream: String,
+    pub webhook_secret: String,
+    pub webhook_url: String,
+    /// Whether the webhook was auto-registered on GitHub.
+    pub registered: bool,
+}
+
 #[derive(FromRow, Serialize)]
 pub struct Project {
     pub id: i64,

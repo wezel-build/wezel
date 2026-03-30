@@ -5,4 +5,5 @@ pub mod forager;
 pub mod observations;
 pub mod pheromones;
 pub mod projects;
+pub mod repos;
 pub mod webhooks;

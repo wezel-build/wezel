@@ -6,6 +6,8 @@ import type {
   BranchTimeline,
   CompareResponse,
   Bisection,
+  Repo,
+  WebhookSetup,
 } from "./data";
 
 export interface GithubCommit {
@@ -41,7 +43,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
     credentials: "include",
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(text || `${res.status} ${res.statusText}`);
+  }
   return res.json();
 }
 
@@ -122,6 +127,9 @@ export interface BenchmarkPrResponse {
 }
 
 export const api = {
+  repos: () => get<Repo[]>("/api/repo"),
+  setupWebhook: (repoId: number) =>
+    post<WebhookSetup>(`/api/repo/${repoId}/webhook`, {}),
   projects: () => get<Project[]>("/api/project"),
   createProject: (name: string, upstream: string) =>
     post<Project>("/api/project", { name, upstream }),

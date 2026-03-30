@@ -15,6 +15,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             id BIGSERIAL PRIMARY KEY,
             upstream TEXT NOT NULL UNIQUE,
             webhook_secret TEXT,
+            webhook_registered BOOLEAN NOT NULL DEFAULT FALSE,
             enqueue_interval_secs INT NOT NULL DEFAULT 3600
         );
         CREATE TABLE IF NOT EXISTS projects (
@@ -22,7 +23,8 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             repo_id BIGINT NOT NULL REFERENCES repos(id),
             name TEXT NOT NULL,
             subdir TEXT NOT NULL DEFAULT '',
-            upstream TEXT NOT NULL UNIQUE
+            upstream TEXT NOT NULL,
+            UNIQUE(repo_id, name)
         );
         CREATE TABLE IF NOT EXISTS users (
             id BIGSERIAL PRIMARY KEY,
@@ -166,8 +168,6 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             measurement_id BIGINT NOT NULL REFERENCES measurements(id),
             PRIMARY KEY (bisection_id, measurement_id)
         );
-        ALTER TABLE forager_queue
-            ADD COLUMN IF NOT EXISTS bisection_id BIGINT REFERENCES bisections(id);
         ",
     )
     .execute(pool)
