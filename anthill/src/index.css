@@ -36,7 +36,7 @@
   --color-c-cyan: var(--c-cyan);
 
   /* Font families */
-  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  --font-mono: "CommitMono", "Commit Mono", "JetBrains Mono", "Fira Code", monospace;
   --font-sans: "Inter", -apple-system, system-ui, sans-serif;
 }
 
