@@ -239,7 +239,7 @@ export default function Shell() {
                 <div className="w-[1px] h-[16px] bg-[var(--c-border)]" />
                 <Link
                   to={current ? `/project/${current.id}` : "/"}
-                  className="flex items-center gap-[4px] no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  className="flex items-center gap-[4px] no-underline font-mono text-[11px] font-semibold tracking-[0.3px] uppercase"
                   style={{
                     color:
                       section === "commits"
@@ -252,7 +252,7 @@ export default function Shell() {
                 </Link>
                 <Link
                   to={current ? `/project/${current.id}/observations` : "/"}
-                  className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  className="no-underline font-mono text-[11px] font-semibold tracking-[0.3px] uppercase"
                   style={{
                     color:
                       section === "observations"
@@ -268,7 +268,7 @@ export default function Shell() {
                       ? `/project/${current.id}/branch/main/timeline`
                       : "/"
                   }
-                  className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  className="no-underline font-mono text-[11px] font-semibold tracking-[0.3px] uppercase"
                   style={{
                     color:
                       section === "timeline"
@@ -282,7 +282,7 @@ export default function Shell() {
                   to={
                     current ? `/project/${current.id}/bisections` : "/"
                   }
-                  className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  className="no-underline font-mono text-[11px] font-semibold tracking-[0.3px] uppercase"
                   style={{
                     color:
                       section === "bisections"
@@ -319,7 +319,7 @@ export default function Shell() {
                   return THEME_ORDER[(i + 1) % THEME_ORDER.length];
                 })
               }
-              className="bg-surface2 border border-[var(--c-border)] rounded px-2 py-[2px] cursor-pointer text-mid text-[10px] font-mono"
+              className="bg-surface2 border border-[var(--c-border)] rounded px-2 py-[4px] cursor-pointer text-mid text-[10px] font-mono"
             >
               {themeKey}
             </button>

@@ -103,7 +103,7 @@ function ProgressBar({ measurements }: { measurements: Measurement[] }) {
           }}
         />
       </div>
-      <div className="flex gap-[10px] text-[9px] text-dim font-mono">
+      <div className="flex gap-[10px] text-[10px] text-dim font-mono">
         <span>
           {complete}/{total} complete
         </span>
@@ -168,7 +168,7 @@ function MeasurementRow({
         {isDone ? fmtValue(m.value!, m.unit) : statusLabel(m.status)}
       </span>
 
-      <span className="text-dim text-[9px]">
+      <span className="text-dim text-[10px]">
         {isDone && m.unit ? m.unit : ""}
       </span>
 
@@ -215,7 +215,7 @@ function CommitHeader({ commit }: { commit: ForagerCommit }) {
       <div className="flex gap-[20px] items-end flex-wrap">
         {totalMs != null && (
           <div className="flex flex-col gap-[1px]">
-            <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
+            <span className="text-[10px] text-dim uppercase tracking-[0.8px] font-semibold">
               Σ timed measurements
             </span>
             <span className="text-lg font-bold font-mono text-fg">
@@ -225,7 +225,7 @@ function CommitHeader({ commit }: { commit: ForagerCommit }) {
         )}
 
         <div className="flex flex-col gap-[1px]">
-          <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
+          <span className="text-[10px] text-dim uppercase tracking-[0.8px] font-semibold">
             Measurements
           </span>
           <span
@@ -394,7 +394,7 @@ export default function CommitPage() {
           {prevCommit && (
             <button
               onClick={() => navigate(toCommit(prevCommit.shortSha))}
-              className="flex items-center gap-[3px] bg-surface2 border border-[var(--c-border)] rounded-[3px] px-[8px] py-[2px] cursor-pointer text-mid text-[10px] font-mono"
+              className="flex items-center gap-[3px] bg-surface2 border border-[var(--c-border)] rounded-[3px] px-[8px] py-[4px] cursor-pointer text-mid text-[10px] font-mono"
             >
               <ChevronLeft size={11} /> {prevCommit.shortSha}
             </button>
@@ -402,7 +402,7 @@ export default function CommitPage() {
           {nextCommit && (
             <button
               onClick={() => navigate(toCommit(nextCommit.shortSha))}
-              className="flex items-center gap-[3px] bg-surface2 border border-[var(--c-border)] rounded-[3px] px-[8px] py-[2px] cursor-pointer text-mid text-[10px] font-mono"
+              className="flex items-center gap-[3px] bg-surface2 border border-[var(--c-border)] rounded-[3px] px-[8px] py-[4px] cursor-pointer text-mid text-[10px] font-mono"
             >
               {nextCommit.shortSha} <ChevronRight size={11} />
             </button>
@@ -485,7 +485,7 @@ export default function CommitPage() {
                       <button
                         key={bm}
                         onClick={() => setBenchmarkInput(bm)}
-                        className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[2px]"
+                        className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[4px]"
                         style={{
                           background:
                             benchmarkInput === bm ? C.surface3 : C.surface2,
@@ -504,14 +504,14 @@ export default function CommitPage() {
                     onChange={(e) => setBenchmarkInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && onEnqueue()}
                     placeholder="benchmark name"
-                    className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[3px] bg-surface2 text-fg flex-1"
+                    className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[5px] bg-surface2 text-fg flex-1"
                     style={{ outline: "none" }}
                     autoFocus
                   />
                   <button
                     onClick={onEnqueue}
                     disabled={!benchmarkInput.trim() || enqueueing}
-                    className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[8px] py-[3px] bg-surface2"
+                    className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[8px] py-[5px] bg-surface2"
                     style={{
                       color:
                         !benchmarkInput.trim() || enqueueing
@@ -552,7 +552,7 @@ export default function CommitPage() {
             <div className="border border-[var(--c-border)] rounded-md overflow-hidden">
               <CommitHeader commit={commit} />
 
-              <div className="grid grid-cols-[18px_1fr_70px_56px_110px] gap-[8px] px-[12px] py-[6px] text-[8px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2">
+              <div className="grid grid-cols-[18px_1fr_70px_56px_110px] gap-[8px] px-[12px] py-[8px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2">
                 <span />
                 <span>Measurement</span>
                 <span className="text-right">Value</span>
@@ -569,7 +569,7 @@ export default function CommitPage() {
                   <div key={kind}>
                     {grouped.length > 1 && (
                       <div
-                        className={`px-[12px] py-[5px] text-[9px] font-bold font-mono text-dim uppercase tracking-[0.8px] bg-surface border-b border-[var(--c-border)]${gi > 0 ? " border-t border-[var(--c-border)]" : ""}`}
+                        className={`px-[12px] py-[6px] text-[10px] font-bold font-mono text-dim uppercase tracking-[0.8px] bg-surface border-b border-[var(--c-border)]${gi > 0 ? " border-t border-[var(--c-border)]" : ""}`}
                       >
                         {kind}
                       </div>

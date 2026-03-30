@@ -116,13 +116,13 @@ export function RunList({
   return (
     <div className="flex flex-col w-full h-full">
       {/* Header */}
-      <div className="py-1 px-[10px] border-b border-[var(--c-border)] flex items-center justify-between">
-        <span className="text-[9px] font-bold text-dim tracking-[0.8px] uppercase">
+      <div className="py-[6px] px-[10px] border-b border-[var(--c-border)] flex items-center justify-between">
+        <span className="text-[10px] font-bold text-dim tracking-[0.8px] uppercase">
           Runs ({selectedIndices.size}/{runs.length})
         </span>
         <button
           onClick={allSelected ? onSelectNone : onSelectAll}
-          className="bg-transparent border border-[var(--c-border)] rounded-[3px] py-[1px] px-[6px] cursor-pointer text-mid text-[9px] font-mono"
+          className="bg-transparent border border-[var(--c-border)] rounded-[3px] py-[3px] px-[6px] cursor-pointer text-mid text-[10px] font-mono"
         >
           {allSelected ? "none" : "all"}
         </button>
@@ -130,7 +130,7 @@ export function RunList({
 
       {/* Column headers */}
       <div
-        className="grid py-[3px] px-[10px] text-[8px] font-bold text-dim uppercase tracking-[0.6px] border-b border-[var(--c-border)]"
+        className="grid py-[6px] px-[10px] text-[10px] font-bold text-dim uppercase tracking-[0.6px] border-b border-[var(--c-border)]"
         style={{ gridTemplateColumns: template }}
       >
         {RUN_COLS.map((col, i) => (
@@ -165,7 +165,7 @@ export function RunList({
               onClick={() => onToggle(rowIdx)}
               onMouseEnter={() => setHoveredRow(rowIdx)}
               onMouseLeave={() => setHoveredRow(null)}
-              className="grid py-[3px] px-[10px] items-center cursor-pointer text-[10px] font-mono"
+              className="grid py-[5px] px-[10px] items-center cursor-pointer text-[10px] font-mono"
               style={{
                 gridTemplateColumns: template,
                 background: rowBg,
@@ -183,7 +183,7 @@ export function RunList({
               {/* Checkbox */}
               <div className={colClassName} style={colStyle(0)}>
                 <div
-                  className="w-[12px] h-[12px] rounded-sm flex items-center justify-center text-[8px]"
+                  className="w-[14px] h-[14px] rounded-sm flex items-center justify-center text-[8px]"
                   style={{
                     border: `1.5px solid ${isSel ? C.accent : C.border}`,
                     background: isSel ? alpha(C.accent, 20) : "transparent",

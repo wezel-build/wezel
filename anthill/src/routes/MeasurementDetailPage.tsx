@@ -90,7 +90,7 @@ function SortHeader({
   return (
     <button
       onClick={() => onSort(sortKey)}
-      className="bg-transparent border-0 p-0 cursor-pointer flex items-center gap-[3px] text-[8px] font-bold font-mono uppercase tracking-[0.8px]"
+      className="bg-transparent border-0 p-0 cursor-pointer flex items-center gap-[3px] text-[10px] font-bold font-mono uppercase tracking-[0.8px]"
       style={{
         justifyContent: align === "right" ? "flex-end" : "flex-start",
         color: active ? C.accent : C.textDim,
@@ -317,7 +317,7 @@ export default function MeasurementDetailPage() {
           {sorted.map((d, i) => (
               <div
                 key={i}
-                className="grid gap-[8px] px-[12px] py-[6px] items-center text-[11px] font-mono"
+                className="grid gap-[8px] px-[12px] py-[8px] items-center text-[11px] font-mono"
                 style={{
                   gridTemplateColumns: "1fr 80px minmax(100px, 200px)",
                   borderBottom: `1px solid ${alpha(C.border, 13)}`,
@@ -328,7 +328,7 @@ export default function MeasurementDetailPage() {
               >
                 {/* Name */}
                 <span
-                  className="text-fg overflow-hidden text-ellipsis whitespace-nowrap text-[10px]"
+                  className="text-fg overflow-hidden text-ellipsis whitespace-nowrap text-[11px]"
                   title={d.name}
                 >
                   {d.name}

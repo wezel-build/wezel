@@ -43,7 +43,7 @@ export default function CommitsListPage() {
 
         <div className="border border-[var(--c-border)] rounded-md overflow-hidden bg-surface">
           <div
-            className={`${GRID} px-[12px] py-[6px] text-[8px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2`}
+            className={`${GRID} px-[12px] py-[8px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2`}
           >
             <span />
             <span>Commit</span>
@@ -85,7 +85,7 @@ export default function CommitsListPage() {
                       ? `/project/${current.id}/commit/${c.shortSha}`
                       : "/"
                   }
-                  className={`${GRID} px-[12px] py-[7px] items-center no-underline text-fg border-b border-[var(--c-border)]`}
+                  className={`${GRID} px-[12px] py-[8px] items-center no-underline text-fg border-b border-[var(--c-border)]`}
                 >
                   <span
                     className="w-[8px] h-[8px] rounded-full shrink-0"

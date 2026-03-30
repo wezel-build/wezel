@@ -77,13 +77,13 @@ export default function TimelinePage() {
               </Link>
               {/* Measurements with deltas */}
               {c.measurements.length > 0 ? (
-                <div className="px-[12px] py-[6px] flex flex-col gap-[3px]">
+                <div className="px-[12px] py-[8px] flex flex-col gap-[4px]">
                   {c.measurements.map((m) => {
                     const prev = findPrev(idx, m.name);
                     return (
                       <div
                         key={m.id}
-                        className="flex items-center gap-[8px] text-[11px] font-mono py-[2px]"
+                        className="flex items-center gap-[8px] text-[11px] font-mono py-[4px]"
                       >
                         <span className="text-mid w-[220px] overflow-hidden text-ellipsis whitespace-nowrap shrink-0">
                           {m.name}
@@ -103,7 +103,7 @@ export default function TimelinePage() {
                   })}
                 </div>
               ) : (
-                <div className="px-[12px] py-[6px] text-[10px] text-dim font-mono">
+                <div className="px-[12px] py-[8px] text-[11px] text-dim font-mono">
                   no measurements
                 </div>
               )}

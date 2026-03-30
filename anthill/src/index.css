@@ -46,6 +46,10 @@
   box-sizing: border-box;
 }
 
+html {
+  line-height: 1.5;
+}
+
 html,
 body,
 #root {

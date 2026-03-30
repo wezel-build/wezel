@@ -26,7 +26,7 @@ function CommitTag({
       className="no-underline flex items-center gap-[6px]"
     >
       <span
-        className="text-[9px] font-bold uppercase tracking-[0.6px] px-[5px] py-[1px] rounded-[3px] border"
+        className="text-[10px] font-bold uppercase tracking-[0.6px] px-[5px] py-[3px] rounded-[3px] border"
         style={{
           color: label === "base" ? C.cyan : C.pink,
           background: alpha(label === "base" ? C.cyan : C.pink, 8),
@@ -119,7 +119,7 @@ export default function ComparePage() {
           <div className="border border-[var(--c-border)] rounded-md overflow-hidden bg-surface">
             {/* Column headers */}
             <div
-              className={`${GRID} px-[12px] py-[6px] text-[8px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2`}
+              className={`${GRID} px-[12px] py-[8px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2`}
             >
               <span>Measurement</span>
               <span className="text-right">Base</span>
@@ -136,7 +136,7 @@ export default function ComparePage() {
             {pairs.map(({ name, base, head }) => (
               <div
                 key={name}
-                className={`${GRID} px-[12px] py-[6px] border-b border-[var(--c-border)] text-[11px] font-mono`}
+                className={`${GRID} px-[12px] py-[8px] border-b border-[var(--c-border)] text-[11px] font-mono`}
               >
                 <span className="text-mid overflow-hidden text-ellipsis whitespace-nowrap">
                   {name}

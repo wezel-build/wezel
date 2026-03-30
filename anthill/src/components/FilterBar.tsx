@@ -61,7 +61,7 @@ export function FilterBar({
                   : [...userFilter, u],
               )
             }
-            className="rounded-[3px] py-[2px] px-[7px] cursor-pointer text-[10px] font-mono border"
+            className="rounded-[3px] py-[4px] px-[7px] cursor-pointer text-[10px] font-mono border"
             style={{
               background: userFilter.includes(u)
                 ? alpha(C.accent, 13)
@@ -87,7 +87,7 @@ export function FilterBar({
           <button
             key={p}
             onClick={() => onProfileFilter(profileFilter === p ? null : p)}
-            className="rounded-[3px] py-[2px] px-[7px] cursor-pointer text-[10px] font-mono uppercase border"
+            className="rounded-[3px] py-[4px] px-[7px] cursor-pointer text-[10px] font-mono uppercase border"
             style={{
               background:
                 profileFilter === p ? alpha(C.accent, 13) : "transparent",

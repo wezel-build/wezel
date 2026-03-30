@@ -364,7 +364,7 @@ export function DetailView({
               border: `1px solid ${threshold > 0 ? alpha(C.accent, 33) : C.border}`,
             }}
           >
-            <span className="font-semibold tracking-[0.5px] uppercase text-[9px]">
+            <span className="font-semibold tracking-[0.5px] uppercase text-[10px]">
               threshold
             </span>
             <input
@@ -411,7 +411,7 @@ export function DetailView({
           {/* Crate filter pill */}
           {crateFilter && (
             <div className="py-1 px-2 border-b border-[var(--c-border)] flex items-center gap-[5px] shrink-0">
-              <span className="text-[8px] text-dim font-bold tracking-[0.5px] uppercase">
+              <span className="text-[10px] text-dim font-bold tracking-[0.5px] uppercase">
                 crate
               </span>
               <span
@@ -430,7 +430,7 @@ export function DetailView({
                   <X size={9} />
                 </button>
               </span>
-              <span className="text-[9px] text-dim font-mono">
+              <span className="text-[10px] text-dim font-mono">
                 {displayedRuns.length}/{observation.runs.length}
               </span>
             </div>

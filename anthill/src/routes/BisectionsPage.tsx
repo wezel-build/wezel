@@ -61,7 +61,7 @@ export default function BisectionsPage() {
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
-                className="text-[10px] font-mono font-semibold px-[6px] py-[2px] rounded border cursor-pointer"
+                className="text-[10px] font-mono font-semibold px-[6px] py-[4px] rounded border cursor-pointer"
                 style={{
                   color: statusFilter === s ? C.accent : C.textDim,
                   background:
@@ -79,7 +79,7 @@ export default function BisectionsPage() {
         {/* Table */}
         <div className="border border-[var(--c-border)] rounded-md overflow-hidden bg-surface">
           <div
-            className={`${GRID} px-[12px] py-[6px] text-[8px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2`}
+            className={`${GRID} px-[12px] py-[8px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2`}
           >
             <span>Status</span>
             <span>Benchmark / Measurement</span>
@@ -112,7 +112,7 @@ export default function BisectionsPage() {
               return (
                 <div
                   key={b.id}
-                  className={`${GRID} px-[12px] py-[7px] border-b border-[var(--c-border)] text-[11px] font-mono`}
+                  className={`${GRID} px-[12px] py-[8px] border-b border-[var(--c-border)] text-[11px] font-mono`}
                 >
                   <span className="flex items-center gap-[6px]">
                     <Badge color={badge.color} bg={badge.bg}>
@@ -153,7 +153,7 @@ export default function BisectionsPage() {
                     ) : b.status === "active" ? (
                       <button
                         onClick={() => abandon(b.id)}
-                        className="text-[10px] font-mono text-dim bg-transparent border border-[var(--c-border)] rounded px-[5px] py-[1px] cursor-pointer"
+                        className="text-[10px] font-mono text-dim bg-transparent border border-[var(--c-border)] rounded px-[5px] py-[3px] cursor-pointer"
                       >
                         abandon
                       </button>
