@@ -1,7 +1,26 @@
+// ── Repo ─────────────────────────────────────────────────────────────────────
+
+export interface Repo {
+  id: number;
+  upstream: string;
+  webhookRegistered: boolean;
+  projectCount: number;
+}
+
+export interface WebhookSetup {
+  id: number;
+  upstream: string;
+  webhookSecret: string;
+  webhookUrl: string;
+  /** Whether the webhook was auto-registered on GitHub. */
+  registered: boolean;
+}
+
 // ── Project ──────────────────────────────────────────────────────────────────
 
 export interface Project {
   id: number;
+  repo_id: number;
   name: string;
   upstream: string;
 }
@@ -48,7 +67,6 @@ export type MeasurementStatus =
 export interface MeasurementDetail {
   name: string;
   value: number;
-  prevValue?: number;
 }
 
 export interface Measurement {
@@ -57,7 +75,6 @@ export interface Measurement {
   kind: string;
   status: MeasurementStatus;
   value?: number;
-  prevValue?: number;
   unit?: string;
   detail?: MeasurementDetail[];
 }
@@ -68,8 +85,39 @@ export interface ForagerCommit {
   author: string;
   message: string;
   timestamp: string;
-  status: "not-started" | "running" | "complete";
   measurements: Measurement[];
+}
+
+// ── Branch timeline ─────────────────────────────────────────────────────────
+
+export interface BranchTimeline {
+  branch: string;
+  commits: ForagerCommit[];
+}
+
+// ── Compare ─────────────────────────────────────────────────────────────────
+
+export interface CompareResponse {
+  base: ForagerCommit;
+  head: ForagerCommit;
+}
+
+// ── Bisections ──────────────────────────────────────────────────────────────
+
+export type BisectionStatus = "active" | "complete" | "abandoned";
+
+export interface Bisection {
+  id: number;
+  projectId: number;
+  benchmarkName: string;
+  measurementName: string;
+  branch: string;
+  goodSha: string;
+  badSha: string;
+  goodValue: number;
+  badValue: number;
+  status: BisectionStatus;
+  culpritSha?: string;
 }
 
 // ── Pheromone registry ───────────────────────────────────────────────────────

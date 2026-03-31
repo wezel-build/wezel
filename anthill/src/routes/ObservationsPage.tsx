@@ -179,7 +179,7 @@ export default function ObservationsPage() {
 
         {/* Table header */}
         <div
-          className={`${GRID_CLS} px-[12px] py-[4px] text-[9px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface`}
+          className={`${GRID_CLS} px-[12px] py-[6px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface`}
         >
           <span>Command</span>
           <span>Prof.</span>
@@ -227,7 +227,7 @@ export default function ObservationsPage() {
                       : `/project/${current.id}/observation/${s.id}`,
                   );
                 }}
-                className={`${GRID_CLS} px-[12px] py-[6px] items-center cursor-pointer transition-all duration-100`}
+                className={`${GRID_CLS} px-[12px] py-[8px] items-center cursor-pointer transition-all duration-100`}
                 style={{
                   background: isSel
                     ? alpha(C.accent, 6)

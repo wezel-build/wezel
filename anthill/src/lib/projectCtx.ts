@@ -24,6 +24,11 @@ export const nullApi: ProjectApi = {
   scheduleCommit: () => Promise.reject("no project"),
   users: () => Promise.reject("no project"),
   benchmarks: () => Promise.reject("no project"),
+  branchTimeline: () => Promise.reject("no project"),
+  compare: () => Promise.reject("no project"),
+  bisections: () => Promise.reject("no project"),
+  bisection: () => Promise.reject("no project"),
+  abandonBisection: () => Promise.reject("no project"),
 };
 
 export const ProjectCtx = createContext<ProjectCtxValue>({

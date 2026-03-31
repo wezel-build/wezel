@@ -7,35 +7,74 @@ use reqwest::Client;
 use serde_json::Value;
 use sqlx::PgPool;
 
+use axum::response::{IntoResponse, Response};
+
 use crate::github::{github_api, github_owner_repo};
 use crate::models::*;
 use crate::{ApiResult, ise};
 
-pub async fn create_project(
-    State(pool): State<PgPool>,
-    Json(body): Json<Value>,
-) -> ApiResult<(StatusCode, Json<Project>)> {
-    let name = body["name"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
-    let upstream = body["upstream"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>) -> Response {
+    let Some(name) = body["name"].as_str() else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let Some(upstream) = body["upstream"].as_str() else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
 
-    let project = sqlx::query_as::<_, Project>(
-        "INSERT INTO projects (name, upstream) VALUES ($1, $2) RETURNING id, name, upstream",
+    // Find or create repo.
+    let repo_id: i64 = match sqlx::query_as::<_, (i64,)>("SELECT id FROM repos WHERE upstream = $1")
+        .bind(upstream)
+        .fetch_optional(&pool)
+        .await
+    {
+        Ok(Some((id,))) => id,
+        Ok(None) => {
+            match sqlx::query_as::<_, IdRow>(
+                "INSERT INTO repos (upstream) VALUES ($1) RETURNING id",
+            )
+            .bind(upstream)
+            .fetch_one(&pool)
+            .await
+            {
+                Ok(row) => row.id,
+                Err(e) => return ise(e).into_response(),
+            }
+        }
+        Err(e) => return ise(e).into_response(),
+    };
+
+    match sqlx::query_as::<_, Project>(
+        "INSERT INTO projects (repo_id, name, upstream) \
+         VALUES ($1, $2, $3) \
+         RETURNING id, repo_id, name, subdir, upstream",
     )
+    .bind(repo_id)
     .bind(name)
     .bind(upstream)
     .fetch_one(&pool)
     .await
-    .map_err(ise)?;
-
-    Ok((StatusCode::CREATED, Json(project)))
+    {
+        Ok(project) => (StatusCode::CREATED, Json(project)).into_response(),
+        Err(sqlx::Error::Database(db_err))
+            if db_err.constraint() == Some("projects_repo_id_name_key") =>
+        {
+            (
+                StatusCode::CONFLICT,
+                format!("A project named \"{name}\" already exists for this repo"),
+            )
+                .into_response()
+        }
+        Err(e) => ise(e).into_response(),
+    }
 }
 
 pub async fn get_projects(State(pool): State<PgPool>) -> ApiResult<Json<Vec<Project>>> {
-    let projects =
-        sqlx::query_as::<_, Project>("SELECT id, name, upstream FROM projects ORDER BY id")
-            .fetch_all(&pool)
-            .await
-            .map_err(ise)?;
+    let projects = sqlx::query_as::<_, Project>(
+        "SELECT id, repo_id, name, subdir, upstream FROM projects ORDER BY id",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(ise)?;
     Ok(Json(projects))
 }
 
@@ -46,7 +85,8 @@ pub async fn rename_project(
 ) -> ApiResult<Json<Project>> {
     let name = body["name"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
     let project = sqlx::query_as::<_, Project>(
-        "UPDATE projects SET name = $1 WHERE id = $2 RETURNING id, name, upstream",
+        "UPDATE projects SET name = $1 WHERE id = $2 \
+         RETURNING id, repo_id, name, subdir, upstream",
     )
     .bind(name)
     .bind(project_id)
@@ -70,7 +110,7 @@ pub async fn get_overview(State(pool): State<PgPool>) -> ApiResult<Json<Overview
             .map_err(ise)?;
 
     let latest = sqlx::query_as::<_, LatestCommit>(
-        "SELECT short_sha, status FROM commits ORDER BY timestamp DESC LIMIT 1",
+        "SELECT short_sha FROM commits ORDER BY timestamp DESC LIMIT 1",
     )
     .fetch_optional(&pool)
     .await
@@ -80,7 +120,6 @@ pub async fn get_overview(State(pool): State<PgPool>) -> ApiResult<Json<Overview
         observation_count,
         tracked_count,
         latest_commit_short_sha: latest.as_ref().map(|l| l.short_sha.clone()),
-        latest_commit_status: latest.map(|l| l.status),
     }))
 }
 
@@ -103,7 +142,10 @@ pub async fn get_project_overview(
             .map_err(ise)?;
 
     let latest = sqlx::query_as::<_, LatestCommit>(
-        "SELECT short_sha, status FROM commits WHERE project_id = $1 ORDER BY timestamp DESC LIMIT 1",
+        "SELECT c.short_sha FROM commits c \
+         JOIN projects p ON p.repo_id = c.repo_id \
+         WHERE p.id = $1 \
+         ORDER BY c.timestamp DESC LIMIT 1",
     )
     .bind(project_id)
     .fetch_optional(&pool)
@@ -114,7 +156,6 @@ pub async fn get_project_overview(
         observation_count,
         tracked_count,
         latest_commit_short_sha: latest.as_ref().map(|l| l.short_sha.clone()),
-        latest_commit_status: latest.map(|l| l.status),
     }))
 }
 
@@ -140,13 +181,14 @@ pub async fn post_benchmark_pr(
     State(pool): State<PgPool>,
     Json(body): Json<BenchmarkPrBody>,
 ) -> ApiResult<Json<BenchmarkPrResponse>> {
-    let project =
-        sqlx::query_as::<_, Project>("SELECT id, name, upstream FROM projects WHERE id = $1")
-            .bind(project_id)
-            .fetch_optional(&pool)
-            .await
-            .map_err(ise)?
-            .ok_or(StatusCode::NOT_FOUND)?;
+    let project = sqlx::query_as::<_, Project>(
+        "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
+    )
+    .bind(project_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(ise)?
+    .ok_or(StatusCode::NOT_FOUND)?;
 
     let (owner, repo) = github_owner_repo(&project.upstream).ok_or(StatusCode::BAD_REQUEST)?;
 

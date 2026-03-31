@@ -1,4 +1,14 @@
-import type { Observation, ForagerCommit, Project, Pheromone } from "./data";
+import type {
+  Observation,
+  ForagerCommit,
+  Project,
+  Pheromone,
+  BranchTimeline,
+  CompareResponse,
+  Bisection,
+  Repo,
+  WebhookSetup,
+} from "./data";
 
 export interface GithubCommit {
   sha: string;
@@ -13,7 +23,6 @@ export interface Overview {
   observationCount: number;
   trackedCount: number;
   latestCommitShortSha: string | null;
-  latestCommitStatus: string | null;
 }
 
 /** Observation as returned by the list endpoint (no graph). */
@@ -34,7 +43,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
     credentials: "include",
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(text || `${res.status} ${res.statusText}`);
+  }
   return res.json();
 }
 
@@ -85,6 +97,26 @@ function projectApi(projectId: number) {
       post<ForagerCommit>(`${p}/commit`, { sha }),
     users: () => get<string[]>(`${p}/user`),
     benchmarks: () => get<string[]>(`${p}/benchmarks`),
+    branchTimeline: (branch: string, limit?: number) => {
+      const q = limit ? `?limit=${limit}` : "";
+      return get<BranchTimeline>(
+        `${p}/branch/${encodeURIComponent(branch)}/timeline${q}`,
+      );
+    },
+    compare: (baseSha: string, headSha: string) =>
+      get<CompareResponse>(
+        `${p}/compare?base_sha=${encodeURIComponent(baseSha)}&head_sha=${encodeURIComponent(headSha)}`,
+      ),
+    bisections: (status?: string, branch?: string) => {
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (branch) params.set("branch", branch);
+      const qs = params.toString();
+      return get<Bisection[]>(`${p}/bisections${qs ? `?${qs}` : ""}`);
+    },
+    bisection: (id: number) => get<Bisection>(`${p}/bisections/${id}`),
+    abandonBisection: (id: number) =>
+      patch<Bisection>(`${p}/bisections/${id}`, { status: "abandoned" }),
   };
 }
 
@@ -95,6 +127,9 @@ export interface BenchmarkPrResponse {
 }
 
 export const api = {
+  repos: () => get<Repo[]>("/api/repo"),
+  setupWebhook: (repoId: number) =>
+    post<WebhookSetup>(`/api/repo/${repoId}/webhook`, {}),
   projects: () => get<Project[]>("/api/project"),
   createProject: (name: string, upstream: string) =>
     post<Project>("/api/project", { name, upstream }),

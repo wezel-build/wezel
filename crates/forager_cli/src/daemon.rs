@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
-use wezel_types::ForagerQueueJob;
+use wezel_types::{ForagerJob, ForagerRunReport};
 
 use crate::Config;
 use crate::DaemonCmd;
@@ -151,16 +151,17 @@ fn run_loop(
             continue;
         }
 
-        let job: ForagerQueueJob = response.into_json().context("parsing job response")?;
+        let job: ForagerJob = response.into_json().context("parsing job response")?;
+        let job_id = job.id;
         log::info!(
             "claimed queue job {}: sha={} benchmark={}",
-            job.id,
+            job_id,
             &job.commit_sha[..7.min(job.commit_sha.len())],
             job.benchmark_name
         );
 
         status.current_job = Some(JobStatus {
-            id: job.id,
+            id: job_id,
             benchmark: job.benchmark_name.clone(),
             commit_sha: job.commit_sha.clone(),
             status: "running".to_string(),
@@ -169,28 +170,39 @@ fn run_loop(
         write_status(status);
 
         git::reset_worktree(repo_dir)
-            .with_context(|| format!("resetting worktree before job {}", job.id))?;
-        git::fetch(repo_dir).with_context(|| format!("git fetch before job {}", job.id))?;
+            .with_context(|| format!("resetting worktree before job {}", job_id))?;
+        git::fetch(repo_dir).with_context(|| format!("git fetch before job {}", job_id))?;
         git::checkout_detached(repo_dir, &job.commit_sha)
-            .with_context(|| format!("checkout {} for job {}", job.commit_sha, job.id))?;
+            .with_context(|| format!("checkout {} for job {}", job.commit_sha, job_id))?;
 
-        let result = run_benchmark(&job.benchmark_name, repo_dir, Some(burrow));
+        let result = run_benchmark(&job.benchmark_name, repo_dir);
 
+        // Submit results to Burrow and update the queue job status.
         let (patch_body, finished) = match result {
-            Ok(()) => (
-                serde_json::json!({ "status": "complete" }),
-                JobStatus {
-                    id: job.id,
-                    benchmark: job.benchmark_name.clone(),
-                    commit_sha: job.commit_sha.clone(),
-                    status: "complete".to_string(),
-                    error: None,
-                },
-            ),
+            Ok(ref step_reports) => {
+                let report = ForagerRunReport {
+                    token: job.token.clone(),
+                    steps: step_reports.clone(),
+                    bisection_id: job.bisection_id,
+                };
+                if let Err(e) = burrow.submit(&report) {
+                    log::warn!("failed to submit run report: {e:#}");
+                }
+                (
+                    serde_json::json!({ "status": "complete" }),
+                    JobStatus {
+                        id: job_id,
+                        benchmark: job.benchmark_name.clone(),
+                        commit_sha: job.commit_sha.clone(),
+                        status: "complete".to_string(),
+                        error: None,
+                    },
+                )
+            }
             Err(ref e) => (
                 serde_json::json!({ "status": "failed", "error": format!("{e:#}") }),
                 JobStatus {
-                    id: job.id,
+                    id: job_id,
                     benchmark: job.benchmark_name.clone(),
                     commit_sha: job.commit_sha.clone(),
                     status: "failed".to_string(),
@@ -202,15 +214,15 @@ fn run_loop(
         queue_agent
             .patch(&format!(
                 "{}/api/forager/jobs/{}",
-                config.server_url, job.id
+                config.server_url, job_id
             ))
             .send_json(&patch_body)
-            .with_context(|| format!("patching job {} status", job.id))?;
+            .with_context(|| format!("patching job {} status", job_id))?;
 
         if let Err(ref e) = result {
-            log::warn!("job {} failed: {e:#}", job.id);
+            log::warn!("job {} failed: {e:#}", job_id);
         } else {
-            log::info!("job {} complete", job.id);
+            log::info!("job {} complete", job_id);
         }
 
         status.current_job = None;

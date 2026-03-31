@@ -126,7 +126,6 @@ fn parse_llvm_lines_output(s: &str) -> Result<(u64, Vec<MeasurementDetail>)> {
             detail.push(MeasurementDetail {
                 name: name.to_string(),
                 value: count as f64,
-                prev_value: None,
             });
         }
     }

@@ -5,14 +5,27 @@ import { C, alpha } from "../lib/colors";
 import { fmtTime } from "../lib/format";
 import { Badge } from "../components/Badge";
 import { useProject } from "../lib/useProject";
+import type { ForagerCommit } from "../lib/data";
 
-function statusDot(status: "not-started" | "running" | "complete") {
+type CommitStatus = "not-started" | "running" | "complete";
+
+function deriveStatus(c: ForagerCommit): CommitStatus {
+  if (c.measurements.length === 0) return "not-started";
+  if (
+    c.measurements.some((m) => m.status === "running" || m.status === "pending")
+  )
+    return "running";
+  if (c.measurements.every((m) => m.status === "complete")) return "complete";
+  return "not-started";
+}
+
+function statusDot(status: CommitStatus) {
   if (status === "complete") return C.green;
   if (status === "running") return C.amber;
   return C.textDim;
 }
 
-function statusBadge(status: "not-started" | "running" | "complete") {
+function statusBadge(status: CommitStatus) {
   if (status === "complete")
     return { color: C.green, bg: alpha(C.green, 9), label: "complete" };
   if (status === "running")
@@ -43,7 +56,7 @@ export default function CommitsListPage() {
 
         <div className="border border-[var(--c-border)] rounded-md overflow-hidden bg-surface">
           <div
-            className={`${GRID} px-[12px] py-[6px] text-[8px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2`}
+            className={`${GRID} px-[12px] py-[8px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2`}
           >
             <span />
             <span>Commit</span>
@@ -75,7 +88,8 @@ export default function CommitsListPage() {
           {!loading &&
             !error &&
             commits.map((c) => {
-              const badge = statusBadge(c.status);
+              const status = deriveStatus(c);
+              const badge = statusBadge(status);
 
               return (
                 <Link
@@ -85,12 +99,12 @@ export default function CommitsListPage() {
                       ? `/project/${current.id}/commit/${c.shortSha}`
                       : "/"
                   }
-                  className={`${GRID} px-[12px] py-[7px] items-center no-underline text-fg border-b border-[var(--c-border)]`}
+                  className={`${GRID} px-[12px] py-[8px] items-center no-underline text-fg border-b border-[var(--c-border)]`}
                 >
                   <span
                     className="w-[8px] h-[8px] rounded-full shrink-0"
                     style={{
-                      background: statusDot(c.status),
+                      background: statusDot(status),
                       boxShadow: `0 0 0 1px ${C.border}`,
                     }}
                   />

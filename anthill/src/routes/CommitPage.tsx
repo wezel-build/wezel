@@ -19,7 +19,7 @@ import {
   ExternalLink,
   Play,
 } from "lucide-react";
-import { C, alpha } from "../lib/colors";
+import { C } from "../lib/colors";
 import { fmtValue, fmtTime } from "../lib/format";
 import {
   type ForagerCommit,
@@ -31,7 +31,6 @@ import { useCommits, useGithubCommit, usePheromones } from "../lib/hooks";
 import { useProject } from "../lib/useProject";
 import { api } from "../lib/api";
 import { Badge } from "../components/Badge";
-import { DeltaBadge } from "../components/DeltaBadge";
 import { VizRenderer } from "../components/VizRenderer";
 
 // ── Small pieces ─────────────────────────────────────────────────────────────
@@ -62,62 +61,6 @@ function statusLabel(s: MeasurementStatus): string {
   return s;
 }
 
-// ── Progress bar ─────────────────────────────────────────────────────────────
-
-function ProgressBar({ measurements }: { measurements: Measurement[] }) {
-  const total = measurements.length;
-  if (total === 0) return null;
-
-  const complete = measurements.filter((m) => m.status === "complete").length;
-  const running = measurements.filter((m) => m.status === "running").length;
-  const failed = measurements.filter((m) => m.status === "failed").length;
-  const pending = measurements.filter((m) => m.status === "pending").length;
-  const notStarted = measurements.filter(
-    (m) => m.status === "not-started",
-  ).length;
-
-  const pct = (n: number) => `${(n / total) * 100}%`;
-
-  return (
-    <div className="flex flex-col gap-[4px]">
-      <div className="flex h-[6px] rounded-[3px] overflow-hidden bg-surface3">
-        <div
-          style={{
-            width: pct(complete),
-            background: C.green,
-            transition: "width 0.3s",
-          }}
-        />
-        <div
-          style={{
-            width: pct(running),
-            background: C.amber,
-            transition: "width 0.3s",
-          }}
-        />
-        <div
-          style={{
-            width: pct(failed),
-            background: C.red,
-            transition: "width 0.3s",
-          }}
-        />
-      </div>
-      <div className="flex gap-[10px] text-[9px] text-dim font-mono">
-        <span>
-          {complete}/{total} complete
-        </span>
-        {running > 0 && (
-          <span style={{ color: C.amber }}>{running} running</span>
-        )}
-        {pending > 0 && <span>{pending} pending</span>}
-        {notStarted > 0 && <span>{notStarted} not started</span>}
-        {failed > 0 && <span style={{ color: C.red }}>{failed} failed</span>}
-      </div>
-    </div>
-  );
-}
-
 // ── Measurement row ──────────────────────────────────────────────────────────
 
 function MeasurementRow({
@@ -132,8 +75,6 @@ function MeasurementRow({
   navigate: NavigateFunction;
 }) {
   const [hovered, setHovered] = useState(false);
-  const hasDelta =
-    m.status === "complete" && m.value != null && m.prevValue != null;
   const isDone = m.status === "complete" && m.value != null;
   const hasDetail = m.detail != null && m.detail.length > 0;
 
@@ -170,21 +111,11 @@ function MeasurementRow({
         {isDone ? fmtValue(m.value!, m.unit) : statusLabel(m.status)}
       </span>
 
-      <span className="text-dim text-[9px]">
+      <span className="text-dim text-[10px]">
         {isDone && m.unit ? m.unit : ""}
       </span>
 
-      <span>
-        {hasDelta ? (
-          <DeltaBadge
-            current={m.value!}
-            baseline={m.prevValue!}
-            unit={m.unit}
-          />
-        ) : (
-          <span className="text-dim text-[10px]">—</span>
-        )}
-      </span>
+      <span className="text-dim text-[10px]">—</span>
     </div>
   );
 }
@@ -192,9 +123,6 @@ function MeasurementRow({
 // ── Commit header ────────────────────────────────────────────────────────────
 
 function CommitHeader({ commit }: { commit: ForagerCommit }) {
-  const isRunning = commit.status === "running";
-  const isNotStarted = commit.status === "not-started";
-
   const completedMs = commit.measurements.filter(
     (m) => m.status === "complete" && m.value != null && m.unit === "ms",
   );
@@ -204,27 +132,6 @@ function CommitHeader({ commit }: { commit: ForagerCommit }) {
       ? completedMs.reduce((s, m) => s + (m.value ?? 0), 0)
       : null;
 
-  const totalPrevMs =
-    completedMs.length > 0 && completedMs.every((m) => m.prevValue != null)
-      ? completedMs.reduce((s, m) => s + (m.prevValue ?? 0), 0)
-      : null;
-
-  const regressions = commit.measurements.filter(
-    (m) =>
-      m.status === "complete" &&
-      m.value != null &&
-      m.prevValue != null &&
-      m.value > m.prevValue,
-  ).length;
-
-  const improvements = commit.measurements.filter(
-    (m) =>
-      m.status === "complete" &&
-      m.value != null &&
-      m.prevValue != null &&
-      m.value < m.prevValue,
-  ).length;
-
   return (
     <div className="flex flex-col gap-[12px] px-[20px] py-[16px] bg-surface border-b border-[var(--c-border)] rounded-t-md">
       <div className="flex items-center justify-between">
@@ -233,22 +140,6 @@ function CommitHeader({ commit }: { commit: ForagerCommit }) {
           <span className="text-sm font-bold font-mono text-accent tracking-[-0.3px]">
             {commit.shortSha}
           </span>
-          <Badge
-            color={isNotStarted ? C.textDim : isRunning ? C.amber : C.green}
-            bg={
-              isNotStarted
-                ? C.surface3
-                : isRunning
-                  ? alpha(C.amber, 9)
-                  : alpha(C.green, 9)
-            }
-          >
-            {isNotStarted
-              ? "not started"
-              : isRunning
-                ? "in-flight"
-                : "complete"}
-          </Badge>
         </div>
         <span className="text-[10px] font-mono text-dim">
           {fmtTime(commit.timestamp)}
@@ -264,71 +155,30 @@ function CommitHeader({ commit }: { commit: ForagerCommit }) {
         </span>
       </div>
 
-      {isRunning && <ProgressBar measurements={commit.measurements} />}
-
-      {commit.status === "complete" && (
-        <div className="flex gap-[20px] items-end flex-wrap">
-          {totalMs != null && (
-            <div className="flex flex-col gap-[1px]">
-              <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
-                Σ timed measurements
-              </span>
-              <div className="flex items-center gap-[8px]">
-                <span className="text-lg font-bold font-mono text-fg">
-                  {fmtValue(totalMs, "ms")}
-                </span>
-                {totalPrevMs != null && (
-                  <DeltaBadge
-                    current={totalMs}
-                    baseline={totalPrevMs}
-                    unit="ms"
-                  />
-                )}
-              </div>
-            </div>
-          )}
-
+      <div className="flex gap-[20px] items-end flex-wrap">
+        {totalMs != null && (
           <div className="flex flex-col gap-[1px]">
-            <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
-              Measurements
+            <span className="text-[10px] text-dim uppercase tracking-[0.8px] font-semibold">
+              Σ timed measurements
             </span>
-            <span
-              className="text-lg font-bold font-mono"
-              style={{ color: C.pink }}
-            >
-              {commit.measurements.length}
+            <span className="text-lg font-bold font-mono text-fg">
+              {fmtValue(totalMs, "ms")}
             </span>
           </div>
+        )}
 
-          {regressions > 0 && (
-            <div className="flex flex-col gap-[1px]">
-              <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
-                Regressions
-              </span>
-              <span
-                className="text-lg font-bold font-mono"
-                style={{ color: C.red }}
-              >
-                {regressions}
-              </span>
-            </div>
-          )}
-
-          {improvements > 0 && (
-            <div className="flex flex-col gap-[1px]">
-              <span className="text-[9px] text-dim uppercase tracking-[0.8px] font-semibold">
-                Improvements
-              </span>
-              <span
-                className="text-lg font-bold font-mono"
-                style={{ color: C.green }}
-              >
-                {improvements}
-              </span>
-            </div>
-          )}
+        <div className="flex flex-col gap-[1px]">
+          <span className="text-[10px] text-dim uppercase tracking-[0.8px] font-semibold">
+            Measurements
+          </span>
+          <span
+            className="text-lg font-bold font-mono"
+            style={{ color: C.pink }}
+          >
+            {commit.measurements.length}
+          </span>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -487,7 +337,7 @@ export default function CommitPage() {
           {prevCommit && (
             <button
               onClick={() => navigate(toCommit(prevCommit.shortSha))}
-              className="flex items-center gap-[3px] bg-surface2 border border-[var(--c-border)] rounded-[3px] px-[8px] py-[2px] cursor-pointer text-mid text-[10px] font-mono"
+              className="flex items-center gap-[3px] bg-surface2 border border-[var(--c-border)] rounded-[3px] px-[8px] py-[4px] cursor-pointer text-mid text-[10px] font-mono"
             >
               <ChevronLeft size={11} /> {prevCommit.shortSha}
             </button>
@@ -495,7 +345,7 @@ export default function CommitPage() {
           {nextCommit && (
             <button
               onClick={() => navigate(toCommit(nextCommit.shortSha))}
-              className="flex items-center gap-[3px] bg-surface2 border border-[var(--c-border)] rounded-[3px] px-[8px] py-[2px] cursor-pointer text-mid text-[10px] font-mono"
+              className="flex items-center gap-[3px] bg-surface2 border border-[var(--c-border)] rounded-[3px] px-[8px] py-[4px] cursor-pointer text-mid text-[10px] font-mono"
             >
               {nextCommit.shortSha} <ChevronRight size={11} />
             </button>
@@ -578,7 +428,7 @@ export default function CommitPage() {
                       <button
                         key={bm}
                         onClick={() => setBenchmarkInput(bm)}
-                        className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[2px]"
+                        className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[4px]"
                         style={{
                           background:
                             benchmarkInput === bm ? C.surface3 : C.surface2,
@@ -597,14 +447,14 @@ export default function CommitPage() {
                     onChange={(e) => setBenchmarkInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && onEnqueue()}
                     placeholder="benchmark name"
-                    className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[3px] bg-surface2 text-fg flex-1"
+                    className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[5px] bg-surface2 text-fg flex-1"
                     style={{ outline: "none" }}
                     autoFocus
                   />
                   <button
                     onClick={onEnqueue}
                     disabled={!benchmarkInput.trim() || enqueueing}
-                    className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[8px] py-[3px] bg-surface2"
+                    className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[8px] py-[5px] bg-surface2"
                     style={{
                       color:
                         !benchmarkInput.trim() || enqueueing
@@ -645,7 +495,7 @@ export default function CommitPage() {
             <div className="border border-[var(--c-border)] rounded-md overflow-hidden">
               <CommitHeader commit={commit} />
 
-              <div className="grid grid-cols-[18px_1fr_70px_56px_110px] gap-[8px] px-[12px] py-[6px] text-[8px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2">
+              <div className="grid grid-cols-[18px_1fr_70px_56px_110px] gap-[8px] px-[12px] py-[8px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2">
                 <span />
                 <span>Measurement</span>
                 <span className="text-right">Value</span>
@@ -662,7 +512,7 @@ export default function CommitPage() {
                   <div key={kind}>
                     {grouped.length > 1 && (
                       <div
-                        className={`px-[12px] py-[5px] text-[9px] font-bold font-mono text-dim uppercase tracking-[0.8px] bg-surface border-b border-[var(--c-border)]${gi > 0 ? " border-t border-[var(--c-border)]" : ""}`}
+                        className={`px-[12px] py-[6px] text-[10px] font-bold font-mono text-dim uppercase tracking-[0.8px] bg-surface border-b border-[var(--c-border)]${gi > 0 ? " border-t border-[var(--c-border)]" : ""}`}
                       >
                         {kind}
                       </div>
@@ -674,7 +524,6 @@ export default function CommitPage() {
                           data={completedMs.map((m) => ({
                             name: m.name,
                             value: m.value,
-                            prevValue: m.prevValue,
                           }))}
                           unit={completedMs[0]?.unit}
                         />

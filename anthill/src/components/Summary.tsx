@@ -119,7 +119,7 @@ export function Summary({
       {/* Hottest crates */}
       <div>
         <div
-          className="text-[9px] font-bold uppercase tracking-[0.8px] mb-[6px]"
+          className="text-[10px] font-bold uppercase tracking-[0.8px] mb-[6px]"
           style={{ color: C.textDim }}
         >
           Rebuild frequency
@@ -130,7 +130,7 @@ export function Summary({
             return (
               <div
                 key={c.name}
-                className="flex items-center gap-[6px] py-[3px] px-[6px] rounded-[3px]"
+                className="flex items-center gap-[6px] py-[4px] px-[6px] rounded-[3px]"
                 style={{
                   background: col.bg,
                   border: `1px solid ${alpha(col.border, 20)}`,
@@ -143,7 +143,7 @@ export function Summary({
                   {c.name}
                 </span>
                 <span
-                  className="text-[9px] font-mono font-bold min-w-[28px] text-right"
+                  className="text-[10px] font-mono font-bold min-w-[28px] text-right"
                   style={{ color: col.border }}
                 >
                   {c.heat}%

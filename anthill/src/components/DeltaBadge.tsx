@@ -23,7 +23,7 @@ export function DeltaBadge({
 
   return (
     <span
-      className="text-[10px] font-mono font-semibold rounded-[3px] py-[1px] px-[5px] whitespace-nowrap border"
+      className="text-[10px] font-mono font-semibold rounded-[3px] py-[3px] px-[6px] whitespace-nowrap border"
       style={{
         color,
         background: alpha(color, 8),

@@ -12,7 +12,7 @@ export function Badge({
 }) {
   return (
     <span
-      className="text-[10px] font-semibold tracking-[0.6px] py-[1px] px-[6px] rounded-[3px] uppercase border"
+      className="text-[10px] font-semibold tracking-[0.6px] py-[3px] px-[7px] rounded-[3px] uppercase border"
       style={{
         background: bg,
         color,

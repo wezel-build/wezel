@@ -4,9 +4,45 @@ use sqlx::FromRow;
 // ── DB rows ──────────────────────────────────────────────────────────────────
 
 #[derive(FromRow, Serialize)]
+pub struct Repo {
+    pub id: i64,
+    pub upstream: String,
+}
+
+#[derive(FromRow)]
+pub struct RepoRow {
+    pub id: i64,
+    pub upstream: String,
+    pub webhook_registered: bool,
+    pub project_count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoJson {
+    pub id: i64,
+    pub upstream: String,
+    pub webhook_registered: bool,
+    pub project_count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebhookSetupJson {
+    pub id: i64,
+    pub upstream: String,
+    pub webhook_secret: String,
+    pub webhook_url: String,
+    /// Whether the webhook was auto-registered on GitHub.
+    pub registered: bool,
+}
+
+#[derive(FromRow, Serialize)]
 pub struct Project {
     pub id: i64,
+    pub repo_id: i64,
     pub name: String,
+    pub subdir: String,
     pub upstream: String,
 }
 
@@ -44,34 +80,29 @@ pub struct DirtyCrate {
 #[derive(FromRow)]
 pub struct Commit {
     pub id: i64,
+    #[expect(unused)]
+    pub repo_id: i64,
     pub sha: String,
     pub short_sha: String,
+    #[expect(unused)]
+    pub parent_sha: Option<String>,
     pub author: String,
     pub message: String,
     pub timestamp: String,
-    pub status: String,
 }
 
 #[derive(FromRow)]
 pub struct Measurement {
     pub id: i64,
     pub commit_id: i64,
+    #[expect(unused)]
+    pub project_id: i64,
     pub name: String,
     pub kind: String,
     pub status: String,
     pub value: Option<f64>,
-    pub prev_value: Option<f64>,
     pub unit: Option<String>,
     pub step: Option<String>,
-}
-
-#[derive(FromRow)]
-#[expect(unused)]
-pub struct ForagerToken {
-    pub id: i64,
-    pub commit_id: i64,
-    pub benchmark_name: String,
-    pub token: String,
 }
 
 #[derive(FromRow, Serialize)]
@@ -79,7 +110,6 @@ pub struct MeasurementDetail {
     pub measurement_id: i64,
     pub name: String,
     pub value: f64,
-    pub prev_value: f64,
 }
 
 #[derive(FromRow)]
@@ -110,7 +140,6 @@ pub struct IdNameRow {
 #[derive(FromRow)]
 pub struct LatestCommit {
     pub short_sha: String,
-    pub status: String,
 }
 
 // ── API responses ────────────────────────────────────────────────────────────
@@ -157,8 +186,6 @@ pub struct ObservationJson {
 pub struct MeasurementDetailJson {
     pub name: String,
     pub value: f64,
-    #[serde(rename = "prevValue")]
-    pub prev_value: f64,
 }
 
 #[derive(Serialize)]
@@ -169,8 +196,6 @@ pub struct MeasurementJson {
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "prevValue")]
-    pub prev_value: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -187,7 +212,6 @@ pub struct CommitJson {
     pub author: String,
     pub message: String,
     pub timestamp: String,
-    pub status: String,
     pub measurements: Vec<MeasurementJson>,
 }
 
@@ -199,8 +223,6 @@ pub struct OverviewJson {
     pub tracked_count: i64,
     #[serde(rename = "latestCommitShortSha")]
     pub latest_commit_short_sha: Option<String>,
-    #[serde(rename = "latestCommitStatus")]
-    pub latest_commit_status: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -213,6 +235,58 @@ pub struct ForagerQueueJobStatus {
 pub struct BenchmarkPrResponse {
     #[serde(rename = "prUrl")]
     pub pr_url: String,
+}
+
+// ── Bisections ──────────────────────────────────────────────────────────────
+
+#[derive(FromRow)]
+pub struct Bisection {
+    pub id: i64,
+    pub project_id: i64,
+    pub benchmark_name: String,
+    pub measurement_name: String,
+    pub branch: String,
+    pub good_sha: String,
+    pub bad_sha: String,
+    pub good_value: f64,
+    pub bad_value: f64,
+    pub status: String,
+    pub culprit_sha: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BisectionJson {
+    pub id: i64,
+    pub project_id: i64,
+    pub benchmark_name: String,
+    pub measurement_name: String,
+    pub branch: String,
+    pub good_sha: String,
+    pub bad_sha: String,
+    pub good_value: f64,
+    pub bad_value: f64,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub culprit_sha: Option<String>,
+}
+
+impl From<Bisection> for BisectionJson {
+    fn from(b: Bisection) -> Self {
+        Self {
+            id: b.id,
+            project_id: b.project_id,
+            benchmark_name: b.benchmark_name,
+            measurement_name: b.measurement_name,
+            branch: b.branch,
+            good_sha: b.good_sha,
+            bad_sha: b.bad_sha,
+            good_value: b.good_value,
+            bad_value: b.bad_value,
+            status: b.status,
+            culprit_sha: b.culprit_sha,
+        }
+    }
 }
 
 // ── Pheromone registry ───────────────────────────────────────────────────────

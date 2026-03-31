@@ -109,9 +109,16 @@ export default function Shell() {
   }, [projectOpen]);
 
   const { overview } = useOverview();
-  const onCommitPage =
-    current != null &&
-    location.pathname.startsWith(`/project/${current.id}/commit`);
+  const section =
+    current != null
+      ? location.pathname.includes("/branch/")
+        ? "timeline"
+        : location.pathname.includes("/bisections")
+          ? "bisections"
+          : location.pathname.includes("/observation")
+            ? "observations"
+            : "commits"
+      : null;
   const onNewPage = location.pathname === "/projects/create";
   const onAdminPage = location.pathname.startsWith("/admin");
 
@@ -232,29 +239,56 @@ export default function Shell() {
                 <div className="w-[1px] h-[16px] bg-[var(--c-border)]" />
                 <Link
                   to={current ? `/project/${current.id}` : "/"}
-                  className="no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  className="flex items-center gap-[4px] no-underline font-mono text-[11px] font-semibold tracking-[0.3px] uppercase"
                   style={{
-                    color: !onCommitPage
-                      ? "var(--c-accent)"
-                      : "var(--c-text-dim)",
+                    color:
+                      section === "commits"
+                        ? "var(--c-accent)"
+                        : "var(--c-text-dim)",
+                  }}
+                >
+                  <GitCommit size={11} />
+                  commits
+                </Link>
+                <Link
+                  to={current ? `/project/${current.id}/observations` : "/"}
+                  className="no-underline font-mono text-[11px] font-semibold tracking-[0.3px] uppercase"
+                  style={{
+                    color:
+                      section === "observations"
+                        ? "var(--c-accent)"
+                        : "var(--c-text-dim)",
                   }}
                 >
                   observations
                 </Link>
                 <Link
-                  to={current ? `/project/${current.id}/commits` : "/"}
-                  className="flex items-center gap-[4px] no-underline font-mono text-[10px] font-semibold tracking-[0.3px] uppercase"
+                  to={
+                    current
+                      ? `/project/${current.id}/branch/main/timeline`
+                      : "/"
+                  }
+                  className="no-underline font-mono text-[11px] font-semibold tracking-[0.3px] uppercase"
                   style={{
-                    color: onCommitPage
-                      ? "var(--c-accent)"
-                      : "var(--c-text-dim)",
+                    color:
+                      section === "timeline"
+                        ? "var(--c-accent)"
+                        : "var(--c-text-dim)",
                   }}
                 >
-                  <GitCommit size={11} />
-                  commits
-                  {overview.latestCommitStatus === "running" && (
-                    <span className="w-[6px] h-[6px] rounded-[3px] bg-c-amber inline-block" />
-                  )}
+                  timeline
+                </Link>
+                <Link
+                  to={current ? `/project/${current.id}/bisections` : "/"}
+                  className="no-underline font-mono text-[11px] font-semibold tracking-[0.3px] uppercase"
+                  style={{
+                    color:
+                      section === "bisections"
+                        ? "var(--c-accent)"
+                        : "var(--c-text-dim)",
+                  }}
+                >
+                  bisections
                 </Link>
               </>
             )}
@@ -283,7 +317,7 @@ export default function Shell() {
                   return THEME_ORDER[(i + 1) % THEME_ORDER.length];
                 })
               }
-              className="bg-surface2 border border-[var(--c-border)] rounded px-2 py-[2px] cursor-pointer text-mid text-[10px] font-mono"
+              className="bg-surface2 border border-[var(--c-border)] rounded px-2 py-[4px] cursor-pointer text-mid text-[10px] font-mono"
             >
               {themeKey}
             </button>

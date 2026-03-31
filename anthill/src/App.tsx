@@ -14,6 +14,11 @@ const NewProjectPage = lazy(() => import("./routes/NewProjectPage"));
 const CommitsListPage = lazy(() => import("./routes/CommitsListPage"));
 const PheromoneAdminPage = lazy(() => import("./routes/PheromoneAdminPage"));
 
+import TimelinePage from "./routes/TimelinePage";
+import ComparePage from "./routes/ComparePage";
+import BisectionsPage from "./routes/BisectionsPage";
+import BisectionDetailPage from "./routes/BisectionDetailPage";
+
 const router = createBrowserRouter([
   {
     path: "/",
@@ -21,10 +26,22 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <ObservationsPage />,
+        element: (
+          <Suspense>
+            <CommitsListPage />
+          </Suspense>
+        ),
       },
       {
         path: "project/:projectId",
+        element: (
+          <Suspense>
+            <CommitsListPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "project/:projectId/observations",
         element: <ObservationsPage />,
       },
       {
@@ -54,6 +71,22 @@ const router = createBrowserRouter([
             <CommitsListPage />
           </Suspense>
         ),
+      },
+      {
+        path: "project/:projectId/branch/:branch/timeline",
+        element: <TimelinePage />,
+      },
+      {
+        path: "project/:projectId/compare",
+        element: <ComparePage />,
+      },
+      {
+        path: "project/:projectId/bisections",
+        element: <BisectionsPage />,
+      },
+      {
+        path: "project/:projectId/bisections/:bisectionId",
+        element: <BisectionDetailPage />,
       },
       {
         path: "projects/create",

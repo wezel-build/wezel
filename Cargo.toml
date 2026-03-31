@@ -27,7 +27,10 @@ wezel_types = { path = "crates/wezel_types" }
 uuid = { version = "1", features = ["v4"] }
 whoami = "1"
 ureq = { version = "2", features = ["json"] }
+hex = "0.4"
+hmac = "0.12"
 reqwest = { version = "0.12", features = ["json"] }
+sha2 = "0.10"
 log = "0.4"
 env_logger = "0.11"
 axum = "0.8"

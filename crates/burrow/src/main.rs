@@ -2,7 +2,9 @@ mod auth;
 mod db;
 mod github;
 mod models;
+pub mod regression;
 mod routes;
+mod scheduler;
 
 use axum::{
     Json, Router,
@@ -19,11 +21,15 @@ use std::sync::OnceLock;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
+use routes::bisections::*;
+use routes::branches::*;
 use routes::commits::*;
 use routes::forager::*;
 use routes::observations::*;
 use routes::pheromones::*;
 use routes::projects::*;
+use routes::repos::*;
+use routes::webhooks::*;
 
 #[derive(Parser)]
 #[command(name = "burrow", about = "Wezel API server")]
@@ -92,9 +98,13 @@ async fn main() {
         .await
         .expect("could not connect to database");
 
+    regression::set_detector(std::sync::Arc::new(regression::ThresholdDetector::default()));
+
     if let Some(dev_dir) = get_dev_dir() {
         load_dev_pheromones(&pool, &dev_dir).await;
     }
+
+    scheduler::spawn(pool.clone());
 
     // Protected API routes (all except /api/events and forager/auth routes).
     let protected_api = Router::new()
@@ -134,6 +144,22 @@ async fn main() {
             get(get_project_benchmarks),
         )
         .route(
+            "/api/project/{project_id}/bisections",
+            get(get_project_bisections),
+        )
+        .route(
+            "/api/project/{project_id}/bisections/{bisection_id}",
+            get(get_project_bisection).patch(patch_project_bisection),
+        )
+        .route(
+            "/api/project/{project_id}/branch/{branch}/timeline",
+            get(get_branch_timeline),
+        )
+        .route(
+            "/api/project/{project_id}/compare",
+            get(get_project_compare),
+        )
+        .route(
             "/api/project/{project_id}/benchmark/pr",
             post(post_benchmark_pr),
         )
@@ -145,6 +171,8 @@ async fn main() {
             "/api/admin/pheromone/{name}/fetch",
             post(post_admin_pheromone_fetch),
         )
+        .route("/api/repo", get(get_repos))
+        .route("/api/repo/{repo_id}/webhook", post(setup_webhook))
         .route("/api/overview", get(get_overview))
         .route("/api/observation", get(get_observations))
         .route("/api/observation/{id}", get(get_observation))
@@ -158,7 +186,6 @@ async fn main() {
         .merge(protected_api)
         // Unauthenticated: ingest, forager, and auth routes.
         .route("/api/events", post(ingest_events))
-        .route("/api/forager/claim", post(post_forager_claim))
         .route("/api/forager/run", post(post_forager_run))
         .route("/api/forager/jobs", post(post_forager_jobs))
         .route("/api/forager/jobs/next", post(post_forager_jobs_next))
@@ -173,6 +200,7 @@ async fn main() {
         .route("/auth/me", get(auth::me))
         .route("/auth/config", get(auth::config))
         .route("/auth/logout", post(auth::logout))
+        .route("/api/webhooks/github", post(post_github_webhook))
         .route("/health", get(get_health))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())

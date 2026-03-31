@@ -9,118 +9,52 @@ use sqlx::PgPool;
 use crate::models::{ForagerQueueJobStatus, IdRow};
 use crate::{ApiResult, ise};
 
-#[derive(Deserialize)]
-pub struct ForagerClaimBody {
-    project_upstream: String,
-    commit_sha: String,
-    benchmark_name: String,
-    // Optional commit metadata for when GitHub API is not available.
-    commit_author: Option<String>,
-    commit_message: Option<String>,
-    commit_timestamp: Option<String>,
-}
-
-pub async fn post_forager_claim(
-    State(pool): State<PgPool>,
-    Json(body): Json<ForagerClaimBody>,
-) -> ApiResult<Json<wezel_types::ForagerJob>> {
-    let upstream = body.project_upstream.trim();
-    let sha = body.commit_sha.trim();
-    let benchmark_name = body.benchmark_name.trim();
-
-    if upstream.is_empty() || sha.is_empty() || benchmark_name.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-
-    // Find or create project.
+/// Find or create a repo + project from an upstream URL, returning (repo_id, project_id).
+async fn find_or_create_project(pool: &PgPool, upstream: &str) -> Result<(i64, i64), StatusCode> {
     let project_name = upstream.rsplit('/').next().unwrap_or(upstream);
-    let project_id: i64 =
-        match sqlx::query_as::<_, (i64,)>("SELECT id FROM projects WHERE upstream = $1")
-            .bind(upstream)
-            .fetch_optional(&pool)
-            .await
-            .map_err(ise)?
-        {
-            Some((id,)) => id,
-            None => {
-                sqlx::query_as::<_, IdRow>(
-                    "INSERT INTO projects (name, upstream) VALUES ($1, $2) RETURNING id",
-                )
-                .bind(project_name)
-                .bind(upstream)
-                .fetch_one(&pool)
-                .await
-                .map_err(ise)?
-                .id
-            }
-        };
 
-    // Find or create commit.
-    let short_sha: String = sha.chars().take(7).collect();
-    let commit_id: i64 = match sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM commits WHERE project_id = $1 AND (sha = $2 OR short_sha = $3)",
-    )
-    .bind(project_id)
-    .bind(sha)
-    .bind(&short_sha)
-    .fetch_optional(&pool)
-    .await
-    .map_err(ise)?
+    // Find or create repo.
+    let repo_id: i64 = match sqlx::query_as::<_, (i64,)>("SELECT id FROM repos WHERE upstream = $1")
+        .bind(upstream)
+        .fetch_optional(pool)
+        .await
+        .map_err(ise)?
     {
         Some((id,)) => id,
         None => {
-            let author = body
-                .commit_author
-                .as_deref()
-                .unwrap_or("unknown")
-                .to_string();
-            let message = body.commit_message.as_deref().unwrap_or("").to_string();
-            let timestamp = body.commit_timestamp.as_deref().unwrap_or("").to_string();
-            sqlx::query_as::<_, IdRow>(
-                "INSERT INTO commits \
-                     (project_id, sha, short_sha, author, message, timestamp, status) \
-                     VALUES ($1, $2, $3, $4, $5, $6, 'not-started') RETURNING id",
-            )
-            .bind(project_id)
-            .bind(sha)
-            .bind(&short_sha)
-            .bind(&author)
-            .bind(&message)
-            .bind(&timestamp)
-            .fetch_one(&pool)
-            .await
-            .map_err(ise)?
-            .id
+            sqlx::query_as::<_, IdRow>("INSERT INTO repos (upstream) VALUES ($1) RETURNING id")
+                .bind(upstream)
+                .fetch_one(pool)
+                .await
+                .map_err(ise)?
+                .id
         }
     };
 
-    // Set commit status to running.
-    sqlx::query("UPDATE commits SET status = 'running' WHERE id = $1")
-        .bind(commit_id)
-        .execute(&pool)
+    // Find or create project.
+    let project_id: i64 =
+        match sqlx::query_as::<_, (i64,)>(
+            "SELECT id FROM projects WHERE repo_id = $1 AND subdir = ''",
+        )
+        .bind(repo_id)
+        .fetch_optional(pool)
         .await
-        .map_err(ise)?;
+        .map_err(ise)?
+        {
+            Some((id,)) => id,
+            None => sqlx::query_as::<_, IdRow>(
+                "INSERT INTO projects (repo_id, name, upstream) VALUES ($1, $2, $3) RETURNING id",
+            )
+            .bind(repo_id)
+            .bind(project_name)
+            .bind(upstream)
+            .fetch_one(pool)
+            .await
+            .map_err(ise)?
+            .id,
+        };
 
-    // Create forager token (expires in 4 hours).
-    let token = uuid::Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO forager_tokens (commit_id, benchmark_name, token, expires_at) \
-         VALUES ($1, $2, $3, now() + interval '4 hours')",
-    )
-    .bind(commit_id)
-    .bind(benchmark_name)
-    .bind(&token)
-    .execute(&pool)
-    .await
-    .map_err(ise)?;
-
-    Ok(Json(wezel_types::ForagerJob {
-        token,
-        commit_sha: sha.to_string(),
-        project_id: project_id as u64,
-        project_upstream: upstream.to_string(),
-        benchmark_name: benchmark_name.to_string(),
-    }))
+    Ok((repo_id, project_id))
 }
 
 pub async fn post_forager_run(
@@ -139,46 +73,46 @@ pub async fn post_forager_run(
 
     let (commit_id,) = row.ok_or(StatusCode::UNAUTHORIZED)?;
 
-    // Get project_id for prev_value lookups.
-    let (project_id,): (i64,) = sqlx::query_as("SELECT project_id FROM commits WHERE id = $1")
+    // Get repo_id → project_id for measurements.
+    let (repo_id,): (i64,) = sqlx::query_as("SELECT repo_id FROM commits WHERE id = $1")
         .bind(commit_id)
         .fetch_one(&pool)
         .await
         .map_err(ise)?;
 
-    // Insert measurements.
+    // Find the default project for this repo (subdir = '').
+    let (project_id,): (i64,) =
+        sqlx::query_as("SELECT id FROM projects WHERE repo_id = $1 AND subdir = '' LIMIT 1")
+            .bind(repo_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(ise)?;
+
+    // Get the commit SHA for later use.
+    let (commit_sha,): (String,) = sqlx::query_as("SELECT sha FROM commits WHERE id = $1")
+        .bind(commit_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(ise)?;
+
+    // Insert measurements, collecting (name, value) pairs for regression detection.
+    let mut inserted: Vec<(i64, String, f64)> = Vec::new();
+
     for step_report in &body.steps {
         let Some(ref m) = step_report.measurement else {
             continue;
         };
 
-        // Look up prev value from most recent complete measurement with same name.
-        let prev_value: Option<f64> = sqlx::query_as::<_, (Option<f64>,)>(
-            "SELECT m.value FROM measurements m \
-             JOIN commits c ON m.commit_id = c.id \
-             WHERE c.project_id = $1 AND m.name = $2 AND m.commit_id != $3 \
-             AND m.status = 'complete' \
-             ORDER BY c.timestamp DESC, m.id DESC \
-             LIMIT 1",
-        )
-        .bind(project_id)
-        .bind(&m.name)
-        .bind(commit_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(ise)?
-        .and_then(|(v,)| v);
-
         let (measurement_id,): (i64,) = sqlx::query_as(
             "INSERT INTO measurements \
-             (commit_id, name, kind, status, value, prev_value, unit, step) \
-             VALUES ($1, $2, $3, 'complete', $4, $5, $6, $7) RETURNING id",
+             (commit_id, project_id, name, kind, status, value, unit, step) \
+             VALUES ($1, $2, $3, $4, 'complete', $5, $6, $7) RETURNING id",
         )
         .bind(commit_id)
+        .bind(project_id)
         .bind(&m.name)
         .bind(&m.kind)
         .bind(m.value)
-        .bind(prev_value)
         .bind(&m.unit)
         .bind(&step_report.step)
         .fetch_one(&pool)
@@ -188,8 +122,8 @@ pub async fn post_forager_run(
         // Insert detail rows.
         for detail in &m.detail {
             sqlx::query(
-                "INSERT INTO measurement_details (measurement_id, name, value, prev_value) \
-                 VALUES ($1, $2, $3, 0)",
+                "INSERT INTO measurement_details (measurement_id, name, value) \
+                 VALUES ($1, $2, $3)",
             )
             .bind(measurement_id)
             .bind(&detail.name)
@@ -198,16 +132,390 @@ pub async fn post_forager_run(
             .await
             .map_err(ise)?;
         }
+
+        inserted.push((measurement_id, m.name.clone(), m.value));
     }
 
-    // Mark commit complete.
-    sqlx::query("UPDATE commits SET status = 'complete' WHERE id = $1")
-        .bind(commit_id)
-        .execute(&pool)
+    // Get the benchmark_name from the token row.
+    let (benchmark_name,): (String,) =
+        sqlx::query_as("SELECT benchmark_name FROM forager_tokens WHERE token = $1")
+            .bind(&body.token)
+            .fetch_one(&pool)
+            .await
+            .map_err(ise)?;
+
+    if let Some(bisection_id) = body.bisection_id {
+        // ── Bisection progression ────────────────────────────────────────
+        progress_bisection(&pool, bisection_id as i64, repo_id, &inserted).await?;
+    } else {
+        // ── Regression detection (normal runs only) ──────────────────────
+        detect_regressions(
+            &pool,
+            repo_id,
+            project_id,
+            commit_id,
+            &commit_sha,
+            &benchmark_name,
+            &inserted,
+        )
+        .await?;
+    }
+
+    Ok(StatusCode::OK)
+}
+
+/// After inserting measurements for a normal run, compare each measurement
+/// against recent history. If the regression detector fires, create a
+/// bisection and enqueue the midpoint.
+async fn detect_regressions(
+    pool: &PgPool,
+    repo_id: i64,
+    project_id: i64,
+    commit_id: i64,
+    commit_sha: &str,
+    benchmark_name: &str,
+    inserted: &[(i64, String, f64)],
+) -> Result<(), StatusCode> {
+    let detector = crate::regression::detector();
+
+    // We need ancestor commits to gather history.  Walk back via parent_sha.
+    let history_len = detector.history_len();
+    let ancestor_ids: Vec<(i64,)> = sqlx::query_as(
+        "WITH RECURSIVE chain AS ( \
+             SELECT parent_sha, 0 AS depth FROM commits WHERE id = $1 \
+           UNION ALL \
+             SELECT c.parent_sha, ch.depth + 1 \
+             FROM commits c \
+             JOIN chain ch ON c.sha = ch.parent_sha AND c.repo_id = $2 \
+             WHERE ch.depth < $3 AND ch.parent_sha IS NOT NULL \
+         ) \
+         SELECT c.id FROM chain ch \
+         JOIN commits c ON c.sha = ch.parent_sha AND c.repo_id = $2 \
+         ORDER BY ch.depth",
+    )
+    .bind(commit_id)
+    .bind(repo_id)
+    .bind(history_len as i64)
+    .fetch_all(pool)
+    .await
+    .map_err(ise)?;
+
+    if ancestor_ids.is_empty() {
+        return Ok(()); // No ancestors — nothing to compare.
+    }
+
+    // We need the direct parent SHA for bisection range endpoints.
+    let parent_sha: Option<String> =
+        sqlx::query_as::<_, (Option<String>,)>("SELECT parent_sha FROM commits WHERE id = $1")
+            .bind(commit_id)
+            .fetch_one(pool)
+            .await
+            .map_err(ise)?
+            .0;
+
+    let Some(parent_sha) = parent_sha else {
+        return Ok(());
+    };
+
+    // Get the branch for this commit (from queue or fallback to 'main').
+    let branch: String = sqlx::query_as::<_, (String,)>(
+        "SELECT branch FROM forager_queue \
+         WHERE project_id = $1 AND commit_sha = $2 \
+         ORDER BY id DESC LIMIT 1",
+    )
+    .bind(project_id)
+    .bind(commit_sha)
+    .fetch_optional(pool)
+    .await
+    .map_err(ise)?
+    .map(|(b,)| b)
+    .unwrap_or_else(|| "main".to_string());
+
+    // Build the list of ancestor commit IDs for the history query.
+    let ancestor_commit_ids: Vec<i64> = ancestor_ids.into_iter().map(|(id,)| id).collect();
+
+    for &(_, ref measurement_name, new_value) in inserted {
+        // Get historical values for this measurement across ancestor commits (oldest first).
+        let history: Vec<(f64,)> = sqlx::query_as(
+            "SELECT m.value FROM measurements m \
+             WHERE m.commit_id = ANY($1) AND m.project_id = $2 AND m.name = $3 \
+               AND m.value IS NOT NULL \
+             ORDER BY m.commit_id ASC",
+        )
+        .bind(&ancestor_commit_ids)
+        .bind(project_id)
+        .bind(measurement_name)
+        .fetch_all(pool)
         .await
         .map_err(ise)?;
 
-    Ok(StatusCode::OK)
+        let history_values: Vec<f64> = history.into_iter().map(|(v,)| v).collect();
+
+        if !detector.is_regression(&history_values, new_value) {
+            continue;
+        }
+
+        // Check no active bisection already covers this measurement.
+        let existing: Option<(i64,)> = sqlx::query_as(
+            "SELECT id FROM bisections \
+             WHERE project_id = $1 AND benchmark_name = $2 AND measurement_name = $3 \
+               AND status = 'active' \
+             LIMIT 1",
+        )
+        .bind(project_id)
+        .bind(benchmark_name)
+        .bind(measurement_name)
+        .fetch_optional(pool)
+        .await
+        .map_err(ise)?;
+
+        if existing.is_some() {
+            continue; // Already being bisected.
+        }
+
+        let baseline = history_values.last().copied().unwrap_or(0.0);
+        tracing::info!(
+            "regression detected: {measurement_name} ({baseline} -> {new_value}), bisecting {parent_sha}..{commit_sha}",
+        );
+
+        // Create bisection.
+        let (bisection_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO bisections \
+             (project_id, benchmark_name, measurement_name, branch, \
+              good_sha, bad_sha, good_value, bad_value) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+        )
+        .bind(project_id)
+        .bind(benchmark_name)
+        .bind(measurement_name)
+        .bind(&branch)
+        .bind(&parent_sha)
+        .bind(commit_sha)
+        .bind(baseline)
+        .bind(new_value)
+        .fetch_one(pool)
+        .await
+        .map_err(ise)?;
+
+        // Find midpoint and enqueue.
+        enqueue_midpoint(
+            pool,
+            bisection_id,
+            project_id,
+            repo_id,
+            benchmark_name,
+            &parent_sha,
+            commit_sha,
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Progress a bisection after receiving measurement results.
+async fn progress_bisection(
+    pool: &PgPool,
+    bisection_id: i64,
+    repo_id: i64,
+    inserted: &[(i64, String, f64)],
+) -> Result<(), StatusCode> {
+    // Load the bisection.
+    let bisection = sqlx::query_as::<_, (i64, String, String, String, String, f64, f64, String)>(
+        "SELECT project_id, benchmark_name, measurement_name, good_sha, bad_sha, \
+                good_value, bad_value, status \
+         FROM bisections WHERE id = $1",
+    )
+    .bind(bisection_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(ise)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let (
+        project_id,
+        benchmark_name,
+        measurement_name,
+        good_sha,
+        bad_sha,
+        good_value,
+        bad_value,
+        status,
+    ) = bisection;
+
+    if status != "active" {
+        return Ok(()); // Already finished.
+    }
+
+    // Find the matching measurement from this run.
+    let matching = inserted
+        .iter()
+        .find(|(_, name, _)| name == &measurement_name);
+
+    let Some(&(measurement_id, _, value)) = matching else {
+        tracing::warn!(
+            "bisection {bisection_id}: no matching measurement '{measurement_name}' in run"
+        );
+        return Ok(());
+    };
+
+    // Link measurement to bisection.
+    sqlx::query(
+        "INSERT INTO bisection_measurements (bisection_id, measurement_id) \
+         VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    )
+    .bind(bisection_id)
+    .bind(measurement_id)
+    .execute(pool)
+    .await
+    .map_err(ise)?;
+
+    let detector = crate::regression::detector();
+    let is_good = detector.is_good(good_value, bad_value, value);
+
+    // Get the SHA of the commit we just measured.
+    let (tested_sha,): (String,) = sqlx::query_as(
+        "SELECT c.sha FROM measurements m \
+         JOIN commits c ON c.id = m.commit_id \
+         WHERE m.id = $1",
+    )
+    .bind(measurement_id)
+    .fetch_one(pool)
+    .await
+    .map_err(ise)?;
+
+    let (new_good_sha, new_bad_sha) = if is_good {
+        (tested_sha.clone(), bad_sha.clone())
+    } else {
+        (good_sha.clone(), tested_sha.clone())
+    };
+
+    tracing::info!(
+        "bisection {bisection_id}: {tested_sha} classified as {} (value={value}, good={good_value}, bad={bad_value})",
+        if is_good { "good" } else { "bad" },
+    );
+
+    // Check if good and bad are adjacent in the commit chain.
+    let adjacent = are_adjacent(pool, repo_id, &new_good_sha, &new_bad_sha).await?;
+
+    if adjacent {
+        // Bisection complete — culprit is the bad commit.
+        sqlx::query(
+            "UPDATE bisections \
+             SET good_sha = $2, bad_sha = $3, status = 'complete', \
+                 culprit_sha = $3, completed_at = now() \
+             WHERE id = $1",
+        )
+        .bind(bisection_id)
+        .bind(&new_good_sha)
+        .bind(&new_bad_sha)
+        .execute(pool)
+        .await
+        .map_err(ise)?;
+
+        tracing::info!("bisection {bisection_id} complete: culprit is {new_bad_sha}");
+    } else {
+        // Narrow the range and enqueue next midpoint.
+        sqlx::query("UPDATE bisections SET good_sha = $2, bad_sha = $3 WHERE id = $1")
+            .bind(bisection_id)
+            .bind(&new_good_sha)
+            .bind(&new_bad_sha)
+            .execute(pool)
+            .await
+            .map_err(ise)?;
+
+        enqueue_midpoint(
+            pool,
+            bisection_id,
+            project_id,
+            repo_id,
+            &benchmark_name,
+            &new_good_sha,
+            &new_bad_sha,
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Check if good_sha is the direct parent of bad_sha.
+async fn are_adjacent(
+    pool: &PgPool,
+    repo_id: i64,
+    good_sha: &str,
+    bad_sha: &str,
+) -> Result<bool, StatusCode> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT parent_sha FROM commits WHERE repo_id = $1 AND sha = $2")
+            .bind(repo_id)
+            .bind(bad_sha)
+            .fetch_optional(pool)
+            .await
+            .map_err(ise)?;
+
+    Ok(row.is_some_and(|(parent,)| parent == good_sha))
+}
+
+/// Walk the commit chain from bad_sha to good_sha via recursive CTE,
+/// pick the midpoint, and enqueue it.
+async fn enqueue_midpoint(
+    pool: &PgPool,
+    bisection_id: i64,
+    project_id: i64,
+    repo_id: i64,
+    benchmark_name: &str,
+    good_sha: &str,
+    bad_sha: &str,
+) -> Result<(), StatusCode> {
+    // Walk the chain from bad back to good.
+    let chain: Vec<(String, i32)> = sqlx::query_as(
+        "WITH RECURSIVE chain AS ( \
+             SELECT sha, parent_sha, 0 AS depth \
+             FROM commits WHERE sha = $1 AND repo_id = $3 \
+           UNION ALL \
+             SELECT c.sha, c.parent_sha, ch.depth + 1 \
+             FROM commits c \
+             JOIN chain ch ON c.sha = ch.parent_sha AND c.repo_id = $3 \
+             WHERE ch.sha != $2 \
+         ) \
+         SELECT sha, depth FROM chain ORDER BY depth",
+    )
+    .bind(bad_sha)
+    .bind(good_sha)
+    .bind(repo_id)
+    .fetch_all(pool)
+    .await
+    .map_err(ise)?;
+
+    if chain.len() <= 2 {
+        // Adjacent or missing — nothing to bisect further.
+        return Ok(());
+    }
+
+    // Pick the midpoint (skip first which is bad_sha itself).
+    let mid_idx = chain.len() / 2;
+    let mid_sha = &chain[mid_idx].0;
+
+    tracing::info!(
+        "bisection {bisection_id}: enqueuing midpoint {mid_sha} (chain len={})",
+        chain.len()
+    );
+
+    // Enqueue with bisection_id.
+    sqlx::query(
+        "INSERT INTO forager_queue (project_id, commit_sha, benchmark_name, bisection_id) \
+         VALUES ($1, $2, $3, $4)",
+    )
+    .bind(project_id)
+    .bind(mid_sha)
+    .bind(benchmark_name)
+    .bind(bisection_id)
+    .execute(pool)
+    .await
+    .map_err(ise)?;
+
+    Ok(())
 }
 
 // ── Job queue ─────────────────────────────────────────────────────────────────
@@ -231,28 +539,7 @@ pub async fn post_forager_jobs(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Find or create project.
-    let project_name = upstream.rsplit('/').next().unwrap_or(upstream);
-    let project_id: i64 =
-        match sqlx::query_as::<_, (i64,)>("SELECT id FROM projects WHERE upstream = $1")
-            .bind(upstream)
-            .fetch_optional(&pool)
-            .await
-            .map_err(ise)?
-        {
-            Some((id,)) => id,
-            None => {
-                sqlx::query_as::<_, IdRow>(
-                    "INSERT INTO projects (name, upstream) VALUES ($1, $2) RETURNING id",
-                )
-                .bind(project_name)
-                .bind(upstream)
-                .fetch_one(&pool)
-                .await
-                .map_err(ise)?
-                .id
-            }
-        };
+    let (_repo_id, project_id) = find_or_create_project(&pool, upstream).await?;
 
     // Return existing pending/running job if one already exists.
     if let Some((id, status)) = sqlx::query_as::<_, (i64, String)>(
@@ -302,13 +589,14 @@ pub struct ForagerJobsNextBody {
 pub async fn post_forager_jobs_next(
     State(pool): State<PgPool>,
     Json(body): Json<ForagerJobsNextBody>,
-) -> ApiResult<(StatusCode, Json<Option<wezel_types::ForagerQueueJob>>)> {
+) -> ApiResult<(StatusCode, Json<Option<wezel_types::ForagerJob>>)> {
     let upstream = body.project_upstream.trim();
     if upstream.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let row = sqlx::query_as::<_, (i64, i64, String, String, String)>(
+    // Atomically claim the next pending job.
+    let row = sqlx::query_as::<_, (i64, i64, String, String, String, Option<i64>)>(
         "UPDATE forager_queue fq \
          SET status = 'running', claimed_at = now() \
          WHERE fq.id = ( \
@@ -320,26 +608,60 @@ pub async fn post_forager_jobs_next(
              FOR UPDATE SKIP LOCKED \
          ) \
          RETURNING fq.id, fq.project_id, fq.commit_sha, fq.benchmark_name, \
-                   (SELECT upstream FROM projects WHERE id = fq.project_id)",
+                   (SELECT upstream FROM projects WHERE id = fq.project_id), \
+                   fq.bisection_id",
     )
     .bind(upstream)
     .fetch_optional(&pool)
     .await
     .map_err(ise)?;
 
-    match row {
-        None => Ok((StatusCode::NO_CONTENT, Json(None))),
-        Some((id, project_id, commit_sha, benchmark_name, project_upstream)) => Ok((
-            StatusCode::OK,
-            Json(Some(wezel_types::ForagerQueueJob {
-                id: id as u64,
-                project_id: project_id as u64,
-                project_upstream,
-                commit_sha,
-                benchmark_name,
-            })),
-        )),
-    }
+    let Some((job_id, project_id, commit_sha, benchmark_name, project_upstream, bisection_id)) =
+        row
+    else {
+        return Ok((StatusCode::NO_CONTENT, Json(None)));
+    };
+
+    // Look up the commit — it must already exist (created by webhook).
+    let (repo_id,): (i64,) = sqlx::query_as("SELECT repo_id FROM projects WHERE id = $1")
+        .bind(project_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(ise)?;
+
+    let (commit_id,): (i64,) =
+        sqlx::query_as("SELECT id FROM commits WHERE repo_id = $1 AND sha = $2")
+            .bind(repo_id)
+            .bind(&commit_sha)
+            .fetch_one(&pool)
+            .await
+            .map_err(ise)?;
+
+    // Create forager token (expires in 4 hours).
+    let token = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO forager_tokens (commit_id, benchmark_name, token, expires_at) \
+         VALUES ($1, $2, $3, now() + interval '4 hours')",
+    )
+    .bind(commit_id)
+    .bind(&benchmark_name)
+    .bind(&token)
+    .execute(&pool)
+    .await
+    .map_err(ise)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(Some(wezel_types::ForagerJob {
+            id: job_id as u64,
+            token,
+            commit_sha,
+            project_id: project_id as u64,
+            project_upstream,
+            benchmark_name,
+            bisection_id: bisection_id.map(|id| id as u64),
+        })),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -388,7 +710,8 @@ pub async fn get_project_benchmarks(
              UNION
              SELECT ft.benchmark_name FROM forager_tokens ft
              JOIN commits c ON ft.commit_id = c.id
-             WHERE c.project_id = $1
+             JOIN projects p ON p.repo_id = c.repo_id
+             WHERE p.id = $1
          ) t ORDER BY benchmark_name",
     )
     .bind(project_id)
