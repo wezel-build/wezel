@@ -88,11 +88,7 @@ export function BenchmarkCreatorModal({
 
   const benchmarkToml = useMemo(() => {
     if (!selectedTemplate || !benchmarkName) return "";
-    return generateBenchmarkToml(
-      benchmarkName,
-      selectedTemplate,
-      fieldValues,
-    );
+    return generateBenchmarkToml(benchmarkName, selectedTemplate, fieldValues);
   }, [selectedTemplate, benchmarkName, fieldValues]);
 
   const benchmarkPath = `.wezel/benchmarks/${benchmarkName}/benchmark.toml`;
