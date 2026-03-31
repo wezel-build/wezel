@@ -11,7 +11,6 @@ import {
 } from "../lib/data";
 import { useCommits, usePheromones } from "../lib/hooks";
 import { useProject } from "../lib/useProject";
-import { DeltaBadge } from "../components/DeltaBadge";
 import { VizRenderer } from "../components/VizRenderer";
 
 // ── Sort logic ───────────────────────────────────────────────────────────────

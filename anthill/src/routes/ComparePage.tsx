@@ -3,7 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { useCompare } from "../lib/hooks";
 import { C, alpha } from "../lib/colors";
-import { fmtValue, fmtTime } from "../lib/format";
+import { fmtValue } from "../lib/format";
 import { DeltaBadge } from "../components/DeltaBadge";
 import { useProject } from "../lib/useProject";
 import type { ForagerCommit, Measurement } from "../lib/data";

@@ -19,7 +19,7 @@ import {
   ExternalLink,
   Play,
 } from "lucide-react";
-import { C, alpha } from "../lib/colors";
+import { C } from "../lib/colors";
 import { fmtValue, fmtTime } from "../lib/format";
 import {
   type ForagerCommit,
@@ -31,7 +31,6 @@ import { useCommits, useGithubCommit, usePheromones } from "../lib/hooks";
 import { useProject } from "../lib/useProject";
 import { api } from "../lib/api";
 import { Badge } from "../components/Badge";
-import { DeltaBadge } from "../components/DeltaBadge";
 import { VizRenderer } from "../components/VizRenderer";
 
 // ── Small pieces ─────────────────────────────────────────────────────────────
@@ -60,62 +59,6 @@ function StatusIcon({ status }: { status: MeasurementStatus }) {
 function statusLabel(s: MeasurementStatus): string {
   if (s === "not-started") return "not started";
   return s;
-}
-
-// ── Progress bar ─────────────────────────────────────────────────────────────
-
-function ProgressBar({ measurements }: { measurements: Measurement[] }) {
-  const total = measurements.length;
-  if (total === 0) return null;
-
-  const complete = measurements.filter((m) => m.status === "complete").length;
-  const running = measurements.filter((m) => m.status === "running").length;
-  const failed = measurements.filter((m) => m.status === "failed").length;
-  const pending = measurements.filter((m) => m.status === "pending").length;
-  const notStarted = measurements.filter(
-    (m) => m.status === "not-started",
-  ).length;
-
-  const pct = (n: number) => `${(n / total) * 100}%`;
-
-  return (
-    <div className="flex flex-col gap-[4px]">
-      <div className="flex h-[6px] rounded-[3px] overflow-hidden bg-surface3">
-        <div
-          style={{
-            width: pct(complete),
-            background: C.green,
-            transition: "width 0.3s",
-          }}
-        />
-        <div
-          style={{
-            width: pct(running),
-            background: C.amber,
-            transition: "width 0.3s",
-          }}
-        />
-        <div
-          style={{
-            width: pct(failed),
-            background: C.red,
-            transition: "width 0.3s",
-          }}
-        />
-      </div>
-      <div className="flex gap-[10px] text-[10px] text-dim font-mono">
-        <span>
-          {complete}/{total} complete
-        </span>
-        {running > 0 && (
-          <span style={{ color: C.amber }}>{running} running</span>
-        )}
-        {pending > 0 && <span>{pending} pending</span>}
-        {notStarted > 0 && <span>{notStarted} not started</span>}
-        {failed > 0 && <span style={{ color: C.red }}>{failed} failed</span>}
-      </div>
-    </div>
-  );
 }
 
 // ── Measurement row ──────────────────────────────────────────────────────────

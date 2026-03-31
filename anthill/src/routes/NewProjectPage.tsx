@@ -513,7 +513,7 @@ export default function NewProjectPage() {
     setCreating(true);
     setError(null);
     try {
-      const project = await addProject(name.trim(), upstream);
+      await addProject(name.trim(), upstream);
       // Determine repo info for webhook step.
       const selectedRepo = repos.find((r) => r.id === selectedRepoId);
       if (selectedRepo) {
