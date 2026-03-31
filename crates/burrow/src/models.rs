@@ -80,9 +80,11 @@ pub struct DirtyCrate {
 #[derive(FromRow)]
 pub struct Commit {
     pub id: i64,
+    #[expect(unused)]
     pub repo_id: i64,
     pub sha: String,
     pub short_sha: String,
+    #[expect(unused)]
     pub parent_sha: Option<String>,
     pub author: String,
     pub message: String,
@@ -93,6 +95,7 @@ pub struct Commit {
 pub struct Measurement {
     pub id: i64,
     pub commit_id: i64,
+    #[expect(unused)]
     pub project_id: i64,
     pub name: String,
     pub kind: String,

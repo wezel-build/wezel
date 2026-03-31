@@ -130,19 +130,19 @@ async fn register_github_webhook(
             .pointer("/config/url")
             .and_then(|v| v.as_str())
             .unwrap_or("");
-        if url.contains("/api/webhooks/github") {
-            if let Some(id) = hook.get("id").and_then(|v| v.as_u64()) {
-                let del_client = Client::new();
-                let _ = del_client
-                    .delete(format!(
-                        "https://api.github.com/repos/{owner}/{repo}/hooks/{id}"
-                    ))
-                    .header("User-Agent", "wezel-burrow")
-                    .header("Accept", "application/vnd.github+json")
-                    .bearer_auth(token)
-                    .send()
-                    .await;
-            }
+        if url.contains("/api/webhooks/github")
+            && let Some(id) = hook.get("id").and_then(|v| v.as_u64())
+        {
+            let del_client = Client::new();
+            let _ = del_client
+                .delete(format!(
+                    "https://api.github.com/repos/{owner}/{repo}/hooks/{id}"
+                ))
+                .header("User-Agent", "wezel-burrow")
+                .header("Accept", "application/vnd.github+json")
+                .bearer_auth(token)
+                .send()
+                .await;
         }
     }
 
