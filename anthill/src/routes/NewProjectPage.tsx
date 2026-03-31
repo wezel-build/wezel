@@ -105,9 +105,7 @@ function StepRepo({
                     ? "var(--c-accent)"
                     : "var(--c-border)",
                 background:
-                  selectedRepoId === r.id
-                    ? "var(--c-surface2)"
-                    : "transparent",
+                  selectedRepoId === r.id ? "var(--c-surface2)" : "transparent",
                 color: "var(--c-text)",
               }}
             >
@@ -220,8 +218,7 @@ function StepProject({
         Project
       </h2>
       <p className="text-[11px] font-mono text-dim m-0 mb-[16px]">
-        Create a project for{" "}
-        <span className="text-mid">{repoUpstream}</span>
+        Create a project for <span className="text-mid">{repoUpstream}</span>
       </p>
 
       <label className={labelClass}>Name</label>
@@ -451,8 +448,8 @@ function StepWebhook({
                 in your repo settings
               </li>
               <li>
-                Set <strong>Payload URL</strong> and <strong>Secret</strong>{" "}
-                to the values above
+                Set <strong>Payload URL</strong> and <strong>Secret</strong> to
+                the values above
               </li>
               <li>
                 Set <strong>Content type</strong> to{" "}
@@ -499,7 +496,8 @@ export default function NewProjectPage() {
 
   // Step 3 state
   const [createdRepoId, setCreatedRepoId] = useState<number | null>(null);
-  const [createdRepoWebhookRegistered, setCreatedRepoHasSecret] = useState(false);
+  const [createdRepoWebhookRegistered, setCreatedRepoHasSecret] =
+    useState(false);
 
   useEffect(() => {
     api.repos().then(setRepos).catch(console.error);
@@ -507,7 +505,7 @@ export default function NewProjectPage() {
 
   const upstream =
     selectedRepoId !== null
-      ? repos.find((r) => r.id === selectedRepoId)?.upstream ?? ""
+      ? (repos.find((r) => r.id === selectedRepoId)?.upstream ?? "")
       : newUrl.trim();
 
   const handleCreate = async () => {
@@ -587,8 +585,7 @@ export default function NewProjectPage() {
                         : step === n
                           ? "var(--c-accent)"
                           : "var(--c-surface2)",
-                    color:
-                      step >= n ? "var(--c-bg)" : "var(--c-text-dim)",
+                    color: step >= n ? "var(--c-bg)" : "var(--c-text-dim)",
                   }}
                 >
                   {step > n ? <Check size={10} /> : n}

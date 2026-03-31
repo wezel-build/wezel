@@ -1,4 +1,5 @@
-export const MONO = "'CommitMono', 'Commit Mono', 'JetBrains Mono', 'Fira Code', monospace";
+export const MONO =
+  "'CommitMono', 'Commit Mono', 'JetBrains Mono', 'Fira Code', monospace";
 export const SANS = "'Inter', -apple-system, system-ui, sans-serif";
 
 export function fmtValue(value: number, unit?: string): string {

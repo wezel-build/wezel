@@ -161,16 +161,11 @@ export function usePheromones() {
 
 // ── Branch timeline ─────────────────────────────────────────────────────────
 
-export function useBranchTimeline(
-  branch: string | undefined,
-  limit?: number,
-) {
+export function useBranchTimeline(branch: string | undefined, limit?: number) {
   const { pApi, current } = useProject();
   const result = useAsync(
     () =>
-      branch
-        ? pApi.branchTimeline(branch, limit)
-        : Promise.reject("no branch"),
+      branch ? pApi.branchTimeline(branch, limit) : Promise.reject("no branch"),
     [branch, limit, current?.id],
   );
   return {
@@ -182,10 +177,7 @@ export function useBranchTimeline(
 
 // ── Compare ─────────────────────────────────────────────────────────────────
 
-export function useCompare(
-  baseSha: string | null,
-  headSha: string | null,
-) {
+export function useCompare(baseSha: string | null, headSha: string | null) {
   const { pApi, current } = useProject();
   const result = useAsync(
     () =>
@@ -222,8 +214,7 @@ export function useBisections(status?: string, branch?: string) {
 export function useBisection(id: number | undefined) {
   const { pApi, current } = useProject();
   const result = useAsync(
-    () =>
-      id != null ? pApi.bisection(id) : Promise.reject("no id"),
+    () => (id != null ? pApi.bisection(id) : Promise.reject("no id")),
     [id, current?.id],
   );
   return {

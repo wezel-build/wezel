@@ -315,37 +315,33 @@ export default function MeasurementDetailPage() {
 
           {/* Rows */}
           {sorted.map((d, i) => (
-              <div
-                key={i}
-                className="grid gap-[8px] px-[12px] py-[8px] items-center text-[11px] font-mono"
-                style={{
-                  gridTemplateColumns: "1fr 80px minmax(100px, 200px)",
-                  borderBottom: `1px solid ${alpha(C.border, 13)}`,
-                  background: hoveredIdx === i ? C.surface2 : "transparent",
-                }}
-                onMouseEnter={() => setHoveredIdx(i)}
-                onMouseLeave={() => setHoveredIdx(null)}
+            <div
+              key={i}
+              className="grid gap-[8px] px-[12px] py-[8px] items-center text-[11px] font-mono"
+              style={{
+                gridTemplateColumns: "1fr 80px minmax(100px, 200px)",
+                borderBottom: `1px solid ${alpha(C.border, 13)}`,
+                background: hoveredIdx === i ? C.surface2 : "transparent",
+              }}
+              onMouseEnter={() => setHoveredIdx(i)}
+              onMouseLeave={() => setHoveredIdx(null)}
+            >
+              {/* Name */}
+              <span
+                className="text-fg overflow-hidden text-ellipsis whitespace-nowrap text-[11px]"
+                title={d.name}
               >
-                {/* Name */}
-                <span
-                  className="text-fg overflow-hidden text-ellipsis whitespace-nowrap text-[11px]"
-                  title={d.name}
-                >
-                  {d.name}
-                </span>
+                {d.name}
+              </span>
 
-                {/* Value */}
-                <span className="text-mid text-right font-semibold">
-                  {fmtValue(d.value, measurement.unit)}
-                </span>
+              {/* Value */}
+              <span className="text-mid text-right font-semibold">
+                {fmtValue(d.value, measurement.unit)}
+              </span>
 
-                {/* Bar */}
-                <ValueBar
-                  value={d.value}
-                  max={maxValue}
-                  color={C.accent}
-                />
-              </div>
+              {/* Bar */}
+              <ValueBar value={d.value} max={maxValue} color={C.accent} />
+            </div>
           ))}
         </div>
       </div>

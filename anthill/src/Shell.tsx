@@ -279,9 +279,7 @@ export default function Shell() {
                   timeline
                 </Link>
                 <Link
-                  to={
-                    current ? `/project/${current.id}/bisections` : "/"
-                  }
+                  to={current ? `/project/${current.id}/bisections` : "/"}
                   className="no-underline font-mono text-[11px] font-semibold tracking-[0.3px] uppercase"
                   style={{
                     color:

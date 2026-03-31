@@ -56,9 +56,7 @@ export default function TimelinePage() {
               {/* Commit header */}
               <Link
                 to={
-                  current
-                    ? `/project/${current.id}/commit/${c.shortSha}`
-                    : "/"
+                  current ? `/project/${current.id}/commit/${c.shortSha}` : "/"
                 }
                 className="flex items-center gap-[10px] px-[12px] py-[8px] no-underline border-b border-[var(--c-border)] bg-surface2"
               >
