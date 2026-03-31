@@ -62,7 +62,5 @@ pub fn set_detector(detector: Arc<dyn RegressionDetector>) {
 }
 
 pub fn detector() -> &'static Arc<dyn RegressionDetector> {
-    DETECTOR
-        .get()
-        .expect("regression detector not initialized")
+    DETECTOR.get().expect("regression detector not initialized")
 }

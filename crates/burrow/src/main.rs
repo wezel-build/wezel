@@ -98,9 +98,7 @@ async fn main() {
         .await
         .expect("could not connect to database");
 
-    regression::set_detector(std::sync::Arc::new(
-        regression::ThresholdDetector::default(),
-    ));
+    regression::set_detector(std::sync::Arc::new(regression::ThresholdDetector::default()));
 
     if let Some(dev_dir) = get_dev_dir() {
         load_dev_pheromones(&pool, &dev_dir).await;
@@ -174,10 +172,7 @@ async fn main() {
             post(post_admin_pheromone_fetch),
         )
         .route("/api/repo", get(get_repos))
-        .route(
-            "/api/repo/{repo_id}/webhook",
-            post(setup_webhook),
-        )
+        .route("/api/repo/{repo_id}/webhook", post(setup_webhook))
         .route("/api/overview", get(get_overview))
         .route("/api/observation", get(get_observations))
         .route("/api/observation/{id}", get(get_observation))

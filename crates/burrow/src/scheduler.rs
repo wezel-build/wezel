@@ -53,23 +53,21 @@ async fn tick(pool: &PgPool) -> sqlx::Result<()> {
 /// For a single repo, enqueue branch-head jobs for every (project, branch, benchmark).
 async fn enqueue_repo(pool: &PgPool, repo_id: i64) -> sqlx::Result<()> {
     // Get all branches for this repo.
-    let branches: Vec<(String, String)> = sqlx::query_as(
-        "SELECT name, head_sha FROM branches WHERE repo_id = $1",
-    )
-    .bind(repo_id)
-    .fetch_all(pool)
-    .await?;
+    let branches: Vec<(String, String)> =
+        sqlx::query_as("SELECT name, head_sha FROM branches WHERE repo_id = $1")
+            .bind(repo_id)
+            .fetch_all(pool)
+            .await?;
 
     if branches.is_empty() {
         return Ok(());
     }
 
     // Get all projects for this repo.
-    let projects: Vec<(i64,)> =
-        sqlx::query_as("SELECT id FROM projects WHERE repo_id = $1")
-            .bind(repo_id)
-            .fetch_all(pool)
-            .await?;
+    let projects: Vec<(i64,)> = sqlx::query_as("SELECT id FROM projects WHERE repo_id = $1")
+        .bind(repo_id)
+        .fetch_all(pool)
+        .await?;
 
     for (project_id,) in &projects {
         // Discover known benchmarks for this project.
@@ -89,8 +87,7 @@ async fn enqueue_repo(pool: &PgPool, repo_id: i64) -> sqlx::Result<()> {
 
         for (branch_name, head_sha) in &branches {
             for (benchmark_name,) in &benchmarks {
-                enqueue_if_needed(pool, *project_id, head_sha, benchmark_name, branch_name)
-                    .await?;
+                enqueue_if_needed(pool, *project_id, head_sha, benchmark_name, branch_name).await?;
             }
         }
     }

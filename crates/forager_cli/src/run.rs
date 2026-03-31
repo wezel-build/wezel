@@ -75,10 +75,7 @@ pub fn list_benchmarks(project_dir: &Path) -> Result<()> {
 ///
 /// This function is pure execution — it knows nothing about Burrow.  The
 /// caller (daemon or CLI) decides whether/how to submit results.
-pub fn run_benchmark(
-    benchmark_name: &str,
-    project_dir: &Path,
-) -> Result<Vec<ForagerStepReport>> {
+pub fn run_benchmark(benchmark_name: &str, project_dir: &Path) -> Result<Vec<ForagerStepReport>> {
     let benchmark_dir = project_dir
         .join(".wezel")
         .join("benchmarks")

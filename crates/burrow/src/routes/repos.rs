@@ -42,7 +42,11 @@ pub async fn setup_webhook(
     Path(repo_id): Path<i64>,
 ) -> ApiResult<Json<WebhookSetupJson>> {
     // Generate secret.
-    let secret = format!("whsec_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let secret = format!(
+        "whsec_{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    );
 
     let row = sqlx::query_as::<_, Repo>(
         "UPDATE repos SET webhook_secret = $1 WHERE id = $2 \

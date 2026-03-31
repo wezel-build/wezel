@@ -13,10 +13,7 @@ use crate::github::{github_api, github_owner_repo};
 use crate::models::*;
 use crate::{ApiResult, ise};
 
-pub async fn create_project(
-    State(pool): State<PgPool>,
-    Json(body): Json<Value>,
-) -> Response {
+pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>) -> Response {
     let Some(name) = body["name"].as_str() else {
         return StatusCode::BAD_REQUEST.into_response();
     };
@@ -32,10 +29,12 @@ pub async fn create_project(
     {
         Ok(Some((id,))) => id,
         Ok(None) => {
-            match sqlx::query_as::<_, IdRow>("INSERT INTO repos (upstream) VALUES ($1) RETURNING id")
-                .bind(upstream)
-                .fetch_one(&pool)
-                .await
+            match sqlx::query_as::<_, IdRow>(
+                "INSERT INTO repos (upstream) VALUES ($1) RETURNING id",
+            )
+            .bind(upstream)
+            .fetch_one(&pool)
+            .await
             {
                 Ok(row) => row.id,
                 Err(e) => return ise(e).into_response(),

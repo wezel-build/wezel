@@ -95,8 +95,7 @@ pub async fn post_github_webhook(
         return Ok(StatusCode::OK);
     }
 
-    let payload: PushEvent =
-        serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let payload: PushEvent = serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Resolve repo row from the push payload URL.
     let repo_url = normalize_repo_url(&payload.repository).ok_or(StatusCode::BAD_REQUEST)?;
