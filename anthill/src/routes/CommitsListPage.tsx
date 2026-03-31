@@ -5,14 +5,24 @@ import { C, alpha } from "../lib/colors";
 import { fmtTime } from "../lib/format";
 import { Badge } from "../components/Badge";
 import { useProject } from "../lib/useProject";
+import type { ForagerCommit } from "../lib/data";
 
-function statusDot(status: "not-started" | "running" | "complete") {
+type CommitStatus = "not-started" | "running" | "complete";
+
+function deriveStatus(c: ForagerCommit): CommitStatus {
+  if (c.measurements.length === 0) return "not-started";
+  if (c.measurements.some((m) => m.status === "running" || m.status === "pending")) return "running";
+  if (c.measurements.every((m) => m.status === "complete")) return "complete";
+  return "not-started";
+}
+
+function statusDot(status: CommitStatus) {
   if (status === "complete") return C.green;
   if (status === "running") return C.amber;
   return C.textDim;
 }
 
-function statusBadge(status: "not-started" | "running" | "complete") {
+function statusBadge(status: CommitStatus) {
   if (status === "complete")
     return { color: C.green, bg: alpha(C.green, 9), label: "complete" };
   if (status === "running")
@@ -75,7 +85,8 @@ export default function CommitsListPage() {
           {!loading &&
             !error &&
             commits.map((c) => {
-              const badge = statusBadge(c.status);
+              const status = deriveStatus(c);
+              const badge = statusBadge(status);
 
               return (
                 <Link
@@ -90,7 +101,7 @@ export default function CommitsListPage() {
                   <span
                     className="w-[8px] h-[8px] rounded-full shrink-0"
                     style={{
-                      background: statusDot(c.status),
+                      background: statusDot(status),
                       boxShadow: `0 0 0 1px ${C.border}`,
                     }}
                   />
