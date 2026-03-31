@@ -11,7 +11,10 @@ type CommitStatus = "not-started" | "running" | "complete";
 
 function deriveStatus(c: ForagerCommit): CommitStatus {
   if (c.measurements.length === 0) return "not-started";
-  if (c.measurements.some((m) => m.status === "running" || m.status === "pending")) return "running";
+  if (
+    c.measurements.some((m) => m.status === "running" || m.status === "pending")
+  )
+    return "running";
   if (c.measurements.every((m) => m.status === "complete")) return "complete";
   return "not-started";
 }
