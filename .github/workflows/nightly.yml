@@ -1,0 +1,96 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  plan:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install dist
+        shell: bash
+        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.31.0/cargo-dist-installer.sh | sh"
+      - id: plan
+        run: |
+          dist plan --output-format=json > plan.json
+          echo "matrix=$(jq -c '.ci.github.artifacts_matrix' plan.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build (${{ join(matrix.targets, ', ') }})
+    needs: plan
+    if: ${{ fromJson(needs.plan.outputs.matrix).include != null }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container && matrix.container.image || null }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Rust in container
+        if: ${{ matrix.container }}
+        run: |
+          if ! command -v cargo > /dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          fi
+      - name: Install dist
+        run: ${{ matrix.install_dist.run }}
+      - name: Install dependencies
+        run: |
+          ${{ matrix.packages_install }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nightly-${{ join(matrix.targets, '-') }}
+      - name: Build
+        run: dist build --output-format=json ${{ matrix.dist_args }} > dist-manifest.json
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          mkdir -p upload
+          cp target/distrib/*.tar.gz upload/ 2>/dev/null || true
+          cp target/distrib/*.tar.xz upload/ 2>/dev/null || true
+          cp target/distrib/*.zip upload/ 2>/dev/null || true
+          cp target/distrib/*.sha256 upload/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v6
+        with:
+          name: nightly-${{ join(matrix.targets, '-') }}
+          path: upload/*
+
+  release:
+    needs: [plan, build]
+    if: ${{ always() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: nightly-*
+          path: artifacts
+          merge-multiple: true
+      - name: Create nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="nightly-$(date -u +%Y-%m-%d)"
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          gh release create "$TAG" \
+            --prerelease \
+            --title "Nightly $(date -u +%Y-%m-%d)" \
+            --notes "Automated nightly build from \`main\` at ${COMMIT_SHA}." \
+            artifacts/*
