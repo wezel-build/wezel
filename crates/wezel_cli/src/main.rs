@@ -333,7 +333,7 @@ fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
 }
 
 #[derive(Parser)]
-#[command(name = "wezel", about = "Lightweight build observer")]
+#[command(name = "wezel", about = "Build regression detection")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -341,21 +341,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Manage tool aliases.
-    ///
-    /// Without arguments, ensures the shell hook is installed and shows status.
-    /// `wezel alias cargo`              — alias cargo → pheromone-cargo
-    /// `wezel alias cargo-nightly cargo` — alias cargo-nightly → pheromone-cargo
-    /// `wezel alias cargo --remove`     — remove the cargo alias
-    Alias {
-        /// Shell alias name (e.g. cargo, cargo-nightly).
-        name: Option<String>,
-        /// Pheromone handler to route to (defaults to the alias name).
-        handler: Option<String>,
-        /// Remove the alias instead of installing it.
-        #[arg(long)]
-        remove: bool,
-    },
     /// Initialize wezel in the current project.
     ///
     /// Creates `.wezel/config.toml` in the current directory.
@@ -365,7 +350,81 @@ enum Command {
         #[arg(long)]
         server_url: Option<String>,
     },
-    /// Check wezel health: pheromones, config, burrow connectivity.
+    /// Active benchmarking: measure builds across commits.
+    Bench {
+        #[command(subcommand)]
+        cmd: BenchCmd,
+    },
+    /// Passive build observation: aliases, event flushing, health.
+    Observe {
+        #[command(subcommand)]
+        cmd: ObserveCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum BenchCmd {
+    /// Run a benchmark against the current checkout.
+    Run {
+        /// Benchmark name (matches .wezel/benchmarks/<name>/). Omit to list available benchmarks.
+        #[arg(short, long)]
+        benchmark: Option<String>,
+        /// Project root directory (defaults to current directory).
+        #[arg(long)]
+        project_dir: Option<PathBuf>,
+    },
+    /// List available benchmarks.
+    List {
+        /// Project root directory (defaults to current directory).
+        #[arg(long)]
+        project_dir: Option<PathBuf>,
+    },
+    /// Validate benchmark definitions without running them.
+    Lint {
+        /// Project root directory (defaults to current directory).
+        #[arg(long)]
+        project_dir: Option<PathBuf>,
+    },
+    /// Manage the benchmark daemon (polls server for jobs).
+    Daemon {
+        #[command(subcommand)]
+        cmd: BenchDaemonCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum BenchDaemonCmd {
+    /// Start polling the server for queued benchmark jobs and run them.
+    Start {
+        /// Path to the repository to check out and run benchmarks in.
+        #[arg(long)]
+        repo_dir: PathBuf,
+        /// Seconds to wait between polls when no job is available.
+        #[arg(long, default_value = "10")]
+        poll_interval: u64,
+    },
+    /// Show current benchmark daemon status and active job.
+    Status,
+}
+
+#[derive(Subcommand)]
+enum ObserveCmd {
+    /// Manage tool aliases.
+    ///
+    /// Without arguments, ensures the shell hook is installed and shows status.
+    /// `wezel observe alias cargo`              — alias cargo → pheromone-cargo
+    /// `wezel observe alias cargo-nightly cargo` — alias cargo-nightly → pheromone-cargo
+    /// `wezel observe alias cargo --remove`     — remove the cargo alias
+    Alias {
+        /// Shell alias name (e.g. cargo, cargo-nightly).
+        name: Option<String>,
+        /// Pheromone handler to route to (defaults to the alias name).
+        handler: Option<String>,
+        /// Remove the alias instead of installing it.
+        #[arg(long)]
+        remove: bool,
+    },
+    /// Check wezel health: pheromones, config, server connectivity.
     Health,
     /// Run a tool, recording pre/post build events.
     Exec {
@@ -373,7 +432,7 @@ enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-    /// Run the background daemon (flush queue + update pheromones).
+    /// Run the observation daemon (flush queue + update pheromones).
     ///
     /// Normally spawned automatically. Use `--foreground` to run in the
     /// foreground (used internally by the auto-spawn path).
@@ -382,8 +441,22 @@ enum Command {
         #[arg(long)]
         foreground: bool,
     },
-    /// One-shot flush: send queued events to burrow and check pheromone updates.
+    /// One-shot flush: send queued events to server and check pheromone updates.
     Sync,
+}
+
+fn run_result(result: anyhow::Result<()>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("wezel: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn resolve_project_dir(project_dir: Option<PathBuf>) -> PathBuf {
+    project_dir.unwrap_or_else(|| std::env::current_dir().expect("getting current directory"))
 }
 
 fn main() -> ExitCode {
@@ -394,58 +467,73 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Alias {
-            name,
-            handler,
-            remove,
-        } => match alias_cmd(name.as_deref(), handler.as_deref(), remove) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("wezel: {e}");
-                ExitCode::FAILURE
+        Command::Setup { server_url } => run_result(setup_cmd(server_url.as_deref())),
+
+        Command::Bench { cmd } => match cmd {
+            BenchCmd::Run {
+                benchmark,
+                project_dir,
+            } => {
+                let project_dir = resolve_project_dir(project_dir);
+                match benchmark {
+                    Some(name) => {
+                        run_result(wezel_bench::run::run_benchmark(&name, &project_dir).map(|_| ()))
+                    }
+                    None => run_result(wezel_bench::run::list_benchmarks(&project_dir)),
+                }
+            }
+            BenchCmd::List { project_dir } => {
+                let project_dir = resolve_project_dir(project_dir);
+                run_result(wezel_bench::run::list_benchmarks(&project_dir))
+            }
+            BenchCmd::Lint { project_dir } => {
+                let project_dir = resolve_project_dir(project_dir);
+                run_result(wezel_bench::lint::run_lint(&project_dir))
+            }
+            BenchCmd::Daemon { cmd: daemon_cmd } => match daemon_cmd {
+                BenchDaemonCmd::Start {
+                    repo_dir,
+                    poll_interval,
+                } => run_result(wezel_bench::daemon::run_start(&repo_dir, poll_interval)),
+                BenchDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
+            },
+        },
+
+        Command::Observe { cmd } => match cmd {
+            ObserveCmd::Alias {
+                name,
+                handler,
+                remove,
+            } => run_result(alias_cmd(name.as_deref(), handler.as_deref(), remove)),
+            ObserveCmd::Health => run_result(health_cmd()),
+            ObserveCmd::Exec { args } => match exec_cmd(&args) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("wezel: {e}");
+                    ExitCode::FAILURE
+                }
+            },
+            ObserveCmd::Daemon { foreground } => {
+                if foreground {
+                    daemon::run_daemon();
+                } else if let Err(e) = daemon::spawn_detached() {
+                    eprintln!("wezel: failed to spawn daemon: {e}");
+                    return ExitCode::FAILURE;
+                }
+                ExitCode::SUCCESS
+            }
+            ObserveCmd::Sync => {
+                let cwd = std::env::current_dir().unwrap_or_default();
+                let Some((_, config)) = config::discover(&cwd) else {
+                    eprintln!("wezel: no project config found (run `wezel setup` first)");
+                    return ExitCode::FAILURE;
+                };
+                let n = queue::flush_queue(&config.server_url);
+                println!("wezel sync: flushed {n} event(s)");
+                pheromone_mgr::update_pheromones(&config.server_url, &pheromones_dir());
+                println!("wezel sync: pheromone check done");
+                ExitCode::SUCCESS
             }
         },
-        Command::Health => match health_cmd() {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("wezel: {e}");
-                ExitCode::FAILURE
-            }
-        },
-        Command::Setup { server_url } => match setup_cmd(server_url.as_deref()) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("wezel: {e}");
-                ExitCode::FAILURE
-            }
-        },
-        Command::Exec { args } => match exec_cmd(&args) {
-            Ok(code) => code,
-            Err(e) => {
-                eprintln!("wezel: {e}");
-                ExitCode::FAILURE
-            }
-        },
-        Command::Daemon { foreground } => {
-            if foreground {
-                daemon::run_daemon();
-            } else if let Err(e) = daemon::spawn_detached() {
-                eprintln!("wezel: failed to spawn daemon: {e}");
-                return ExitCode::FAILURE;
-            }
-            ExitCode::SUCCESS
-        }
-        Command::Sync => {
-            let cwd = std::env::current_dir().unwrap_or_default();
-            let Some((_, config)) = config::discover(&cwd) else {
-                eprintln!("wezel: no project config found (run `wezel setup` first)");
-                return ExitCode::FAILURE;
-            };
-            let n = queue::flush_queue(&config.server_url);
-            println!("wezel sync: flushed {n} event(s)");
-            pheromone_mgr::update_pheromones(&config.server_url, &pheromones_dir());
-            println!("wezel sync: pheromone check done");
-            ExitCode::SUCCESS
-        }
     }
 }

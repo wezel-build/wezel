@@ -5,7 +5,7 @@ members = [
     "crates/wezel_types",
     "crates/pheromone_cargo",
     "crates/burrow",
-    "crates/forager_cli",
+    "crates/wezel_bench",
     "crates/forager_exec",
     "crates/forager_llvm_lines",
 ]

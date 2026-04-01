@@ -66,7 +66,7 @@ pub fn list_benchmarks(project_dir: &Path) -> Result<()> {
             None => println!("  {name}"),
         }
     }
-    println!("\nRun with: forager run -b <name>");
+    println!("\nRun with: wezel bench run -b <name>");
 
     Ok(())
 }

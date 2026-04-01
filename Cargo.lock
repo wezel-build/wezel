@@ -757,28 +757,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
-name = "forager_cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "dirs",
- "env_logger",
- "figment",
- "log",
- "owo-colors",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "toml",
- "ureq",
- "uuid",
- "wezel_types",
- "which",
- "whoami",
-]
-
-[[package]]
 name = "forager_exec"
 version = "0.1.0"
 dependencies = [
@@ -3281,6 +3259,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "wezel_bench"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "figment",
+ "log",
+ "owo-colors",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "toml",
+ "ureq",
+ "uuid",
+ "wezel_types",
+ "which",
+]
+
+[[package]]
 name = "wezel_cli"
 version = "0.1.0"
 dependencies = [
@@ -3300,6 +3297,7 @@ dependencies = [
  "ureq",
  "url",
  "uuid",
+ "wezel_bench",
  "wezel_types",
  "whoami",
 ]

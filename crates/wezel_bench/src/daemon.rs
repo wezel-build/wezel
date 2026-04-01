@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use wezel_types::{ForagerJob, ForagerRunReport};
 
 use crate::Config;
-use crate::DaemonCmd;
 use crate::git;
 use crate::run::{BurrowSession, run_benchmark};
 
@@ -73,21 +72,9 @@ fn now_rfc3339() -> String {
 
 const MAX_RECENT: usize = 20;
 
-// ── Dispatch ──────────────────────────────────────────────────────────────────
-
-pub fn run_daemon(cmd: DaemonCmd) -> Result<()> {
-    match cmd {
-        DaemonCmd::Start {
-            repo_dir,
-            poll_interval,
-        } => run_start(&repo_dir, poll_interval),
-        DaemonCmd::Status => run_status(),
-    }
-}
-
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-fn run_start(repo_dir: &Path, poll_interval: u64) -> Result<()> {
+pub fn run_start(repo_dir: &Path, poll_interval: u64) -> Result<()> {
     let config = Config::load(repo_dir)?;
     let burrow = BurrowSession::from_config(&config);
     let project_upstream = git::upstream(repo_dir)?;
@@ -236,7 +223,7 @@ fn run_loop(
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
-fn run_status() -> Result<()> {
+pub fn run_status() -> Result<()> {
     let Some(status) = read_status() else {
         println!("{}", "No daemon running.".dimmed());
         return Ok(());

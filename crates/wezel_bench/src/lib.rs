@@ -1,13 +1,12 @@
-mod daemon;
-mod lint;
-mod run;
+pub mod daemon;
+pub mod lint;
+pub mod run;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use clap::{Parser, Subcommand};
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
@@ -374,77 +373,4 @@ pub fn invoke_forager(
     let _ = std::fs::remove_file(&out_path);
 
     Ok(envelope.measurement)
-}
-
-// ── CLI ───────────────────────────────────────────────────────────────────────
-
-#[derive(Parser)]
-#[command(name = "forager", about = "Wezel benchmark runner")]
-struct Cli {
-    #[command(subcommand)]
-    cmd: Cmd,
-}
-
-#[derive(Subcommand)]
-enum Cmd {
-    /// Run a benchmark against the current checkout.
-    Run {
-        /// Benchmark name (matches .wezel/benchmarks/<name>/). Omit to list available benchmarks.
-        #[arg(short, long)]
-        benchmark: Option<String>,
-        /// Project root directory (defaults to current directory).
-        #[arg(long)]
-        project_dir: Option<PathBuf>,
-    },
-    /// Validate benchmark definitions without running them.
-    Lint {
-        /// Project root directory (defaults to current directory).
-        #[arg(long)]
-        project_dir: Option<PathBuf>,
-    },
-    /// Manage the forager daemon.
-    Daemon {
-        #[command(subcommand)]
-        cmd: DaemonCmd,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum DaemonCmd {
-    /// Start polling burrow for queued jobs and run them.
-    Start {
-        /// Path to the repository to check out and run benchmarks in.
-        #[arg(long)]
-        repo_dir: PathBuf,
-        /// Seconds to wait between polls when no job is available.
-        #[arg(long, default_value = "10")]
-        poll_interval: u64,
-    },
-    /// Show current daemon status and active job.
-    Status,
-}
-
-fn main() -> Result<()> {
-    env_logger::init();
-    let cli = Cli::parse();
-
-    match cli.cmd {
-        Cmd::Run {
-            benchmark,
-            project_dir,
-        } => {
-            let project_dir = project_dir
-                .unwrap_or_else(|| std::env::current_dir().expect("getting current directory"));
-            match benchmark {
-                Some(name) => run::run_benchmark(&name, &project_dir).map(|_| ()),
-                None => run::list_benchmarks(&project_dir),
-            }
-        }
-        Cmd::Lint { project_dir } => {
-            let project_dir = project_dir
-                .unwrap_or_else(|| std::env::current_dir().expect("getting current directory"));
-            lint::run_lint(&project_dir)
-        }
-        Cmd::Daemon { cmd } => daemon::run_daemon(cmd),
-    }
 }
