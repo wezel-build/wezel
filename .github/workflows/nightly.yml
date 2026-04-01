@@ -66,6 +66,7 @@ jobs:
           cp target/distrib/*.tar.xz upload/ 2>/dev/null || true
           cp target/distrib/*.zip upload/ 2>/dev/null || true
           cp target/distrib/*.sha256 upload/ 2>/dev/null || true
+          cp dist-manifest.json "upload/dist-manifest-${{ join(matrix.targets, '-') }}.json"
       - uses: actions/upload-artifact@v6
         with:
           name: nightly-${{ join(matrix.targets, '-') }}
@@ -82,6 +83,38 @@ jobs:
           pattern: nightly-*
           path: artifacts
           merge-multiple: true
+      - name: Merge dist manifests
+        shell: bash
+        run: |
+          # Merge per-target dist-manifest-*.json into a single dist-manifest.json.
+          # Each manifest has a top-level "artifacts" object; merge them all.
+          python3 -c "
+          import json, glob, sys
+
+          merged_artifacts = {}
+          releases = {}
+
+          for path in sorted(glob.glob('artifacts/dist-manifest-*.json')):
+              m = json.load(open(path))
+              for k, v in m.get('artifacts', {}).items():
+                  if k not in merged_artifacts:
+                      merged_artifacts[k] = v
+              for r in m.get('releases', []):
+                  name = r.get('app_name', '')
+                  if name not in releases:
+                      releases[name] = dict(r)
+                      releases[name]['artifacts'] = list(r.get('artifacts', []))
+                  else:
+                      for a in r.get('artifacts', []):
+                          if a not in releases[name]['artifacts']:
+                              releases[name]['artifacts'].append(a)
+
+          result = {'artifacts': merged_artifacts, 'releases': list(releases.values())}
+          json.dump(result, open('artifacts/dist-manifest.json', 'w'), indent=2)
+          print(f'Merged {len(merged_artifacts)} artifacts from {len(releases)} releases')
+          "
+          # Remove per-target manifests from upload
+          rm -f artifacts/dist-manifest-*.json
       - name: Create nightly release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -18,6 +18,9 @@ pub fn spawn(pool: PgPool) {
             if let Err(e) = tick(&pool).await {
                 tracing::warn!("scheduler tick failed: {e:?}");
             }
+            if let Err(e) = crate::routes::tools::refresh_tool_release().await {
+                tracing::debug!("tool release refresh: {e}");
+            }
         }
     });
 }

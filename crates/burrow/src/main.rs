@@ -29,6 +29,7 @@ use routes::observations::*;
 use routes::pheromones::*;
 use routes::projects::*;
 use routes::repos::*;
+use routes::tools::*;
 use routes::webhooks::*;
 
 #[derive(Parser)]
@@ -194,6 +195,11 @@ async fn main() {
         .route(
             "/api/pheromone/{name}/binary/{target}",
             get(get_pheromone_binary),
+        )
+        .route("/api/tools", get(get_tools))
+        .route(
+            "/api/tools/{name}/binary/{target}",
+            get(get_tool_binary),
         )
         .route("/auth/github", get(auth::login))
         .route("/auth/github/callback", get(auth::callback))
