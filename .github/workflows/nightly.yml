@@ -87,10 +87,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          TAG="nightly-$(date -u +%Y-%m-%d)"
           COMMIT_SHA=$(git rev-parse --short HEAD)
+          TAG="nightly-$(date -u +%Y-%m-%d)-${COMMIT_SHA}"
           gh release create "$TAG" \
             --prerelease \
-            --title "Nightly $(date -u +%Y-%m-%d)" \
+            --title "Nightly $(date -u +%Y-%m-%d) (${COMMIT_SHA})" \
             --notes "Automated nightly build from \`main\` at ${COMMIT_SHA}." \
             artifacts/*

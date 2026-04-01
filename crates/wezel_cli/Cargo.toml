@@ -4,10 +4,14 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 repository.workspace = true
+publish.workspace = true
 
 [[bin]]
 name = "wezel"
 path = "src/main.rs"
+
+[package.metadata.dist]
+dist = true
 
 [dependencies]
 anyhow = { workspace = true }

@@ -2,8 +2,8 @@
 name = "wezel_bench"
 version = "0.1.0"
 edition = "2024"
-repository.workspace = true
 publish.workspace = true
+repository.workspace = true
 
 [lib]
 path = "src/lib.rs"
