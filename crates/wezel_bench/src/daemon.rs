@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use wezel_types::{ForagerJob, ForagerRunReport};
 
 use crate::Config;
+use crate::fetch;
 use crate::git;
 use crate::run::{BurrowSession, run_experiment};
 
@@ -74,7 +75,7 @@ const MAX_RECENT: usize = 20;
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-pub fn run_start(repo_dir: &Path, poll_interval: u64) -> Result<()> {
+pub fn run_start(repo_dir: &Path, poll_interval: u64, fetcher: Option<&dyn fetch::PluginFetcher>) -> Result<()> {
     let config = Config::load(repo_dir)?;
     let burrow = BurrowSession::from_config(&config);
     let project_upstream = git::upstream(repo_dir)?;
@@ -107,6 +108,7 @@ pub fn run_start(repo_dir: &Path, poll_interval: u64) -> Result<()> {
         repo_dir,
         poll_interval,
         &mut status,
+        fetcher,
     );
 
     // Clean up status file on exit.
@@ -122,6 +124,7 @@ fn run_loop(
     repo_dir: &Path,
     poll_interval: u64,
     status: &mut DaemonStatus,
+    fetcher: Option<&dyn fetch::PluginFetcher>,
 ) -> Result<()> {
     loop {
         let next_body = serde_json::json!({ "project_upstream": project_upstream });
@@ -162,7 +165,7 @@ fn run_loop(
         git::checkout_detached(repo_dir, &job.commit_sha)
             .with_context(|| format!("checkout {} for job {}", job.commit_sha, job_id))?;
 
-        let result = run_experiment(&job.experiment_name, repo_dir);
+        let result = run_experiment(&job.experiment_name, repo_dir, fetcher);
 
         // Submit results to Burrow and update the queue job status.
         let (patch_body, finished) = match result {

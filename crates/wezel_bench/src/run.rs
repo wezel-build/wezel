@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 use wezel_types::{ForagerRunReport, ForagerStepReport};
 
 use crate::git;
-use crate::{ExperimentToml, Config, invoke_forager, parse_experiment};
+use crate::{ExperimentToml, Config, fetch, invoke_forager, parse_experiment};
 
 pub struct BurrowSession {
     agent: ureq::Agent,
@@ -75,7 +75,11 @@ pub fn list_experiments(project_dir: &Path) -> Result<()> {
 ///
 /// This function is pure execution — it knows nothing about Burrow.  The
 /// caller (daemon or CLI) decides whether/how to submit results.
-pub fn run_experiment(experiment_name: &str, project_dir: &Path) -> Result<Vec<ForagerStepReport>> {
+pub fn run_experiment(
+    experiment_name: &str,
+    project_dir: &Path,
+    fetcher: Option<&dyn fetch::PluginFetcher>,
+) -> Result<Vec<ForagerStepReport>> {
     let experiment_dir = project_dir
         .join(".wezel")
         .join("experiments")
@@ -104,7 +108,7 @@ pub fn run_experiment(experiment_name: &str, project_dir: &Path) -> Result<Vec<F
         }
 
         // Invoke the forager plugin.
-        let measurement = invoke_forager(&step.forager, &step.name, &step.inputs, project_dir);
+        let measurement = invoke_forager(&step.forager, &step.name, &step.inputs, project_dir, fetcher);
 
         match measurement {
             Ok(m) => {

@@ -1,6 +1,7 @@
 mod cmd;
 mod config;
 mod daemon;
+mod fetcher;
 mod flush;
 mod pheromone_mgr;
 mod queue;
@@ -378,6 +379,9 @@ enum ExperimentCmd {
         /// Project root directory (defaults to current directory).
         #[arg(long)]
         project_dir: Option<PathBuf>,
+        /// Automatically install missing plugins without prompting.
+        #[arg(short = 'y', long = "yes")]
+        auto_yes: bool,
     },
     /// List available experiments.
     List {
@@ -390,6 +394,9 @@ enum ExperimentCmd {
         /// Project root directory (defaults to current directory).
         #[arg(long)]
         project_dir: Option<PathBuf>,
+        /// Automatically install missing plugins without prompting.
+        #[arg(short = 'y', long = "yes")]
+        auto_yes: bool,
     },
     /// Manage the experiment daemon (polls server for jobs).
     Daemon {
@@ -465,6 +472,16 @@ fn resolve_project_dir(project_dir: Option<PathBuf>) -> PathBuf {
     project_dir.unwrap_or_else(|| std::env::current_dir().expect("getting current directory"))
 }
 
+fn make_fetcher(
+    project_dir: &Path,
+    auto_yes: bool,
+) -> Box<dyn wezel_bench::fetch::PluginFetcher> {
+    match wezel_bench::Config::load(project_dir) {
+        Ok(config) => Box::new(fetcher::BurrowFetcher::new(config.server_url, auto_yes)),
+        Err(_) => Box::new(fetcher::GithubFetcher::new("wezel-build/wezel", auto_yes)),
+    }
+}
+
 fn main() -> ExitCode {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"))
         .format_timestamp(None)
@@ -501,11 +518,16 @@ fn main() -> ExitCode {
             ExperimentCmd::Run {
                 experiment,
                 project_dir,
+                auto_yes,
             } => {
                 let project_dir = resolve_project_dir(project_dir);
                 match experiment {
                     Some(name) => {
-                        run_result(wezel_bench::run::run_experiment(&name, &project_dir).map(|_| ()))
+                        let fetcher = make_fetcher(&project_dir, auto_yes);
+                        run_result(
+                            wezel_bench::run::run_experiment(&name, &project_dir, Some(&*fetcher))
+                                .map(|_| ()),
+                        )
                     }
                     None => run_result(wezel_bench::run::list_experiments(&project_dir)),
                 }
@@ -514,15 +536,26 @@ fn main() -> ExitCode {
                 let project_dir = resolve_project_dir(project_dir);
                 run_result(wezel_bench::run::list_experiments(&project_dir))
             }
-            ExperimentCmd::Lint { project_dir } => {
+            ExperimentCmd::Lint {
+                project_dir,
+                auto_yes,
+            } => {
                 let project_dir = resolve_project_dir(project_dir);
-                run_result(wezel_bench::lint::run_lint(&project_dir))
+                let fetcher = make_fetcher(&project_dir, auto_yes);
+                run_result(wezel_bench::lint::run_lint(&project_dir, Some(&*fetcher)))
             }
             ExperimentCmd::Daemon { cmd: daemon_cmd } => match daemon_cmd {
                 ExperimentDaemonCmd::Start {
                     repo_dir,
                     poll_interval,
-                } => run_result(wezel_bench::daemon::run_start(&repo_dir, poll_interval)),
+                } => {
+                    let fetcher = make_fetcher(&repo_dir, true);
+                    run_result(wezel_bench::daemon::run_start(
+                        &repo_dir,
+                        poll_interval,
+                        Some(&*fetcher),
+                    ))
+                }
                 ExperimentDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
             },
         },

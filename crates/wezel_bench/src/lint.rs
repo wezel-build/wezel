@@ -5,7 +5,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use owo_colors::OwoColorize;
 
-use crate::{parse_experiment, resolve_plugin};
+use crate::{fetch, parse_experiment, resolve_plugin};
 
 struct LintDiagnostic {
     step: String,
@@ -18,7 +18,7 @@ struct ExperimentResult {
     diagnostics: Vec<LintDiagnostic>,
 }
 
-pub fn run_lint(project_dir: &Path) -> Result<()> {
+pub fn run_lint(project_dir: &Path, fetcher: Option<&dyn fetch::PluginFetcher>) -> Result<()> {
     let experiments_dir = project_dir.join(".wezel").join("experiments");
     if !experiments_dir.is_dir() {
         bail!("no experiments directory at {}", experiments_dir.display());
@@ -72,14 +72,26 @@ pub fn run_lint(project_dir: &Path) -> Result<()> {
                 }
             }
 
-            // Check plugin is on PATH.
-            if resolve_plugin(&step.forager).is_none()
-                && warned_plugins.insert(step.forager.clone())
-            {
-                diagnostics.push(LintDiagnostic {
-                    step: step.name.clone(),
-                    message: format!("plugin `forager-{}` not found on PATH", step.forager),
-                });
+            // Check plugin is on PATH; try fetching if a fetcher is available.
+            if resolve_plugin(&step.forager).is_none() {
+                if let Some(f) = fetcher {
+                    match f.fetch(&step.forager) {
+                        Ok(_) => {} // installed, proceed to schema check
+                        Err(e) => {
+                            if warned_plugins.insert(step.forager.clone()) {
+                                diagnostics.push(LintDiagnostic {
+                                    step: step.name.clone(),
+                                    message: format!("plugin `forager-{}`: {e}", step.forager),
+                                });
+                            }
+                        }
+                    }
+                } else if warned_plugins.insert(step.forager.clone()) {
+                    diagnostics.push(LintDiagnostic {
+                        step: step.name.clone(),
+                        message: format!("plugin `forager-{}` not found on PATH", step.forager),
+                    });
+                }
             }
 
             // If plugin is available, validate its --schema output.

@@ -1,4 +1,5 @@
 pub mod daemon;
+pub mod fetch;
 pub mod lint;
 pub mod new;
 pub mod run;
@@ -327,12 +328,27 @@ pub fn invoke_forager(
     step_name: &str,
     inputs: &serde_json::Value,
     project_dir: &Path,
+    fetcher: Option<&dyn fetch::PluginFetcher>,
 ) -> std::result::Result<Option<wezel_types::ForagerPluginOutput>, StepError> {
     let binary_name = format!("forager-{forager_name}");
     // Look next to our own executable first, then fall back to PATH.
-    let binary = resolve_plugin(forager_name).ok_or_else(|| StepError::PluginNotFound {
-        binary: binary_name.clone(),
-    })?;
+    // If not found and a fetcher is available, try to download and install.
+    let binary = match resolve_plugin(forager_name) {
+        Some(path) => path,
+        None => match fetcher {
+            Some(f) => f.fetch(forager_name).map_err(|e| match e {
+                fetch::FetchError::Declined { .. } => StepError::PluginNotFound {
+                    binary: binary_name.clone(),
+                },
+                other => StepError::Other(other.into()),
+            })?,
+            None => {
+                return Err(StepError::PluginNotFound {
+                    binary: binary_name.clone(),
+                });
+            }
+        },
+    };
 
     // Write inputs to a temp file.
     let inputs_id = uuid::Uuid::new_v4();
