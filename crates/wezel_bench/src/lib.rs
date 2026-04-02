@@ -1,5 +1,6 @@
 pub mod daemon;
 pub mod lint;
+pub mod new;
 pub mod run;
 
 use std::collections::HashMap;

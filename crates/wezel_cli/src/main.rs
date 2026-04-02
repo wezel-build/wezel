@@ -364,6 +364,12 @@ enum Command {
 
 #[derive(Subcommand)]
 enum BenchCmd {
+    /// Create a new benchmark (interactive wizard).
+    New {
+        /// Project root directory (defaults to current directory).
+        #[arg(long)]
+        project_dir: Option<PathBuf>,
+    },
     /// Run a benchmark against the current checkout.
     Run {
         /// Benchmark name (matches .wezel/benchmarks/<name>/). Omit to list available benchmarks.
@@ -470,6 +476,28 @@ fn main() -> ExitCode {
         Command::Setup { server_url } => run_result(setup_cmd(server_url.as_deref())),
 
         Command::Bench { cmd } => match cmd {
+            BenchCmd::New { project_dir } => {
+                let project_dir = resolve_project_dir(project_dir);
+                let name: String = dialoguer::Input::new()
+                    .with_prompt("Benchmark name")
+                    .interact_text()
+                    .unwrap();
+                let description: String = dialoguer::Input::new()
+                    .with_prompt("Description (optional)")
+                    .allow_empty(true)
+                    .interact_text()
+                    .unwrap();
+                let description = if description.is_empty() {
+                    None
+                } else {
+                    Some(description)
+                };
+                run_result(wezel_bench::new::create_benchmark(
+                    &name,
+                    description.as_deref(),
+                    &project_dir,
+                ))
+            }
             BenchCmd::Run {
                 benchmark,
                 project_dir,
