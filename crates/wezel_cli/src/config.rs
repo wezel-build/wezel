@@ -21,7 +21,7 @@ pub struct ProjectConfig {
     pub pheromone_dir: Option<String>,
     /// Override where the event queue is stored (default: `~/.wezel/queue/`).
     pub queue_dir: Option<String>,
-    /// List of registry URIs for benchmark adapters.
+    /// List of registry URIs for experiment adapters.
     /// Each entry can be any valid URI (https://, file://, etc.).
     pub registries: Option<Vec<String>>,
 }

@@ -45,13 +45,13 @@ impl Config {
     }
 }
 
-// ── Benchmark TOML parsing ───────────────────────────────────────────────────
+// ── Experiment TOML parsing ──────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct BenchmarkToml {
+pub(crate) struct ExperimentToml {
     pub name: String,
     pub description: Option<String>,
-    pub steps: Vec<BenchmarkStepToml>,
+    pub steps: Vec<ExperimentStepToml>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -62,7 +62,7 @@ enum DiffField {
 }
 
 #[derive(Debug, Deserialize)]
-struct BenchmarkStepToml {
+struct ExperimentStepToml {
     name: String,
     tool: Option<String>,
     description: Option<String>,
@@ -82,15 +82,15 @@ pub struct ParsedStep {
     pub inputs: serde_json::Value,
 }
 
-pub fn parse_benchmark(benchmark_dir: &Path) -> Result<(String, Option<String>, Vec<ParsedStep>)> {
-    let toml_path = benchmark_dir.join("benchmark.toml");
+pub fn parse_experiment(experiment_dir: &Path) -> Result<(String, Option<String>, Vec<ParsedStep>)> {
+    let toml_path = experiment_dir.join("experiment.toml");
     let raw = std::fs::read_to_string(&toml_path)
         .with_context(|| format!("reading {}", toml_path.display()))?;
-    let benchmark: BenchmarkToml =
+    let experiment: ExperimentToml =
         toml::from_str(&raw).with_context(|| format!("parsing {}", toml_path.display()))?;
 
-    let mut steps = Vec::with_capacity(benchmark.steps.len());
-    for raw_step in benchmark.steps {
+    let mut steps = Vec::with_capacity(experiment.steps.len());
+    for raw_step in experiment.steps {
         let forager = match raw_step.tool {
             Some(f) => f,
             None if raw_step.rest.contains_key("cmd") => "exec".to_string(),
@@ -118,7 +118,7 @@ pub fn parse_benchmark(benchmark_dir: &Path) -> Result<(String, Option<String>, 
         });
     }
 
-    Ok((benchmark.name, benchmark.description, steps))
+    Ok((experiment.name, experiment.description, steps))
 }
 
 fn toml_to_json(v: toml::Value) -> Result<serde_json::Value> {

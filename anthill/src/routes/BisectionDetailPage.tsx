@@ -72,7 +72,7 @@ export default function BisectionDetailPage() {
           <div className="flex items-center gap-[10px] px-[14px] py-[10px] border-b border-[var(--c-border)] bg-surface2">
             <Search size={14} color={C.accent} />
             <span className="text-xs font-mono text-fg font-bold flex-1">
-              {b.benchmarkName}{" "}
+              {b.experimentName}{" "}
               <span className="text-mid font-normal">
                 / {b.measurementName}
               </span>

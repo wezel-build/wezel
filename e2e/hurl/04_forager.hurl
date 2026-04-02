@@ -37,7 +37,7 @@ Content-Type: application/json
 {
   "project_upstream": "github.com/e2e-test/forager-test",
   "commit_sha": "aabbccd1234567890000000000000000000000aa",
-  "benchmark_name": "e2e-bench"
+  "experiment_name": "e2e-bench"
 }
 HTTP 201
 [Captures]
@@ -56,7 +56,7 @@ HTTP 200
 token1: jsonpath "$.token"
 [Asserts]
 jsonpath "$.commitSha" == "aabbccd1234567890000000000000000000000aa"
-jsonpath "$.benchmarkName" == "e2e-bench"
+jsonpath "$.experimentName" == "e2e-bench"
 jsonpath "$.projectId" == {{project_id}}
 
 # Submit measurements for the first run
@@ -123,7 +123,7 @@ Content-Type: application/json
 {
   "project_upstream": "github.com/e2e-test/forager-test",
   "commit_sha": "bbccdd112345670000000000000000000000bbcc",
-  "benchmark_name": "e2e-bench"
+  "experiment_name": "e2e-bench"
 }
 HTTP 201
 [Captures]

@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 use wezel_types::{ForagerRunReport, ForagerStepReport};
 
 use crate::git;
-use crate::{BenchmarkToml, Config, invoke_forager, parse_benchmark};
+use crate::{ExperimentToml, Config, invoke_forager, parse_experiment};
 
 pub struct BurrowSession {
     agent: ureq::Agent,
@@ -30,62 +30,62 @@ impl BurrowSession {
     }
 }
 
-pub fn list_benchmarks(project_dir: &Path) -> Result<()> {
-    let benchmarks_dir = project_dir.join(".wezel").join("benchmarks");
-    if !benchmarks_dir.is_dir() {
-        bail!("no benchmarks directory at {}", benchmarks_dir.display());
+pub fn list_experiments(project_dir: &Path) -> Result<()> {
+    let experiments_dir = project_dir.join(".wezel").join("experiments");
+    if !experiments_dir.is_dir() {
+        bail!("no experiments directory at {}", experiments_dir.display());
     }
 
     let mut found = Vec::new();
-    for entry in std::fs::read_dir(&benchmarks_dir).context("reading benchmarks directory")? {
+    for entry in std::fs::read_dir(&experiments_dir).context("reading experiments directory")? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir()
-            && path.join("benchmark.toml").is_file()
+            && path.join("experiment.toml").is_file()
             && let Some(name) = path.file_name().and_then(|n| n.to_str())
         {
-            let toml_path = path.join("benchmark.toml");
+            let toml_path = path.join("experiment.toml");
             let description = std::fs::read_to_string(&toml_path)
                 .ok()
-                .and_then(|raw| toml::from_str::<BenchmarkToml>(&raw).ok())
+                .and_then(|raw| toml::from_str::<ExperimentToml>(&raw).ok())
                 .and_then(|b| b.description);
             found.push((name.to_string(), description));
         }
     }
 
     if found.is_empty() {
-        println!("No benchmarks found in {}", benchmarks_dir.display());
+        println!("No experiments found in {}", experiments_dir.display());
         return Ok(());
     }
 
     found.sort_by(|a, b| a.0.cmp(&b.0));
-    println!("Available benchmarks:\n");
+    println!("Available experiments:\n");
     for (name, desc) in &found {
         match desc {
             Some(d) => println!("  {name}  — {d}"),
             None => println!("  {name}"),
         }
     }
-    println!("\nRun with: wezel bench run -b <name>");
+    println!("\nRun with: wezel experiment run -e <name>");
 
     Ok(())
 }
 
-/// Run a benchmark and return the step reports.
+/// Run an experiment and return the step reports.
 ///
 /// This function is pure execution — it knows nothing about Burrow.  The
 /// caller (daemon or CLI) decides whether/how to submit results.
-pub fn run_benchmark(benchmark_name: &str, project_dir: &Path) -> Result<Vec<ForagerStepReport>> {
-    let benchmark_dir = project_dir
+pub fn run_experiment(experiment_name: &str, project_dir: &Path) -> Result<Vec<ForagerStepReport>> {
+    let experiment_dir = project_dir
         .join(".wezel")
-        .join("benchmarks")
-        .join(benchmark_name);
+        .join("experiments")
+        .join(experiment_name);
 
-    if !benchmark_dir.is_dir() {
-        bail!("benchmark directory not found: {}", benchmark_dir.display());
+    if !experiment_dir.is_dir() {
+        bail!("experiment directory not found: {}", experiment_dir.display());
     }
 
-    let (_name, _description, steps) = parse_benchmark(&benchmark_dir)?;
+    let (_name, _description, steps) = parse_experiment(&experiment_dir)?;
 
     let commit_sha = git::current_sha(project_dir)?;
 
@@ -97,7 +97,7 @@ pub fn run_benchmark(benchmark_name: &str, project_dir: &Path) -> Result<Vec<For
 
         // Apply patch if the step declares one.
         if let Some(ref patch_stem) = step.diff {
-            let patch_path = benchmark_dir.join(format!("{patch_stem}.patch"));
+            let patch_path = experiment_dir.join(format!("{patch_stem}.patch"));
             log::info!("  applying patch: {}", patch_path.display());
             git::apply_patch(project_dir, &patch_path)
                 .with_context(|| format!("applying patch for step '{}'", step.name))?;
@@ -125,7 +125,7 @@ pub fn run_benchmark(benchmark_name: &str, project_dir: &Path) -> Result<Vec<For
     }
 
     // Print results locally.
-    println!("Benchmark: {benchmark_name}");
+    println!("Experiment: {experiment_name}");
     println!("Commit:    {}", &commit_sha[..7.min(commit_sha.len())]);
     for report in &step_reports {
         match &report.measurement {

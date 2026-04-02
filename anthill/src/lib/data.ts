@@ -109,7 +109,7 @@ export type BisectionStatus = "active" | "complete" | "abandoned";
 export interface Bisection {
   id: number;
   projectId: number;
-  benchmarkName: string;
+  experimentName: string;
   measurementName: string;
   branch: string;
   goodSha: string;

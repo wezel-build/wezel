@@ -252,7 +252,7 @@ function StepProject({
           {`[project]\nburrow_url = "${window.location.origin}"`}
         </pre>
         <p className="text-[10px] font-mono text-dim m-0 mt-[6px]">
-          Benchmarks go in{" "}
+          Experiments go in{" "}
           <code className="text-mid">.wezel/benchmarks/&lt;name&gt;/</code>
         </p>
       </div>

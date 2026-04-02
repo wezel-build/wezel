@@ -5,49 +5,49 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use owo_colors::OwoColorize;
 
-use crate::{parse_benchmark, resolve_plugin};
+use crate::{parse_experiment, resolve_plugin};
 
 struct LintDiagnostic {
     step: String,
     message: String,
 }
 
-struct BenchmarkResult {
+struct ExperimentResult {
     name: String,
     step_count: usize,
     diagnostics: Vec<LintDiagnostic>,
 }
 
 pub fn run_lint(project_dir: &Path) -> Result<()> {
-    let benchmarks_dir = project_dir.join(".wezel").join("benchmarks");
-    if !benchmarks_dir.is_dir() {
-        bail!("no benchmarks directory at {}", benchmarks_dir.display());
+    let experiments_dir = project_dir.join(".wezel").join("experiments");
+    if !experiments_dir.is_dir() {
+        bail!("no experiments directory at {}", experiments_dir.display());
     }
 
-    let mut dirs: Vec<_> = std::fs::read_dir(&benchmarks_dir)
-        .context("reading benchmarks directory")?
+    let mut dirs: Vec<_> = std::fs::read_dir(&experiments_dir)
+        .context("reading experiments directory")?
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().is_dir() && e.path().join("benchmark.toml").is_file())
+        .filter(|e| e.path().is_dir() && e.path().join("experiment.toml").is_file())
         .collect();
     dirs.sort_by_key(|e| e.file_name());
 
     if dirs.is_empty() {
-        bail!("no benchmarks found in {}", benchmarks_dir.display());
+        bail!("no experiments found in {}", experiments_dir.display());
     }
 
-    let mut results: Vec<BenchmarkResult> = Vec::new();
+    let mut results: Vec<ExperimentResult> = Vec::new();
     let mut warned_plugins: HashSet<String> = HashSet::new();
 
     for entry in &dirs {
-        let benchmark_dir = entry.path();
-        let benchmark_name = entry.file_name().to_string_lossy().to_string();
+        let experiment_dir = entry.path();
+        let experiment_name = entry.file_name().to_string_lossy().to_string();
 
         // Parse the TOML.
-        let steps = match parse_benchmark(&benchmark_dir) {
+        let steps = match parse_experiment(&experiment_dir) {
             Ok((_name, _desc, steps)) => steps,
             Err(e) => {
-                results.push(BenchmarkResult {
-                    name: benchmark_name,
+                results.push(ExperimentResult {
+                    name: experiment_name,
                     step_count: 0,
                     diagnostics: vec![LintDiagnostic {
                         step: String::new(),
@@ -63,7 +63,7 @@ pub fn run_lint(project_dir: &Path) -> Result<()> {
         for step in &steps {
             // Check patch file exists when declared.
             if let Some(ref patch_stem) = step.diff {
-                let patch_path = benchmark_dir.join(format!("{patch_stem}.patch"));
+                let patch_path = experiment_dir.join(format!("{patch_stem}.patch"));
                 if !patch_path.is_file() {
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),
@@ -119,8 +119,8 @@ pub fn run_lint(project_dir: &Path) -> Result<()> {
             }
         }
 
-        results.push(BenchmarkResult {
-            name: benchmark_name,
+        results.push(ExperimentResult {
+            name: experiment_name,
             step_count: steps.len(),
             diagnostics,
         });
@@ -128,7 +128,7 @@ pub fn run_lint(project_dir: &Path) -> Result<()> {
 
     // Render output.
     let total_errors: usize = results.iter().map(|r| r.diagnostics.len()).sum();
-    let total_benchmarks = results.len();
+    let total_experiments = results.len();
 
     for result in &results {
         let ok = result.diagnostics.is_empty() && result.step_count > 0;
@@ -167,16 +167,16 @@ pub fn run_lint(project_dir: &Path) -> Result<()> {
         println!(
             "{}",
             format!(
-                "{total_benchmarks} benchmark{} validated, no errors.",
-                if total_benchmarks == 1 { "" } else { "s" }
+                "{total_experiments} experiment{} validated, no errors.",
+                if total_experiments == 1 { "" } else { "s" }
             )
             .green()
         );
         Ok(())
     } else {
         let msg = format!(
-            "{total_benchmarks} benchmark{} checked, {total_errors} error{} found.",
-            if total_benchmarks == 1 { "" } else { "s" },
+            "{total_experiments} experiment{} checked, {total_errors} error{} found.",
+            if total_experiments == 1 { "" } else { "s" },
             if total_errors == 1 { "" } else { "s" },
         );
         eprintln!("{}", msg.red());

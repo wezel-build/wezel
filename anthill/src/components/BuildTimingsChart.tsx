@@ -166,7 +166,7 @@ export function BuildTimingsChart({
   focusedCrate,
   onNodeClick,
   onNodeFocus,
-  onBenchmark,
+  onExperiment,
   bg,
   border,
   accentColor,
@@ -178,7 +178,7 @@ export function BuildTimingsChart({
   focusedCrate?: string | null;
   onNodeClick?: (name: string) => void;
   onNodeFocus?: (name: string | null) => void;
-  onBenchmark?: (name: string) => void;
+  onExperiment?: (name: string) => void;
   bg: string;
   border: string;
   accentColor?: string;
@@ -279,7 +279,7 @@ export function BuildTimingsChart({
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
-      if (!onBenchmark) return;
+      if (!onExperiment) return;
       const el = (e.target as HTMLElement).closest(
         "[data-crate]",
       ) as HTMLElement | null;
@@ -287,7 +287,7 @@ export function BuildTimingsChart({
       e.preventDefault();
       setContextMenu({ x: e.clientX, y: e.clientY, crate: el.dataset.crate! });
     },
-    [onBenchmark],
+    [onExperiment],
   );
 
   // Dismiss context menu on outside click
@@ -433,7 +433,7 @@ export function BuildTimingsChart({
         >
           <button
             onClick={() => {
-              onBenchmark?.(contextMenu.crate);
+              onExperiment?.(contextMenu.crate);
               setContextMenu(null);
             }}
             style={{
@@ -451,7 +451,7 @@ export function BuildTimingsChart({
               textAlign: "left",
             }}
           >
-            🚀 Benchmark changes to <strong>{contextMenu.crate}</strong>
+            🚀 Experiment for <strong>{contextMenu.crate}</strong>
           </button>
         </div>
       )}

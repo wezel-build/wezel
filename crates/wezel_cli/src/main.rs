@@ -350,10 +350,10 @@ enum Command {
         #[arg(long)]
         server_url: Option<String>,
     },
-    /// Active benchmarking: measure builds across commits.
-    Bench {
+    /// Active measurement: run experiments across commits.
+    Experiment {
         #[command(subcommand)]
-        cmd: BenchCmd,
+        cmd: ExperimentCmd,
     },
     /// Passive build observation: aliases, event flushing, health.
     Observe {
@@ -363,53 +363,53 @@ enum Command {
 }
 
 #[derive(Subcommand)]
-enum BenchCmd {
-    /// Create a new benchmark (interactive wizard).
+enum ExperimentCmd {
+    /// Create a new experiment (interactive wizard).
     New {
         /// Project root directory (defaults to current directory).
         #[arg(long)]
         project_dir: Option<PathBuf>,
     },
-    /// Run a benchmark against the current checkout.
+    /// Run an experiment against the current checkout.
     Run {
-        /// Benchmark name (matches .wezel/benchmarks/<name>/). Omit to list available benchmarks.
+        /// Experiment name (matches .wezel/experiments/<name>/). Omit to list available experiments.
         #[arg(short, long)]
-        benchmark: Option<String>,
+        experiment: Option<String>,
         /// Project root directory (defaults to current directory).
         #[arg(long)]
         project_dir: Option<PathBuf>,
     },
-    /// List available benchmarks.
+    /// List available experiments.
     List {
         /// Project root directory (defaults to current directory).
         #[arg(long)]
         project_dir: Option<PathBuf>,
     },
-    /// Validate benchmark definitions without running them.
+    /// Validate experiment definitions without running them.
     Lint {
         /// Project root directory (defaults to current directory).
         #[arg(long)]
         project_dir: Option<PathBuf>,
     },
-    /// Manage the benchmark daemon (polls server for jobs).
+    /// Manage the experiment daemon (polls server for jobs).
     Daemon {
         #[command(subcommand)]
-        cmd: BenchDaemonCmd,
+        cmd: ExperimentDaemonCmd,
     },
 }
 
 #[derive(Subcommand)]
-enum BenchDaemonCmd {
-    /// Start polling the server for queued benchmark jobs and run them.
+enum ExperimentDaemonCmd {
+    /// Start polling the server for queued experiment jobs and run them.
     Start {
-        /// Path to the repository to check out and run benchmarks in.
+        /// Path to the repository to check out and run experiments in.
         #[arg(long)]
         repo_dir: PathBuf,
         /// Seconds to wait between polls when no job is available.
         #[arg(long, default_value = "10")]
         poll_interval: u64,
     },
-    /// Show current benchmark daemon status and active job.
+    /// Show current experiment daemon status and active job.
     Status,
 }
 
@@ -475,11 +475,11 @@ fn main() -> ExitCode {
     match cli.command {
         Command::Setup { server_url } => run_result(setup_cmd(server_url.as_deref())),
 
-        Command::Bench { cmd } => match cmd {
-            BenchCmd::New { project_dir } => {
+        Command::Experiment { cmd } => match cmd {
+            ExperimentCmd::New { project_dir } => {
                 let project_dir = resolve_project_dir(project_dir);
                 let name: String = dialoguer::Input::new()
-                    .with_prompt("Benchmark name")
+                    .with_prompt("Experiment name")
                     .interact_text()
                     .unwrap();
                 let description: String = dialoguer::Input::new()
@@ -492,38 +492,38 @@ fn main() -> ExitCode {
                 } else {
                     Some(description)
                 };
-                run_result(wezel_bench::new::create_benchmark(
+                run_result(wezel_bench::new::create_experiment(
                     &name,
                     description.as_deref(),
                     &project_dir,
                 ))
             }
-            BenchCmd::Run {
-                benchmark,
+            ExperimentCmd::Run {
+                experiment,
                 project_dir,
             } => {
                 let project_dir = resolve_project_dir(project_dir);
-                match benchmark {
+                match experiment {
                     Some(name) => {
-                        run_result(wezel_bench::run::run_benchmark(&name, &project_dir).map(|_| ()))
+                        run_result(wezel_bench::run::run_experiment(&name, &project_dir).map(|_| ()))
                     }
-                    None => run_result(wezel_bench::run::list_benchmarks(&project_dir)),
+                    None => run_result(wezel_bench::run::list_experiments(&project_dir)),
                 }
             }
-            BenchCmd::List { project_dir } => {
+            ExperimentCmd::List { project_dir } => {
                 let project_dir = resolve_project_dir(project_dir);
-                run_result(wezel_bench::run::list_benchmarks(&project_dir))
+                run_result(wezel_bench::run::list_experiments(&project_dir))
             }
-            BenchCmd::Lint { project_dir } => {
+            ExperimentCmd::Lint { project_dir } => {
                 let project_dir = resolve_project_dir(project_dir);
                 run_result(wezel_bench::lint::run_lint(&project_dir))
             }
-            BenchCmd::Daemon { cmd: daemon_cmd } => match daemon_cmd {
-                BenchDaemonCmd::Start {
+            ExperimentCmd::Daemon { cmd: daemon_cmd } => match daemon_cmd {
+                ExperimentDaemonCmd::Start {
                     repo_dir,
                     poll_interval,
                 } => run_result(wezel_bench::daemon::run_start(&repo_dir, poll_interval)),
-                BenchDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
+                ExperimentDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
             },
         },
 

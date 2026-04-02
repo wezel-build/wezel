@@ -232,7 +232,7 @@ pub struct ForagerQueueJobStatus {
 }
 
 #[derive(Serialize)]
-pub struct BenchmarkPrResponse {
+pub struct ExperimentPrResponse {
     #[serde(rename = "prUrl")]
     pub pr_url: String,
 }
@@ -243,7 +243,7 @@ pub struct BenchmarkPrResponse {
 pub struct Bisection {
     pub id: i64,
     pub project_id: i64,
-    pub benchmark_name: String,
+    pub experiment_name: String,
     pub measurement_name: String,
     pub branch: String,
     pub good_sha: String,
@@ -259,7 +259,7 @@ pub struct Bisection {
 pub struct BisectionJson {
     pub id: i64,
     pub project_id: i64,
-    pub benchmark_name: String,
+    pub experiment_name: String,
     pub measurement_name: String,
     pub branch: String,
     pub good_sha: String,
@@ -276,7 +276,7 @@ impl From<Bisection> for BisectionJson {
         Self {
             id: b.id,
             project_id: b.project_id,
-            benchmark_name: b.benchmark_name,
+            experiment_name: b.experiment_name,
             measurement_name: b.measurement_name,
             branch: b.branch,
             good_sha: b.good_sha,

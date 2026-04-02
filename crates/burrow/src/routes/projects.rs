@@ -167,20 +167,20 @@ pub async fn get_users(State(pool): State<PgPool>) -> ApiResult<Json<Vec<String>
     Ok(Json(rows.into_iter().map(|u| u.username).collect()))
 }
 
-// ── Benchmark PR ──────────────────────────────────────────────────────────────
+// ── Experiment PR ─────────────────────────────────────────────────────────────
 
 #[derive(serde::Deserialize)]
-pub struct BenchmarkPrBody {
-    #[serde(rename = "benchmarkName")]
-    pub benchmark_name: String,
+pub struct ExperimentPrBody {
+    #[serde(rename = "experimentName")]
+    pub experiment_name: String,
     pub files: std::collections::HashMap<String, String>,
 }
 
-pub async fn post_benchmark_pr(
+pub async fn post_experiment_pr(
     Path(project_id): Path<i64>,
     State(pool): State<PgPool>,
-    Json(body): Json<BenchmarkPrBody>,
-) -> ApiResult<Json<BenchmarkPrResponse>> {
+    Json(body): Json<ExperimentPrBody>,
+) -> ApiResult<Json<ExperimentPrResponse>> {
     let project = sqlx::query_as::<_, Project>(
         "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
     )
@@ -272,7 +272,7 @@ pub async fn post_benchmark_pr(
         &format!("https://api.github.com/repos/{owner}/{repo}/git/commits"),
         token,
         Some(serde_json::json!({
-            "message": format!("wezel: add {} benchmark", body.benchmark_name),
+            "message": format!("wezel: add {} experiment", body.experiment_name),
             "tree": tree_sha,
             "parents": [base_sha]
         })),
@@ -285,7 +285,7 @@ pub async fn post_benchmark_pr(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let branch_name = format!("wezel/benchmark-{}-{ts}", body.benchmark_name);
+    let branch_name = format!("wezel/experiment-{}-{ts}", body.experiment_name);
     let _: Value = github_api(
         &client,
         reqwest::Method::POST,
@@ -305,16 +305,16 @@ pub async fn post_benchmark_pr(
         &format!("https://api.github.com/repos/{owner}/{repo}/pulls"),
         token,
         Some(serde_json::json!({
-            "title": format!("wezel: add {} benchmark", body.benchmark_name),
+            "title": format!("wezel: add {} experiment", body.experiment_name),
             "head": branch_name,
             "base": default_branch,
-            "body": "This PR was created by [wezel](https://wezel.dev) to add a new benchmark."
+            "body": "This PR was created by [wezel](https://wezel.dev) to add a new experiment."
         })),
     )
     .await?;
     let pr_url = pr["html_url"].as_str().ok_or(StatusCode::BAD_GATEWAY)?;
 
-    Ok(Json(BenchmarkPrResponse {
+    Ok(Json(ExperimentPrResponse {
         pr_url: pr_url.to_string(),
     }))
 }

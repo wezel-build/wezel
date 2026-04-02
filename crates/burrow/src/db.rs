@@ -78,7 +78,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             timestamp TEXT NOT NULL DEFAULT '',
             UNIQUE(repo_id, sha)
         );
-        CREATE TABLE IF NOT EXISTS measurements (
+        CREATE TABLE IF NOT EXISTS metrics (
             id BIGSERIAL PRIMARY KEY,
             commit_id BIGINT NOT NULL REFERENCES commits(id),
             project_id BIGINT NOT NULL REFERENCES projects(id),
@@ -89,9 +89,9 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             unit TEXT,
             step TEXT
         );
-        CREATE TABLE IF NOT EXISTS measurement_details (
+        CREATE TABLE IF NOT EXISTS metric_details (
             id BIGSERIAL PRIMARY KEY,
-            measurement_id BIGINT NOT NULL REFERENCES measurements(id) ON DELETE CASCADE,
+            metric_id BIGINT NOT NULL REFERENCES metrics(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
             value DOUBLE PRECISION NOT NULL
         );
@@ -120,7 +120,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
         CREATE TABLE IF NOT EXISTS forager_tokens (
             id BIGSERIAL PRIMARY KEY,
             commit_id BIGINT NOT NULL REFERENCES commits(id),
-            benchmark_name TEXT NOT NULL,
+            experiment_name TEXT NOT NULL,
             token TEXT NOT NULL UNIQUE,
             claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             expires_at TIMESTAMPTZ NOT NULL
@@ -136,7 +136,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
         CREATE TABLE IF NOT EXISTS bisections (
             id                BIGSERIAL PRIMARY KEY,
             project_id        BIGINT NOT NULL REFERENCES projects(id),
-            benchmark_name    TEXT NOT NULL,
+            experiment_name    TEXT NOT NULL,
             measurement_name  TEXT NOT NULL,
             branch            TEXT NOT NULL,
             good_sha          TEXT NOT NULL,
@@ -153,7 +153,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             id             BIGSERIAL PRIMARY KEY,
             project_id     BIGINT NOT NULL REFERENCES projects(id),
             commit_sha     TEXT NOT NULL,
-            benchmark_name TEXT NOT NULL,
+            experiment_name TEXT NOT NULL,
             branch         TEXT NOT NULL DEFAULT 'main',
             bisection_id   BIGINT REFERENCES bisections(id),
             status         TEXT NOT NULL DEFAULT 'pending'

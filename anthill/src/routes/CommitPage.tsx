@@ -197,8 +197,8 @@ export default function CommitPage() {
   const vizMap = useMemo(() => buildVizMap(pheromones), [pheromones]);
 
   const [showPicker, setShowPicker] = useState(false);
-  const [knownBenchmarks, setKnownBenchmarks] = useState<string[]>([]);
-  const [benchmarkInput, setBenchmarkInput] = useState("");
+  const [knownExperiments, setKnownExperiments] = useState<string[]>([]);
+  const [experimentInput, setExperimentInput] = useState("");
   const [enqueueing, setEnqueueing] = useState(false);
   const [enqueueError, setEnqueueError] = useState<string | null>(null);
   const [enqueueSuccess, setEnqueueSuccess] = useState(false);
@@ -282,16 +282,16 @@ export default function CommitPage() {
     setEnqueueSuccess(false);
     setShowPicker(true);
     try {
-      const bms = await pApi.benchmarks();
-      setKnownBenchmarks(bms);
-      if (bms.length === 1) setBenchmarkInput(bms[0]);
+      const bms = await pApi.experiments();
+      setKnownExperiments(bms);
+      if (bms.length === 1) setExperimentInput(bms[0]);
     } catch {
       // Ignore — user can still type manually.
     }
   };
 
   const onEnqueue = async () => {
-    const name = benchmarkInput.trim();
+    const name = experimentInput.trim();
     if (!targetSha || !name || !current || enqueueing) return;
     setEnqueueing(true);
     setEnqueueError(null);
@@ -299,7 +299,7 @@ export default function CommitPage() {
       await api.enqueueForagerJob(current.upstream, targetSha, name);
       setEnqueueSuccess(true);
       setShowPicker(false);
-      setBenchmarkInput("");
+      setExperimentInput("");
     } catch (e) {
       setEnqueueError(String(e));
     } finally {
@@ -422,17 +422,17 @@ export default function CommitPage() {
 
             {showPicker && (
               <div className="flex flex-col gap-[6px] border-t border-[var(--c-border)] pt-[8px]">
-                {knownBenchmarks.length > 0 && (
+                {knownExperiments.length > 0 && (
                   <div className="flex gap-[4px] flex-wrap">
-                    {knownBenchmarks.map((bm) => (
+                    {knownExperiments.map((bm) => (
                       <button
                         key={bm}
-                        onClick={() => setBenchmarkInput(bm)}
+                        onClick={() => setExperimentInput(bm)}
                         className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[4px]"
                         style={{
                           background:
-                            benchmarkInput === bm ? C.surface3 : C.surface2,
-                          color: benchmarkInput === bm ? C.accent : C.textMid,
+                            experimentInput === bm ? C.surface3 : C.surface2,
+                          color: experimentInput === bm ? C.accent : C.textMid,
                           cursor: "pointer",
                         }}
                       >
@@ -443,25 +443,25 @@ export default function CommitPage() {
                 )}
                 <div className="flex items-center gap-[6px]">
                   <input
-                    value={benchmarkInput}
-                    onChange={(e) => setBenchmarkInput(e.target.value)}
+                    value={experimentInput}
+                    onChange={(e) => setExperimentInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && onEnqueue()}
-                    placeholder="benchmark name"
+                    placeholder="experiment name"
                     className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[6px] py-[5px] bg-surface2 text-fg flex-1"
                     style={{ outline: "none" }}
                     autoFocus
                   />
                   <button
                     onClick={onEnqueue}
-                    disabled={!benchmarkInput.trim() || enqueueing}
+                    disabled={!experimentInput.trim() || enqueueing}
                     className="text-[10px] font-mono border border-[var(--c-border)] rounded px-[8px] py-[5px] bg-surface2"
                     style={{
                       color:
-                        !benchmarkInput.trim() || enqueueing
+                        !experimentInput.trim() || enqueueing
                           ? C.textDim
                           : C.accent,
                       cursor:
-                        !benchmarkInput.trim() || enqueueing
+                        !experimentInput.trim() || enqueueing
                           ? "default"
                           : "pointer",
                     }}
@@ -471,7 +471,7 @@ export default function CommitPage() {
                   <button
                     onClick={() => {
                       setShowPicker(false);
-                      setBenchmarkInput("");
+                      setExperimentInput("");
                       setEnqueueError(null);
                     }}
                     className="text-[10px] font-mono text-dim border-0 bg-transparent cursor-pointer"

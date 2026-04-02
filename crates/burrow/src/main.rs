@@ -141,8 +141,8 @@ async fn main() {
         )
         .route("/api/project/{project_id}/user", get(get_users))
         .route(
-            "/api/project/{project_id}/benchmarks",
-            get(get_project_benchmarks),
+            "/api/project/{project_id}/experiments",
+            get(get_project_experiments),
         )
         .route(
             "/api/project/{project_id}/bisections",
@@ -161,8 +161,8 @@ async fn main() {
             get(get_project_compare),
         )
         .route(
-            "/api/project/{project_id}/benchmark/pr",
-            post(post_benchmark_pr),
+            "/api/project/{project_id}/experiment/pr",
+            post(post_experiment_pr),
         )
         .route(
             "/api/admin/pheromone",

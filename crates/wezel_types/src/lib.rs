@@ -76,7 +76,7 @@ pub struct Observation {
     pub runs: Vec<Run>,
 }
 
-// ── Forager / commit measurements ────────────────────────────────────────────
+// ── Forager / commit metrics ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -146,7 +146,7 @@ pub enum BisectionStatus {
 pub struct Bisection {
     pub id: u64,
     pub project_id: u64,
-    pub benchmark_name: String,
+    pub experiment_name: String,
     pub measurement_name: String,
     pub branch: String,
     pub good_sha: String,
@@ -160,15 +160,15 @@ pub struct Bisection {
 
 // ── Forager runner types ─────────────────────────────────────────────────────
 
-/// Benchmark definition parsed from `.wezel/benchmarks/<name>/benchmark.toml`.
+/// Experiment definition parsed from `.wezel/experiments/<name>/experiment.toml`.
 #[derive(Debug, Clone, Serialize)]
-pub struct BenchmarkDef {
+pub struct ExperimentDef {
     pub name: String,
     pub description: Option<String>,
     pub steps: Vec<StepDef>,
 }
 
-/// A single step in a benchmark.
+/// A single step in an experiment.
 #[derive(Debug, Clone, Serialize)]
 pub struct StepDef {
     /// Step identifier; also used as the default patch filename stem.
@@ -191,7 +191,7 @@ pub struct ForagerJob {
     pub commit_sha: String,
     pub project_id: u64,
     pub project_upstream: String,
-    pub benchmark_name: String,
+    pub experiment_name: String,
     /// Set when this job is part of a bisection run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bisection_id: Option<u64>,
@@ -233,21 +233,21 @@ pub struct ForagerRunReport {
     pub bisection_id: Option<u64>,
 }
 
-// ── Benchmark PR ─────────────────────────────────────────────────────────────
+// ── Experiment PR ────────────────────────────────────────────────────────────
 
-/// Request body for `POST /api/project/{id}/benchmark/pr`.
+/// Request body for `POST /api/project/{id}/experiment/pr`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BenchmarkPrRequest {
-    pub benchmark_name: String,
+pub struct ExperimentPrRequest {
+    pub experiment_name: String,
     /// Map of repo-relative path → file content.
     pub files: std::collections::HashMap<String, String>,
 }
 
-/// Response from `POST /api/project/{id}/benchmark/pr`.
+/// Response from `POST /api/project/{id}/experiment/pr`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BenchmarkPrResponse {
+pub struct ExperimentPrResponse {
     pub pr_url: String,
 }
 

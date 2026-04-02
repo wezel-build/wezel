@@ -82,7 +82,7 @@ export default function BisectionsPage() {
             className={`${GRID} px-[12px] py-[8px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2`}
           >
             <span>Status</span>
-            <span>Benchmark / Measurement</span>
+            <span>Experiment / Measurement</span>
             <span>Branch</span>
             <span className="text-right">Good</span>
             <span className="text-right">Bad</span>
@@ -127,7 +127,7 @@ export default function BisectionsPage() {
                     }
                     className="no-underline text-fg overflow-hidden text-ellipsis whitespace-nowrap"
                   >
-                    <span className="font-semibold">{b.benchmarkName}</span>
+                    <span className="font-semibold">{b.experimentName}</span>
                     <span className="text-dim"> / </span>
                     <span className="text-mid">{b.measurementName}</span>
                   </Link>

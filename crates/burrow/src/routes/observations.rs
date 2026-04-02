@@ -370,7 +370,7 @@ pub async fn ingest_events(
 
         let scenario_platform: Option<&str> = pheromone.get("platform").and_then(|v| v.as_str());
 
-        let benchmark_name = if packages.is_empty() {
+        let observation_name = if packages.is_empty() {
             format!("{tool} {command}")
         } else {
             format!("{tool} {command} {}", packages.join(" "))
@@ -383,7 +383,7 @@ pub async fn ingest_events(
                  WHERE project_id = $1 AND name = $2 AND profile = $3 AND platform = $4",
             )
             .bind(project_id)
-            .bind(&benchmark_name)
+            .bind(&observation_name)
             .bind(profile)
             .bind(sp)
             .fetch_optional(&pool)
@@ -394,7 +394,7 @@ pub async fn ingest_events(
                  WHERE project_id = $1 AND name = $2 AND profile = $3 AND platform IS NULL",
             )
             .bind(project_id)
-            .bind(&benchmark_name)
+            .bind(&observation_name)
             .bind(profile)
             .fetch_optional(&pool)
             .await
@@ -408,7 +408,7 @@ pub async fn ingest_events(
                      VALUES ($1, $2, $3, $4) RETURNING id",
                 )
                 .bind(project_id)
-                .bind(&benchmark_name)
+                .bind(&observation_name)
                 .bind(profile)
                 .bind(scenario_platform)
                 .fetch_one(&pool)

@@ -8,10 +8,10 @@ import type {
 import { detectToolchain } from "../lib/toolchain";
 import {
   fetchAdapter,
-  generateBenchmarkToml,
+  generateExperimentToml,
   sortedCrateNames,
 } from "../lib/registry";
-import { benchmarkPrApi } from "../lib/api";
+import { experimentPrApi } from "../lib/api";
 import { computeHeat } from "../lib/data";
 import { C } from "../lib/colors";
 
@@ -22,7 +22,7 @@ interface Props {
   onClose: () => void;
 }
 
-export function BenchmarkCreatorModal({
+export function ExperimentCreatorModal({
   observation,
   projectId,
   initialCrate,
@@ -33,7 +33,7 @@ export function BenchmarkCreatorModal({
   const [selectedTemplate, setSelectedTemplate] =
     useState<RegistryTemplate | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
-  const [benchmarkName, setBenchmarkName] = useState("");
+  const [experimentName, setExperimentName] = useState("");
   const [creating, setCreating] = useState(false);
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,10 +71,10 @@ export function BenchmarkCreatorModal({
     }
   }, [initialCrate]);
 
-  // Set default benchmark name when template changes
+  // Set default experiment name when template changes
   useEffect(() => {
     if (selectedTemplate) {
-      setBenchmarkName(selectedTemplate.id);
+      setExperimentName(selectedTemplate.id);
       // Set field defaults
       const defaults: Record<string, string> = {};
       for (const field of selectedTemplate.uiSchema?.fields ?? []) {
@@ -86,20 +86,20 @@ export function BenchmarkCreatorModal({
     }
   }, [selectedTemplate, initialCrate]);
 
-  const benchmarkToml = useMemo(() => {
-    if (!selectedTemplate || !benchmarkName) return "";
-    return generateBenchmarkToml(benchmarkName, selectedTemplate, fieldValues);
-  }, [selectedTemplate, benchmarkName, fieldValues]);
+  const experimentToml = useMemo(() => {
+    if (!selectedTemplate || !experimentName) return "";
+    return generateExperimentToml(experimentName, selectedTemplate, fieldValues);
+  }, [selectedTemplate, experimentName, fieldValues]);
 
-  const benchmarkPath = `.wezel/benchmarks/${benchmarkName}/benchmark.toml`;
+  const experimentPath = `.wezel/experiments/${experimentName}/experiment.toml`;
 
   async function handleCreatePr() {
-    if (!benchmarkName || !benchmarkToml) return;
+    if (!experimentName || !experimentToml) return;
     setCreating(true);
     setError(null);
     try {
-      const result = await benchmarkPrApi(projectId).createPr(benchmarkName, {
-        [benchmarkPath]: benchmarkToml,
+      const result = await experimentPrApi(projectId).createPr(experimentName, {
+        [experimentPath]: experimentToml,
       });
       setPrUrl(result.prUrl);
     } catch (e: unknown) {
@@ -132,7 +132,7 @@ export function BenchmarkCreatorModal({
           style={{ borderBottom: "1px solid var(--c-border)" }}
         >
           <span className="text-[13px] font-semibold font-mono text-fg">
-            Create benchmark
+            Create experiment
           </span>
           <button
             onClick={onClose}
@@ -204,15 +204,15 @@ export function BenchmarkCreatorModal({
                       {selectedTemplate.name}
                     </div>
 
-                    {/* Benchmark name */}
+                    {/* Experiment name */}
                     <label className="flex flex-col gap-[4px]">
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-dim font-mono">
-                        Benchmark name
+                        Experiment name
                       </span>
                       <input
-                        value={benchmarkName}
+                        value={experimentName}
                         onChange={(e) =>
-                          setBenchmarkName(
+                          setExperimentName(
                             e.target.value.replace(/[^a-z0-9-_]/gi, "-"),
                           )
                         }
@@ -299,13 +299,13 @@ export function BenchmarkCreatorModal({
                 className="px-3 py-2 text-[9px] font-semibold uppercase tracking-wider text-dim font-mono shrink-0"
                 style={{ borderBottom: "1px solid var(--c-border)" }}
               >
-                {benchmarkPath || ".wezel/benchmarks/…/benchmark.toml"}
+                {experimentPath || ".wezel/experiments/…/experiment.toml"}
               </div>
               <pre
                 className="flex-1 overflow-auto p-3 text-[10px] font-mono text-fg m-0"
                 style={{ background: "var(--c-surface2)" }}
               >
-                {benchmarkToml}
+                {experimentToml}
               </pre>
             </div>
           )}
@@ -334,13 +334,13 @@ export function BenchmarkCreatorModal({
             ) : (
               <button
                 onClick={handleCreatePr}
-                disabled={creating || !benchmarkName}
+                disabled={creating || !experimentName}
                 className="ml-auto px-3 py-[5px] rounded text-[11px] font-mono font-semibold cursor-pointer"
                 style={{
                   background: C.accent,
                   color: "#fff",
                   border: "none",
-                  opacity: creating || !benchmarkName ? 0.5 : 1,
+                  opacity: creating || !experimentName ? 0.5 : 1,
                 }}
               >
                 {creating ? "Creating PR…" : "Open PR"}

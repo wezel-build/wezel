@@ -136,9 +136,9 @@ pub async fn post_forager_run(
         inserted.push((measurement_id, m.name.clone(), m.value));
     }
 
-    // Get the benchmark_name from the token row.
-    let (benchmark_name,): (String,) =
-        sqlx::query_as("SELECT benchmark_name FROM forager_tokens WHERE token = $1")
+    // Get the experiment_name from the token row.
+    let (experiment_name,): (String,) =
+        sqlx::query_as("SELECT experiment_name FROM forager_tokens WHERE token = $1")
             .bind(&body.token)
             .fetch_one(&pool)
             .await
@@ -155,7 +155,7 @@ pub async fn post_forager_run(
             project_id,
             commit_id,
             &commit_sha,
-            &benchmark_name,
+            &experiment_name,
             &inserted,
         )
         .await?;
@@ -173,7 +173,7 @@ async fn detect_regressions(
     project_id: i64,
     commit_id: i64,
     commit_sha: &str,
-    benchmark_name: &str,
+    experiment_name: &str,
     inserted: &[(i64, String, f64)],
 ) -> Result<(), StatusCode> {
     let detector = crate::regression::detector();
@@ -258,12 +258,12 @@ async fn detect_regressions(
         // Check no active bisection already covers this measurement.
         let existing: Option<(i64,)> = sqlx::query_as(
             "SELECT id FROM bisections \
-             WHERE project_id = $1 AND benchmark_name = $2 AND measurement_name = $3 \
+             WHERE project_id = $1 AND experiment_name = $2 AND measurement_name = $3 \
                AND status = 'active' \
              LIMIT 1",
         )
         .bind(project_id)
-        .bind(benchmark_name)
+        .bind(experiment_name)
         .bind(measurement_name)
         .fetch_optional(pool)
         .await
@@ -281,12 +281,12 @@ async fn detect_regressions(
         // Create bisection.
         let (bisection_id,): (i64,) = sqlx::query_as(
             "INSERT INTO bisections \
-             (project_id, benchmark_name, measurement_name, branch, \
+             (project_id, experiment_name, measurement_name, branch, \
               good_sha, bad_sha, good_value, bad_value) \
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
         )
         .bind(project_id)
-        .bind(benchmark_name)
+        .bind(experiment_name)
         .bind(measurement_name)
         .bind(&branch)
         .bind(&parent_sha)
@@ -303,7 +303,7 @@ async fn detect_regressions(
             bisection_id,
             project_id,
             repo_id,
-            benchmark_name,
+            experiment_name,
             &parent_sha,
             commit_sha,
         )
@@ -322,7 +322,7 @@ async fn progress_bisection(
 ) -> Result<(), StatusCode> {
     // Load the bisection.
     let bisection = sqlx::query_as::<_, (i64, String, String, String, String, f64, f64, String)>(
-        "SELECT project_id, benchmark_name, measurement_name, good_sha, bad_sha, \
+        "SELECT project_id, experiment_name, measurement_name, good_sha, bad_sha, \
                 good_value, bad_value, status \
          FROM bisections WHERE id = $1",
     )
@@ -334,7 +334,7 @@ async fn progress_bisection(
 
     let (
         project_id,
-        benchmark_name,
+        experiment_name,
         measurement_name,
         good_sha,
         bad_sha,
@@ -429,7 +429,7 @@ async fn progress_bisection(
             bisection_id,
             project_id,
             repo_id,
-            &benchmark_name,
+            &experiment_name,
             &new_good_sha,
             &new_bad_sha,
         )
@@ -464,7 +464,7 @@ async fn enqueue_midpoint(
     bisection_id: i64,
     project_id: i64,
     repo_id: i64,
-    benchmark_name: &str,
+    experiment_name: &str,
     good_sha: &str,
     bad_sha: &str,
 ) -> Result<(), StatusCode> {
@@ -504,12 +504,12 @@ async fn enqueue_midpoint(
 
     // Enqueue with bisection_id.
     sqlx::query(
-        "INSERT INTO forager_queue (project_id, commit_sha, benchmark_name, bisection_id) \
+        "INSERT INTO forager_queue (project_id, commit_sha, experiment_name, bisection_id) \
          VALUES ($1, $2, $3, $4)",
     )
     .bind(project_id)
     .bind(mid_sha)
-    .bind(benchmark_name)
+    .bind(experiment_name)
     .bind(bisection_id)
     .execute(pool)
     .await
@@ -524,7 +524,7 @@ async fn enqueue_midpoint(
 pub struct ForagerEnqueueBody {
     project_upstream: String,
     commit_sha: String,
-    benchmark_name: String,
+    experiment_name: String,
 }
 
 pub async fn post_forager_jobs(
@@ -533,9 +533,9 @@ pub async fn post_forager_jobs(
 ) -> ApiResult<(StatusCode, Json<ForagerQueueJobStatus>)> {
     let upstream = body.project_upstream.trim();
     let sha = body.commit_sha.trim();
-    let benchmark_name = body.benchmark_name.trim();
+    let experiment_name = body.experiment_name.trim();
 
-    if upstream.is_empty() || sha.is_empty() || benchmark_name.is_empty() {
+    if upstream.is_empty() || sha.is_empty() || experiment_name.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -544,13 +544,13 @@ pub async fn post_forager_jobs(
     // Return existing pending/running job if one already exists.
     if let Some((id, status)) = sqlx::query_as::<_, (i64, String)>(
         "SELECT id, status FROM forager_queue \
-         WHERE project_id = $1 AND commit_sha = $2 AND benchmark_name = $3 \
+         WHERE project_id = $1 AND commit_sha = $2 AND experiment_name = $3 \
          AND status IN ('pending', 'running') \
          LIMIT 1",
     )
     .bind(project_id)
     .bind(sha)
-    .bind(benchmark_name)
+    .bind(experiment_name)
     .fetch_optional(&pool)
     .await
     .map_err(ise)?
@@ -562,12 +562,12 @@ pub async fn post_forager_jobs(
     }
 
     let (id,): (i64,) = sqlx::query_as(
-        "INSERT INTO forager_queue (project_id, commit_sha, benchmark_name) \
+        "INSERT INTO forager_queue (project_id, commit_sha, experiment_name) \
          VALUES ($1, $2, $3) RETURNING id",
     )
     .bind(project_id)
     .bind(sha)
-    .bind(benchmark_name)
+    .bind(experiment_name)
     .fetch_one(&pool)
     .await
     .map_err(ise)?;
@@ -607,7 +607,7 @@ pub async fn post_forager_jobs_next(
              LIMIT 1 \
              FOR UPDATE SKIP LOCKED \
          ) \
-         RETURNING fq.id, fq.project_id, fq.commit_sha, fq.benchmark_name, \
+         RETURNING fq.id, fq.project_id, fq.commit_sha, fq.experiment_name, \
                    (SELECT upstream FROM projects WHERE id = fq.project_id), \
                    fq.bisection_id",
     )
@@ -616,7 +616,7 @@ pub async fn post_forager_jobs_next(
     .await
     .map_err(ise)?;
 
-    let Some((job_id, project_id, commit_sha, benchmark_name, project_upstream, bisection_id)) =
+    let Some((job_id, project_id, commit_sha, experiment_name, project_upstream, bisection_id)) =
         row
     else {
         return Ok((StatusCode::NO_CONTENT, Json(None)));
@@ -640,11 +640,11 @@ pub async fn post_forager_jobs_next(
     // Create forager token (expires in 4 hours).
     let token = uuid::Uuid::new_v4().to_string();
     sqlx::query(
-        "INSERT INTO forager_tokens (commit_id, benchmark_name, token, expires_at) \
+        "INSERT INTO forager_tokens (commit_id, experiment_name, token, expires_at) \
          VALUES ($1, $2, $3, now() + interval '4 hours')",
     )
     .bind(commit_id)
-    .bind(&benchmark_name)
+    .bind(&experiment_name)
     .bind(&token)
     .execute(&pool)
     .await
@@ -658,7 +658,7 @@ pub async fn post_forager_jobs_next(
             commit_sha,
             project_id: project_id as u64,
             project_upstream,
-            benchmark_name,
+            experiment_name,
             bisection_id: bisection_id.map(|id| id as u64),
         })),
     ))
@@ -700,19 +700,19 @@ pub async fn patch_forager_job(
     Ok(StatusCode::OK)
 }
 
-pub async fn get_project_benchmarks(
+pub async fn get_project_experiments(
     Path(project_id): Path<i64>,
     State(pool): State<PgPool>,
 ) -> ApiResult<Json<Vec<String>>> {
     let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT benchmark_name FROM (
-             SELECT benchmark_name FROM forager_queue WHERE project_id = $1
+        "SELECT DISTINCT experiment_name FROM (
+             SELECT experiment_name FROM forager_queue WHERE project_id = $1
              UNION
-             SELECT ft.benchmark_name FROM forager_tokens ft
+             SELECT ft.experiment_name FROM forager_tokens ft
              JOIN commits c ON ft.commit_id = c.id
              JOIN projects p ON p.repo_id = c.repo_id
              WHERE p.id = $1
-         ) t ORDER BY benchmark_name",
+         ) t ORDER BY experiment_name",
     )
     .bind(project_id)
     .fetch_all(&pool)

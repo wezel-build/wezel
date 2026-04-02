@@ -42,15 +42,15 @@ export async function fetchAdapter(
 }
 
 /**
- * Generate a benchmark.toml string from a template and field values.
+ * Generate an experiment.toml string from a template and field values.
  */
-export function generateBenchmarkToml(
-  benchmarkName: string,
+export function generateExperimentToml(
+  experimentName: string,
   template: RegistryTemplate,
   values: Record<string, string>,
 ): string {
   const lines: string[] = [
-    `name = "${benchmarkName}"`,
+    `name = "${experimentName}"`,
     `description = "${template.description}"`,
     "",
   ];

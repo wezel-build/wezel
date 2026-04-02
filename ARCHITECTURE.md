@@ -29,14 +29,14 @@ There are four faces to Wezel:
 - The asynchronous scenario executor (provided by the client) named Forager. It runs the scenarios and gathers the measures (both volatile and non-volatile ones).
 
 ### Forager
-Forager is the benchmarking arm of Wezel. It runs on dedicated hardware provisioned by the client — consistency of the machine is essential for meaningful volatile measurements. Forager does not prescribe *how* it is triggered; a cron job, a scheduled CI pipeline on a self-hosted runner, or a manual invocation all work.
+Forager is the experimentation arm of Wezel. It runs on dedicated hardware provisioned by the client — consistency of the machine is essential for meaningful volatile measurements. Forager does not prescribe *how* it is triggered; a cron job, a scheduled CI pipeline on a self-hosted runner, or a manual invocation all work.
 
 #### Flow
 1. The user observes in Anthill which scenarios are most common (derived from Pheromone data).
 2. The user pins interesting scenarios for tracking and defines them as **mutations**: a recipe like "build the workspace clean, then add this function to this source file, then rebuild."
 3. Forager runs tracked scenarios periodically (e.g. nightly) against HEAD of the main branch.
 4. Each scenario is executed multiple times to establish statistical confidence — a single timing is not trustworthy even on dedicated hardware.
-5. Results (wall time, peak RSS, and any non-volatile measures like `cargo llvm-lines`) are reported to Burrow.
+5. Results (wall time, peak RSS, and any non-volatile measures like `cargo llvm-lines`) are reported to Burrow as experiment results.
 6. Burrow compares results against a configurable baseline (previous run, rolling average, or a pinned threshold).
 7. If a regression is detected, Forager bisects the commits between the last known-good run and the current HEAD to identify the culprit.
 
@@ -55,7 +55,7 @@ A scenario is a user-defined **mutation recipe**:
 2. A mutation (e.g. "add this function to `src/lib.rs` in crate `foo`").
 3. A rebuild step (e.g. `cargo build`).
 
-This makes incremental build benchmarks deterministic and reproducible. The user controls exactly what "dirty" means.
+This makes incremental build experiments deterministic and reproducible. The user controls exactly what "dirty" means.
 
 #### Alerting
 When Forager identifies a culprit commit, it needs to notify someone. At minimum, Forager exposes a **webhook** so users can wire it to Slack, email, GitHub comments, or whatever fits their workflow. Anthill also surfaces bisect results in the dashboard.
@@ -68,7 +68,7 @@ on:
   schedule:
     - cron: '0 3 * * *'
 jobs:
-  benchmark:
+  experiment:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4

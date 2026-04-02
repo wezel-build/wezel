@@ -2,15 +2,15 @@ use std::path::Path;
 
 use anyhow::{Result, bail};
 
-pub fn create_benchmark(name: &str, description: Option<&str>, project_dir: &Path) -> Result<()> {
-    let benchmarks_dir = project_dir.join(".wezel").join("benchmarks");
-    let bench_dir = benchmarks_dir.join(name);
+pub fn create_experiment(name: &str, description: Option<&str>, project_dir: &Path) -> Result<()> {
+    let experiments_dir = project_dir.join(".wezel").join("experiments");
+    let experiment_dir = experiments_dir.join(name);
 
-    if bench_dir.exists() {
-        bail!("benchmark '{name}' already exists at {}", bench_dir.display());
+    if experiment_dir.exists() {
+        bail!("experiment '{name}' already exists at {}", experiment_dir.display());
     }
 
-    std::fs::create_dir_all(&bench_dir)?;
+    std::fs::create_dir_all(&experiment_dir)?;
 
     let mut toml_content = format!("name = \"{name}\"\n");
     if let Some(d) = description {
@@ -24,10 +24,10 @@ cmd = "cargo build"
 "#,
     );
 
-    std::fs::write(bench_dir.join("benchmark.toml"), toml_content)?;
+    std::fs::write(experiment_dir.join("experiment.toml"), toml_content)?;
 
-    eprintln!("Created benchmark at {}", bench_dir.display());
-    eprintln!("  Edit {}/benchmark.toml to configure steps", bench_dir.display());
+    eprintln!("Created experiment at {}", experiment_dir.display());
+    eprintln!("  Edit {}/experiment.toml to configure steps", experiment_dir.display());
 
     Ok(())
 }

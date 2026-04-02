@@ -7,7 +7,7 @@ use wezel_types::{ForagerJob, ForagerRunReport};
 
 use crate::Config;
 use crate::git;
-use crate::run::{BurrowSession, run_benchmark};
+use crate::run::{BurrowSession, run_experiment};
 
 // ── Status file ───────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ struct DaemonStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct JobStatus {
     id: u64,
-    benchmark: String,
+    experiment: String,
     commit_sha: String,
     status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -141,15 +141,15 @@ fn run_loop(
         let job: ForagerJob = response.into_json().context("parsing job response")?;
         let job_id = job.id;
         log::info!(
-            "claimed queue job {}: sha={} benchmark={}",
+            "claimed queue job {}: sha={} experiment={}",
             job_id,
             &job.commit_sha[..7.min(job.commit_sha.len())],
-            job.benchmark_name
+            job.experiment_name
         );
 
         status.current_job = Some(JobStatus {
             id: job_id,
-            benchmark: job.benchmark_name.clone(),
+            experiment: job.experiment_name.clone(),
             commit_sha: job.commit_sha.clone(),
             status: "running".to_string(),
             error: None,
@@ -162,7 +162,7 @@ fn run_loop(
         git::checkout_detached(repo_dir, &job.commit_sha)
             .with_context(|| format!("checkout {} for job {}", job.commit_sha, job_id))?;
 
-        let result = run_benchmark(&job.benchmark_name, repo_dir);
+        let result = run_experiment(&job.experiment_name, repo_dir);
 
         // Submit results to Burrow and update the queue job status.
         let (patch_body, finished) = match result {
@@ -179,7 +179,7 @@ fn run_loop(
                     serde_json::json!({ "status": "complete" }),
                     JobStatus {
                         id: job_id,
-                        benchmark: job.benchmark_name.clone(),
+                        experiment: job.experiment_name.clone(),
                         commit_sha: job.commit_sha.clone(),
                         status: "complete".to_string(),
                         error: None,
@@ -190,7 +190,7 @@ fn run_loop(
                 serde_json::json!({ "status": "failed", "error": format!("{e:#}") }),
                 JobStatus {
                     id: job_id,
-                    benchmark: job.benchmark_name.clone(),
+                    experiment: job.experiment_name.clone(),
                     commit_sha: job.commit_sha.clone(),
                     status: "failed".to_string(),
                     error: Some(format!("{e:#}")),
@@ -263,7 +263,7 @@ pub fn run_status() -> Result<()> {
             println!(
                 "  #{} {} @ {}",
                 job.id,
-                job.benchmark.bold(),
+                job.experiment.bold(),
                 &job.commit_sha[..7.min(job.commit_sha.len())],
             );
         }
@@ -282,7 +282,7 @@ pub fn run_status() -> Result<()> {
                 other => other.to_string(),
             };
             let sha = &job.commit_sha[..7.min(job.commit_sha.len())];
-            print!("  #{} {} @ {} — {status_label}", job.id, job.benchmark, sha);
+            print!("  #{} {} @ {} — {status_label}", job.id, job.experiment, sha);
             if let Some(ref e) = job.error {
                 print!(" ({})", e.dimmed());
             }

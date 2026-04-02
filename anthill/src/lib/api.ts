@@ -96,7 +96,7 @@ function projectApi(projectId: number) {
     scheduleCommit: (sha: string) =>
       post<ForagerCommit>(`${p}/commit`, { sha }),
     users: () => get<string[]>(`${p}/user`),
-    benchmarks: () => get<string[]>(`${p}/benchmarks`),
+    experiments: () => get<string[]>(`${p}/benchmarks`),
     branchTimeline: (branch: string, limit?: number) => {
       const q = limit ? `?limit=${limit}` : "";
       return get<BranchTimeline>(
@@ -122,7 +122,7 @@ function projectApi(projectId: number) {
 
 export type ProjectApi = ReturnType<typeof projectApi>;
 
-export interface BenchmarkPrResponse {
+export interface ExperimentPrResponse {
   prUrl: string;
 }
 
@@ -140,12 +140,12 @@ export const api = {
   enqueueForagerJob: (
     projectUpstream: string,
     commitSha: string,
-    benchmarkName: string,
+    experimentName: string,
   ) =>
     post<ForagerJobStatus>("/api/forager/jobs", {
       project_upstream: projectUpstream,
       commit_sha: commitSha,
-      benchmark_name: benchmarkName,
+      benchmark_name: experimentName,
     }),
   admin: {
     pheromones: () => get<Pheromone[]>("/api/admin/pheromone"),
@@ -156,14 +156,14 @@ export const api = {
   },
 };
 
-export function benchmarkPrApi(projectId: number) {
+export function experimentPrApi(projectId: number) {
   return {
     createPr: (
-      benchmarkName: string,
+      experimentName: string,
       files: Record<string, string>,
-    ): Promise<BenchmarkPrResponse> =>
-      post<BenchmarkPrResponse>(`/api/project/${projectId}/benchmark/pr`, {
-        benchmarkName,
+    ): Promise<ExperimentPrResponse> =>
+      post<ExperimentPrResponse>(`/api/project/${projectId}/experiment/pr`, {
+        experimentName,
         files,
       }),
   };
