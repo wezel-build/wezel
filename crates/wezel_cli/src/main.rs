@@ -352,6 +352,7 @@ enum Command {
         server_url: Option<String>,
     },
     /// Active measurement: run experiments across commits.
+    #[command(visible_alias = "exp", visible_alias = "e")]
     Experiment {
         #[command(subcommand)]
         cmd: ExperimentCmd,
