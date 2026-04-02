@@ -374,8 +374,7 @@ enum ExperimentCmd {
     /// Run an experiment against the current checkout.
     Run {
         /// Experiment name (matches .wezel/experiments/<name>/). Omit to list available experiments.
-        #[arg(short, long)]
-        experiment: Option<String>,
+        experiment: String,
         /// Project root directory (defaults to current directory).
         #[arg(long)]
         project_dir: Option<PathBuf>,
@@ -472,10 +471,7 @@ fn resolve_project_dir(project_dir: Option<PathBuf>) -> PathBuf {
     project_dir.unwrap_or_else(|| std::env::current_dir().expect("getting current directory"))
 }
 
-fn make_fetcher(
-    project_dir: &Path,
-    auto_yes: bool,
-) -> Box<dyn wezel_bench::fetch::PluginFetcher> {
+fn make_fetcher(project_dir: &Path, auto_yes: bool) -> Box<dyn wezel_bench::fetch::PluginFetcher> {
     match wezel_bench::Config::load(project_dir) {
         Ok(config) => Box::new(fetcher::BurrowFetcher::new(config.server_url, auto_yes)),
         Err(_) => Box::new(fetcher::GithubFetcher::new("wezel-build/wezel", auto_yes)),
@@ -521,16 +517,11 @@ fn main() -> ExitCode {
                 auto_yes,
             } => {
                 let project_dir = resolve_project_dir(project_dir);
-                match experiment {
-                    Some(name) => {
-                        let fetcher = make_fetcher(&project_dir, auto_yes);
-                        run_result(
-                            wezel_bench::run::run_experiment(&name, &project_dir, Some(&*fetcher))
-                                .map(|_| ()),
-                        )
-                    }
-                    None => run_result(wezel_bench::run::list_experiments(&project_dir)),
-                }
+                let fetcher = make_fetcher(&project_dir, auto_yes);
+                run_result(
+                    wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&*fetcher))
+                        .map(|_| ()),
+                )
             }
             ExperimentCmd::List { project_dir } => {
                 let project_dir = resolve_project_dir(project_dir);
