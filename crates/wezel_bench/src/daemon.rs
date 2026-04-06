@@ -120,6 +120,7 @@ pub fn run_start(
     result
 }
 
+#[expect(clippy::too_many_arguments)]
 fn run_loop(
     queue_agent: &ureq::Agent,
     config: &Config,
