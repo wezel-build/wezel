@@ -1,0 +1,6 @@
+name = "workspace-bloat"
+description = "Measures various bits about the workspace"
+
+[[steps]]
+name = "build"
+cmd = "cargo tree"
