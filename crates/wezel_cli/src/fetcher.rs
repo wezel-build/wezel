@@ -158,11 +158,14 @@ impl PluginFetcher for GithubFetcher {
 
         // Find an archive that matches the binary name and target.
         // Archive naming convention: {name}-{version}-{target}.tar.gz
+        // cargo-dist uses the crate name (underscores) while the binary uses hyphens,
+        // so check both forms (e.g. "forager-exec" and "forager_exec").
+        let binary_name_underscored = binary_name.replace('-', "_");
         let asset = gh_assets
             .iter()
             .find(|a| {
                 let fname = a["name"].as_str().unwrap_or("");
-                fname.contains(&binary_name)
+                (fname.contains(&binary_name) || fname.contains(&binary_name_underscored))
                     && fname.contains(target)
                     && !fname.ends_with(".sha256")
             })
