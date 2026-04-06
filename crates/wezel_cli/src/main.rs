@@ -578,8 +578,9 @@ fn main() -> ExitCode {
             } => {
                 let project_dir = resolve_project_dir(project_dir);
                 let fetcher = make_fetcher(&project_dir, auto_yes);
+                let caching = wezel_bench::fetch::CachingFetcher::new(&*fetcher);
                 run_result(
-                    wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&*fetcher))
+                    wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&caching))
                         .map(|_| ()),
                 )
             }
@@ -593,7 +594,8 @@ fn main() -> ExitCode {
             } => {
                 let project_dir = resolve_project_dir(project_dir);
                 let fetcher = make_fetcher(&project_dir, auto_yes);
-                run_result(wezel_bench::lint::run_lint(&project_dir, Some(&*fetcher)))
+                let caching = wezel_bench::fetch::CachingFetcher::new(&*fetcher);
+                run_result(wezel_bench::lint::run_lint(&project_dir, Some(&caching)))
             }
             ExperimentCmd::Daemon { cmd: daemon_cmd } => match daemon_cmd {
                 ExperimentDaemonCmd::Start {
