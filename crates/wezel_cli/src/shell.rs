@@ -72,10 +72,10 @@ impl Shell {
     pub fn alias_line(self, name: &str, handler: &str) -> String {
         match self {
             Shell::Zsh | Shell::Bash => {
-                format!("{name}() {{ wezel exec -- {handler} \"$@\"; }}")
+                format!("{name}() {{ wezel observe exec -- {handler} \"$@\"; }}")
             }
             Shell::Fish => {
-                format!("function {name}; wezel exec -- {handler} $argv; end")
+                format!("function {name}; wezel observe exec -- {handler} $argv; end")
             }
         }
     }
