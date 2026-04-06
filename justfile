@@ -49,6 +49,15 @@ e2e:
     e2e/scripts/teardown.sh
     exit $HURL_EXIT
 
+# Create the burrow postgres database
+create-db:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DB_URL="${DATABASE_URL:-${BURROW_DB:-postgres://localhost/burrow}}"
+    DB_NAME="${DB_URL##*/}"
+    echo "Creating database: $DB_NAME"
+    createdb "$DB_NAME" 2>/dev/null && echo "Database '$DB_NAME' created." || echo "Database '$DB_NAME' already exists, skipping."
+
 # Seed the burrow database
 seed:
     python3 scripts/seed.py
