@@ -255,7 +255,9 @@ export default function MeasurementDetailPage() {
           </span>
           {measurement.tags && Object.keys(measurement.tags).length > 0 && (
             <span className="text-[10px] text-dim font-mono">
-              {Object.entries(measurement.tags).map(([k, v]) => `${k}=${v}`).join(", ")}
+              {Object.entries(measurement.tags)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(", ")}
             </span>
           )}
         </div>

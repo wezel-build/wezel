@@ -88,7 +88,11 @@ export function ExperimentCreatorModal({
 
   const experimentToml = useMemo(() => {
     if (!selectedTemplate || !experimentName) return "";
-    return generateExperimentToml(experimentName, selectedTemplate, fieldValues);
+    return generateExperimentToml(
+      experimentName,
+      selectedTemplate,
+      fieldValues,
+    );
   }, [selectedTemplate, experimentName, fieldValues]);
 
   const experimentPath = `.wezel/experiments/${experimentName}/experiment.toml`;

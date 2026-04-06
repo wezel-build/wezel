@@ -6,7 +6,11 @@ import { C, alpha } from "../lib/colors";
 import { fmtValue } from "../lib/format";
 import { DeltaBadge } from "../components/DeltaBadge";
 import { useProject } from "../lib/useProject";
-import { type ForagerCommit, type Measurement, measurementKey } from "../lib/data";
+import {
+  type ForagerCommit,
+  type Measurement,
+  measurementKey,
+} from "../lib/data";
 
 const GRID = "grid grid-cols-[1fr_110px_110px_120px] gap-[8px] items-center";
 
@@ -53,8 +57,12 @@ export default function ComparePage() {
 
   const pairs = useMemo(() => {
     if (!compare) return [];
-    const baseMap = new Map(compare.base.measurements.map((m) => [measurementKey(m), m]));
-    const headMap = new Map(compare.head.measurements.map((m) => [measurementKey(m), m]));
+    const baseMap = new Map(
+      compare.base.measurements.map((m) => [measurementKey(m), m]),
+    );
+    const headMap = new Map(
+      compare.head.measurements.map((m) => [measurementKey(m), m]),
+    );
     const allKeys = new Set([...baseMap.keys(), ...headMap.keys()]);
     return Array.from(allKeys)
       .sort()

@@ -17,7 +17,9 @@ export default function TimelinePage() {
   function findPrev(idx: number, m: Measurement): Measurement | undefined {
     if (idx + 1 >= commits.length) return undefined;
     const key = measurementKey(m);
-    return commits[idx + 1].measurements.find((pm) => measurementKey(pm) === key);
+    return commits[idx + 1].measurements.find(
+      (pm) => measurementKey(pm) === key,
+    );
   }
 
   return (
