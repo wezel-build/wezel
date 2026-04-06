@@ -80,13 +80,26 @@ impl Shell {
         }
     }
 
+    fn completion_eval(self, exe: &str) -> String {
+        match self {
+            Shell::Zsh => format!("eval \"$(COMPLETE=zsh \"{exe}\" 2>/dev/null)\""),
+            Shell::Bash => format!("eval \"$(COMPLETE=bash \"{exe}\" 2>/dev/null)\""),
+            Shell::Fish => format!("COMPLETE=fish \"{exe}\" 2>/dev/null | source"),
+        }
+    }
+
     pub fn render_init_script(self, aliases: &BTreeMap<String, String>) -> String {
+        let exe = std::env::current_exe()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "wezel".to_string());
         let mut out =
             String::from("# Managed by wezel — do not edit, aliases are stored in aliases.toml\n");
         for (name, handler) in aliases {
             out.push_str(&self.alias_line(name, handler));
             out.push('\n');
         }
+        out.push_str(&self.completion_eval(&exe));
+        out.push('\n');
         out
     }
 }

@@ -9,7 +9,8 @@ mod shell;
 
 use log::{debug, warn};
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::engine::{ArgValueCandidates, CompletionCandidate};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
@@ -333,6 +334,35 @@ fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
     Ok(process_exit_code)
 }
 
+fn complete_experiments() -> Vec<CompletionCandidate> {
+    let Ok(cwd) = std::env::current_dir() else {
+        return vec![];
+    };
+    let experiments_dir = cwd.join(".wezel").join("experiments");
+    let Ok(entries) = std::fs::read_dir(&experiments_dir) else {
+        return vec![];
+    };
+    let mut candidates = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir()
+            && path.join("experiment.toml").is_file()
+            && let Some(name) = path.file_name().and_then(|n| n.to_str())
+        {
+            let help = std::fs::read_to_string(path.join("experiment.toml"))
+                .ok()
+                .and_then(|raw| toml::from_str::<toml::Value>(&raw).ok())
+                .and_then(|v| v.get("description")?.as_str().map(|s| s.to_string()));
+            let mut c = CompletionCandidate::new(name);
+            if let Some(h) = help {
+                c = c.help(Some(h.into()));
+            }
+            candidates.push(c);
+        }
+    }
+    candidates
+}
+
 #[derive(Parser)]
 #[command(name = "wezel", about = "Build regression detection")]
 struct Cli {
@@ -357,6 +387,8 @@ enum Command {
         #[command(subcommand)]
         cmd: ExperimentCmd,
     },
+    /// Enable shell completions for wezel commands.
+    Completions,
     /// Passive build observation: aliases, event flushing, health.
     Observe {
         #[command(subcommand)]
@@ -374,7 +406,8 @@ enum ExperimentCmd {
     },
     /// Run an experiment against the current checkout.
     Run {
-        /// Experiment name (matches .wezel/experiments/<name>/). Omit to list available experiments.
+        /// Experiment name (matches .wezel/experiments/<name>/).
+        #[arg(add = ArgValueCandidates::new(complete_experiments))]
         experiment: String,
         /// Project root directory (defaults to current directory).
         #[arg(long)]
@@ -484,10 +517,36 @@ fn main() -> ExitCode {
         .format_timestamp(None)
         .init();
 
+    clap_complete::CompleteEnv::with_factory(Cli::command).complete();
+
     let cli = Cli::parse();
 
     match cli.command {
         Command::Setup { server_url } => run_result(setup_cmd(server_url.as_deref())),
+
+        Command::Completions => {
+            let Some(shell) = shell::Shell::detect() else {
+                eprintln!("wezel: could not detect shell from $SHELL");
+                return ExitCode::FAILURE;
+            };
+            if let Err(e) = shell::ensure_shell_hook(shell) {
+                eprintln!("wezel: {e}");
+                return ExitCode::FAILURE;
+            }
+            let aliases = cmd::load_aliases().unwrap_or_default().aliases;
+            if let Err(e) = shell::sync_init_script(shell, &aliases) {
+                eprintln!("wezel: {e}");
+                return ExitCode::FAILURE;
+            }
+            println!("Shell completions enabled. Restart your shell or run:");
+            let shell_name = match shell {
+                shell::Shell::Zsh => "zsh",
+                shell::Shell::Bash => "bash",
+                shell::Shell::Fish => "fish",
+            };
+            println!("  source ~/.wezel/init.{shell_name}");
+            ExitCode::SUCCESS
+        }
 
         Command::Experiment { cmd } => match cmd {
             ExperimentCmd::New { project_dir } => {
