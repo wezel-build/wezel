@@ -5,7 +5,7 @@ import { C } from "../lib/colors";
 import { fmtTime, fmtValue } from "../lib/format";
 import { DeltaBadge } from "../components/DeltaBadge";
 import { useProject } from "../lib/useProject";
-import type { Measurement } from "../lib/data";
+import { type Measurement, measurementKey } from "../lib/data";
 
 export default function TimelinePage() {
   const { branch } = useParams<{ branch: string }>();
@@ -14,9 +14,10 @@ export default function TimelinePage() {
   const commits = timeline?.commits ?? [];
 
   /** The "previous" commit for delta computation is the next index (parent). */
-  function findPrev(idx: number, name: string): Measurement | undefined {
+  function findPrev(idx: number, m: Measurement): Measurement | undefined {
     if (idx + 1 >= commits.length) return undefined;
-    return commits[idx + 1].measurements.find((m) => m.name === name);
+    const key = measurementKey(m);
+    return commits[idx + 1].measurements.find((pm) => measurementKey(pm) === key);
   }
 
   return (
@@ -77,7 +78,7 @@ export default function TimelinePage() {
               {c.measurements.length > 0 ? (
                 <div className="px-[12px] py-[8px] flex flex-col gap-[4px]">
                   {c.measurements.map((m) => {
-                    const prev = findPrev(idx, m.name);
+                    const prev = findPrev(idx, m);
                     return (
                       <div
                         key={m.id}

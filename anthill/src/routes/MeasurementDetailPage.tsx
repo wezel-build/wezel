@@ -253,9 +253,11 @@ export default function MeasurementDetailPage() {
           <span className="text-sm font-semibold font-mono text-fg">
             {measurement.name}
           </span>
-          <span className="text-[10px] text-dim font-mono">
-            {measurement.kind}
-          </span>
+          {measurement.tags && Object.keys(measurement.tags).length > 0 && (
+            <span className="text-[10px] text-dim font-mono">
+              {Object.entries(measurement.tags).map(([k, v]) => `${k}=${v}`).join(", ")}
+            </span>
+          )}
         </div>
         {measurement.value != null && (
           <div className="flex items-baseline gap-[6px]">
@@ -270,10 +272,10 @@ export default function MeasurementDetailPage() {
       </div>
 
       {/* Custom viz */}
-      {vizMap[measurement.kind]?.detail && (
+      {vizMap[measurement.name]?.detail && (
         <div className="px-[16px] py-[12px] border-b border-[var(--c-border)]">
           <VizRenderer
-            spec={vizMap[measurement.kind]!.detail!}
+            spec={vizMap[measurement.name]!.detail!}
             data={sorted.map((d) => ({
               name: d.name,
               value: d.value,

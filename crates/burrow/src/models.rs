@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -98,7 +100,6 @@ pub struct Measurement {
     #[expect(unused)]
     pub project_id: i64,
     pub name: String,
-    pub kind: String,
     pub status: String,
     pub value: Option<f64>,
     pub unit: Option<String>,
@@ -110,6 +111,13 @@ pub struct MeasurementDetail {
     pub measurement_id: i64,
     pub name: String,
     pub value: f64,
+}
+
+#[derive(FromRow)]
+pub struct MeasurementTag {
+    pub measurement_id: i64,
+    pub key: String,
+    pub value: String,
 }
 
 #[derive(FromRow)]
@@ -192,12 +200,13 @@ pub struct MeasurementDetailJson {
 pub struct MeasurementJson {
     pub id: i64,
     pub name: String,
-    pub kind: String,
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub tags: HashMap<String, String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub detail: Vec<MeasurementDetailJson>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -252,6 +261,7 @@ pub struct Bisection {
     pub bad_value: f64,
     pub status: String,
     pub culprit_sha: Option<String>,
+    pub identity_tags: sqlx::types::Json<HashMap<String, String>>,
 }
 
 #[derive(Serialize)]
@@ -269,6 +279,8 @@ pub struct BisectionJson {
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub culprit_sha: Option<String>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub identity_tags: HashMap<String, String>,
 }
 
 impl From<Bisection> for BisectionJson {
@@ -285,6 +297,7 @@ impl From<Bisection> for BisectionJson {
             bad_value: b.bad_value,
             status: b.status,
             culprit_sha: b.culprit_sha,
+            identity_tags: b.identity_tags.0,
         }
     }
 }

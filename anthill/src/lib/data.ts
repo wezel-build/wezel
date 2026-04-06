@@ -72,10 +72,10 @@ export interface MeasurementDetail {
 export interface Measurement {
   id: number;
   name: string;
-  kind: string;
   status: MeasurementStatus;
   value?: number;
   unit?: string;
+  tags?: Record<string, string>;
   detail?: MeasurementDetail[];
 }
 
@@ -118,6 +118,7 @@ export interface Bisection {
   badValue: number;
   status: BisectionStatus;
   culpritSha?: string;
+  identityTags?: Record<string, string>;
 }
 
 // ── Pheromone registry ───────────────────────────────────────────────────────
@@ -140,18 +141,18 @@ export interface VizForKind {
   detail?: VizSpec;
 }
 
-/** Keys are forager tool kinds (e.g. "exec", "llvm-lines"). */
+/** Keys are step names or tool names. */
 export type VizConfig = Record<string, VizForKind>;
 
-/** Build a kind → VizForKind lookup from the full pheromone list. */
+/** Build a name → VizForKind lookup from the full pheromone list. */
 export function buildVizMap(
   pheromones: Pheromone[],
 ): Record<string, VizForKind> {
   const map: Record<string, VizForKind> = {};
   for (const p of pheromones) {
     if (!p.vizJson) continue;
-    for (const [kind, cfg] of Object.entries(p.vizJson)) {
-      map[kind] = cfg;
+    for (const [name, cfg] of Object.entries(p.vizJson)) {
+      map[name] = cfg;
     }
   }
   return map;
@@ -197,6 +198,16 @@ export interface RegistryAdapter {
   toolchain: string;
   detectPatterns: string[];
   templates: RegistryTemplate[];
+}
+
+// ── Measurement identity ─────────────────────────────────────────────────────
+
+/** Stable identity key for a measurement: name + sorted identity tags. */
+export function measurementKey(m: Measurement): string {
+  const tags = m.tags ?? {};
+  const sorted = Object.entries(tags).sort(([a], [b]) => a.localeCompare(b));
+  if (sorted.length === 0) return m.name;
+  return m.name + "|" + sorted.map(([k, v]) => `${k}=${v}`).join(",");
 }
 
 // ── Heat computation ─────────────────────────────────────────────────────────

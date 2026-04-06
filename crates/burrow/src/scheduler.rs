@@ -90,7 +90,8 @@ async fn enqueue_repo(pool: &PgPool, repo_id: i64) -> sqlx::Result<()> {
 
         for (branch_name, head_sha) in &branches {
             for (experiment_name,) in &experiments {
-                enqueue_if_needed(pool, *project_id, head_sha, experiment_name, branch_name).await?;
+                enqueue_if_needed(pool, *project_id, head_sha, experiment_name, branch_name)
+                    .await?;
             }
         }
     }

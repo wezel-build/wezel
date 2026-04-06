@@ -75,7 +75,11 @@ const MAX_RECENT: usize = 20;
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-pub fn run_start(repo_dir: &Path, poll_interval: u64, fetcher: Option<&dyn fetch::PluginFetcher>) -> Result<()> {
+pub fn run_start(
+    repo_dir: &Path,
+    poll_interval: u64,
+    fetcher: Option<&dyn fetch::PluginFetcher>,
+) -> Result<()> {
     let config = Config::load(repo_dir)?;
     let burrow = BurrowSession::from_config(&config);
     let project_upstream = git::upstream(repo_dir)?;
@@ -285,7 +289,10 @@ pub fn run_status() -> Result<()> {
                 other => other.to_string(),
             };
             let sha = &job.commit_sha[..7.min(job.commit_sha.len())];
-            print!("  #{} {} @ {} — {status_label}", job.id, job.experiment, sha);
+            print!(
+                "  #{} {} @ {} — {status_label}",
+                job.id, job.experiment, sha
+            );
             if let Some(ref e) = job.error {
                 print!(" ({})", e.dimmed());
             }

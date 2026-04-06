@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 use wezel_types::{ForagerRunReport, ForagerStepReport};
 
 use crate::git;
-use crate::{ExperimentToml, Config, fetch, invoke_forager, parse_experiment};
+use crate::{Config, ExperimentToml, fetch, invoke_forager, parse_experiment, query_identity_tags};
 
 pub struct BurrowSession {
     agent: ureq::Agent,
@@ -86,7 +86,10 @@ pub fn run_experiment(
         .join(experiment_name);
 
     if !experiment_dir.is_dir() {
-        bail!("experiment directory not found: {}", experiment_dir.display());
+        bail!(
+            "experiment directory not found: {}",
+            experiment_dir.display()
+        );
     }
 
     let (_name, _description, steps) = parse_experiment(&experiment_dir)?;
@@ -107,14 +110,24 @@ pub fn run_experiment(
                 .with_context(|| format!("applying patch for step '{}'", step.name))?;
         }
 
-        // Invoke the forager plugin.
-        let measurement = invoke_forager(&step.forager, &step.name, &step.inputs, project_dir, fetcher);
+        // Query plugin schema for identity tags.
+        let identity_tags = query_identity_tags(&step.forager, fetcher).unwrap_or_default();
 
-        match measurement {
-            Ok(m) => {
+        // Invoke the forager plugin.
+        let result = invoke_forager(
+            &step.forager,
+            &step.name,
+            &step.inputs,
+            project_dir,
+            fetcher,
+        );
+
+        match result {
+            Ok(measurements) => {
                 step_reports.push(ForagerStepReport {
                     step: step.name.clone(),
-                    measurement: m,
+                    measurements,
+                    identity_tags,
                 });
             }
             Err(e) if e.is_hard() => bail!("{e}"),
@@ -122,7 +135,8 @@ pub fn run_experiment(
                 log::warn!("{e}");
                 step_reports.push(ForagerStepReport {
                     step: step.name.clone(),
-                    measurement: None,
+                    measurements: vec![],
+                    identity_tags,
                 });
             }
         }
@@ -132,15 +146,18 @@ pub fn run_experiment(
     println!("Experiment: {experiment_name}");
     println!("Commit:    {}", &commit_sha[..7.min(commit_sha.len())]);
     for report in &step_reports {
-        match &report.measurement {
-            Some(m) => println!(
-                "  {} — {} = {} {}",
-                report.step,
-                m.name,
-                m.value,
-                m.unit.as_deref().unwrap_or("")
-            ),
-            None => println!("  {} — (no measurement)", report.step),
+        if report.measurements.is_empty() {
+            println!("  {} — (no measurements)", report.step);
+        } else {
+            for m in &report.measurements {
+                println!(
+                    "  {} — {} = {} {}",
+                    report.step,
+                    m.name,
+                    m.value,
+                    m.unit.as_deref().unwrap_or("")
+                );
+            }
         }
     }
 

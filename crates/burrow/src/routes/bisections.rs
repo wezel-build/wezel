@@ -22,7 +22,7 @@ pub async fn get_project_bisections(
 ) -> ApiResult<Json<Vec<BisectionJson>>> {
     let rows = sqlx::query_as::<_, Bisection>(
         "SELECT id, project_id, experiment_name, measurement_name, branch, \
-                good_sha, bad_sha, good_value, bad_value, status, culprit_sha \
+                good_sha, bad_sha, good_value, bad_value, status, culprit_sha, identity_tags \
          FROM bisections \
          WHERE project_id = $1 \
            AND ($2::text IS NULL OR status = $2) \
@@ -45,7 +45,7 @@ pub async fn get_project_bisection(
 ) -> ApiResult<Json<BisectionJson>> {
     let row = sqlx::query_as::<_, Bisection>(
         "SELECT id, project_id, experiment_name, measurement_name, branch, \
-                good_sha, bad_sha, good_value, bad_value, status, culprit_sha \
+                good_sha, bad_sha, good_value, bad_value, status, culprit_sha, identity_tags \
          FROM bisections \
          WHERE id = $1 AND project_id = $2",
     )

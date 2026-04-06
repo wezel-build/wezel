@@ -2,6 +2,8 @@
 //!
 //! These mirror the data model consumed by the Anthill frontend.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 // ── Project ──────────────────────────────────────────────────────────────────
@@ -100,12 +102,13 @@ pub struct MeasurementDetail {
 pub struct Measurement {
     pub id: u64,
     pub name: String,
-    pub kind: String,
     pub status: MeasurementStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub tags: HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<Vec<MeasurementDetail>>,
 }
@@ -156,6 +159,8 @@ pub struct Bisection {
     pub status: BisectionStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub culprit_sha: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub identity_tags: HashMap<String, String>,
 }
 
 // ── Forager runner types ─────────────────────────────────────────────────────
@@ -201,10 +206,11 @@ pub struct ForagerJob {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForagerPluginOutput {
     pub name: String,
-    pub kind: String,
     pub value: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub tags: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub detail: Vec<MeasurementDetail>,
 }
@@ -212,15 +218,20 @@ pub struct ForagerPluginOutput {
 /// Envelope written by a forager plugin to `FORAGER_OUT`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForagerPluginEnvelope {
-    pub measurement: Option<ForagerPluginOutput>,
+    #[serde(default)]
+    pub measurements: Vec<ForagerPluginOutput>,
 }
 
 /// Per-step report included in `ForagerRunReport`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForagerStepReport {
     pub step: String,
-    /// `None` when the forager produced no measurement (e.g. `exec`).
-    pub measurement: Option<ForagerPluginOutput>,
+    /// Empty when the forager produced no measurements (e.g. `exec`).
+    #[serde(default)]
+    pub measurements: Vec<ForagerPluginOutput>,
+    /// Tag keys that form measurement identity (from plugin schema).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub identity_tags: Vec<String>,
 }
 
 /// Body of `POST /api/forager/run`.

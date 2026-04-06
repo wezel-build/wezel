@@ -99,9 +99,12 @@ function MeasurementRow({
         <span className="text-fg overflow-hidden text-ellipsis whitespace-nowrap">
           {m.name}
         </span>
-        <Badge color={C.textDim} bg={C.surface3}>
-          {m.kind}
-        </Badge>
+        {m.tags &&
+          Object.entries(m.tags).map(([k, v]) => (
+            <Badge key={k} color={C.textDim} bg={C.surface3}>
+              {k}={v}
+            </Badge>
+          ))}
       </div>
 
       <span
@@ -255,9 +258,10 @@ export default function CommitPage() {
     if (!commit) return [];
     const groups = new Map<string, Measurement[]>();
     for (const m of commit.measurements) {
-      const list = groups.get(m.kind) ?? [];
+      const key = m.name;
+      const list = groups.get(key) ?? [];
       list.push(m);
-      groups.set(m.kind, list);
+      groups.set(key, list);
     }
     return Array.from(groups.entries());
   }, [commit]);
@@ -503,18 +507,18 @@ export default function CommitPage() {
                 <span>Δ prev</span>
               </div>
 
-              {grouped.map(([kind, measurements], gi) => {
-                const summarySpec = vizMap[kind]?.summary;
+              {grouped.map(([groupName, measurements], gi) => {
+                const summarySpec = vizMap[groupName]?.summary;
                 const completedMs = measurements.filter(
                   (m) => m.status === "complete" && m.value != null,
                 );
                 return (
-                  <div key={kind}>
+                  <div key={groupName}>
                     {grouped.length > 1 && (
                       <div
                         className={`px-[12px] py-[6px] text-[10px] font-bold font-mono text-dim uppercase tracking-[0.8px] bg-surface border-b border-[var(--c-border)]${gi > 0 ? " border-t border-[var(--c-border)]" : ""}`}
                       >
-                        {kind}
+                        {groupName}
                       </div>
                     )}
                     {summarySpec && completedMs.length > 0 && (

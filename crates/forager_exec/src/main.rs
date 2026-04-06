@@ -48,8 +48,10 @@ fn main() -> Result<()> {
         child.current_dir(dir);
     }
 
-    // Write the null measurement output before running (exec always produces no measurement).
-    let envelope = wezel_types::ForagerPluginEnvelope { measurement: None };
+    // Write the empty measurements output before running (exec produces no measurements).
+    let envelope = wezel_types::ForagerPluginEnvelope {
+        measurements: vec![],
+    };
     std::fs::write(&out_path, serde_json::to_string(&envelope)?)
         .with_context(|| format!("writing {out_path}"))?;
 

@@ -129,12 +129,10 @@ pub async fn refresh_tool_release() -> Result<(), StatusCode> {
         .collect();
 
     // Fetch dist-manifest.json from the release.
-    let manifest_url = gh_asset_map
-        .get("dist-manifest.json")
-        .ok_or_else(|| {
-            tracing::warn!("nightly release {tag} has no dist-manifest.json");
-            StatusCode::NOT_FOUND
-        })?;
+    let manifest_url = gh_asset_map.get("dist-manifest.json").ok_or_else(|| {
+        tracing::warn!("nightly release {tag} has no dist-manifest.json");
+        StatusCode::NOT_FOUND
+    })?;
 
     let manifest_resp = github_request(&client, manifest_url)
         .send()
@@ -215,10 +213,7 @@ pub async fn refresh_tool_release() -> Result<(), StatusCode> {
             .unwrap_or(archive_name)
             .to_string();
 
-        let version = package_versions
-            .get(&package)
-            .cloned()
-            .unwrap_or_default();
+        let version = package_versions.get(&package).cloned().unwrap_or_default();
 
         let tool = tools.entry(binary_name.clone()).or_insert_with(|| Tool {
             name: binary_name.clone(),

@@ -49,7 +49,11 @@ pub fn plugin_install_dir() -> Option<PathBuf> {
 }
 
 /// Extract a named binary from a `.tar.gz` archive and write it atomically to `dest`.
-pub fn extract_and_install(archive_bytes: &[u8], binary_name: &str, dest: &Path) -> Result<(), FetchError> {
+pub fn extract_and_install(
+    archive_bytes: &[u8],
+    binary_name: &str,
+    dest: &Path,
+) -> Result<(), FetchError> {
     use flate2::read::GzDecoder;
     use tar::Archive;
 
@@ -59,17 +63,15 @@ pub fn extract_and_install(archive_bytes: &[u8], binary_name: &str, dest: &Path)
     for entry in archive.entries().map_err(|e| FetchError::Other(e.into()))? {
         let mut entry = entry.map_err(|e| FetchError::Other(e.into()))?;
         let path = entry.path().map_err(|e| FetchError::Other(e.into()))?;
-        let file_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if file_name == binary_name {
             if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| FetchError::Other(e.into()))?;
+                std::fs::create_dir_all(parent).map_err(|e| FetchError::Other(e.into()))?;
             }
             let mut bytes = Vec::new();
-            entry.read_to_end(&mut bytes).map_err(|e| FetchError::Other(e.into()))?;
+            entry
+                .read_to_end(&mut bytes)
+                .map_err(|e| FetchError::Other(e.into()))?;
             let tmp = dest.with_extension("tmp");
             std::fs::write(&tmp, &bytes).map_err(|e| FetchError::Other(e.into()))?;
             #[cfg(unix)]
@@ -79,8 +81,7 @@ pub fn extract_and_install(archive_bytes: &[u8], binary_name: &str, dest: &Path)
                     .map_err(|e| FetchError::Other(e.into()))?
                     .permissions();
                 perms.set_mode(0o755);
-                std::fs::set_permissions(&tmp, perms)
-                    .map_err(|e| FetchError::Other(e.into()))?;
+                std::fs::set_permissions(&tmp, perms).map_err(|e| FetchError::Other(e.into()))?;
             }
             std::fs::rename(&tmp, dest).map_err(|e| FetchError::Other(e.into()))?;
             return Ok(());

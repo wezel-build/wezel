@@ -197,10 +197,7 @@ async fn main() {
             get(get_pheromone_binary),
         )
         .route("/api/tools", get(get_tools))
-        .route(
-            "/api/tools/{name}/binary/{target}",
-            get(get_tool_binary),
-        )
+        .route("/api/tools/{name}/binary/{target}", get(get_tool_binary))
         .route("/auth/github", get(auth::login))
         .route("/auth/github/callback", get(auth::callback))
         .route("/auth/me", get(auth::me))

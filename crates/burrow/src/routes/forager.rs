@@ -95,45 +95,64 @@ pub async fn post_forager_run(
         .await
         .map_err(ise)?;
 
-    // Insert measurements, collecting (name, value) pairs for regression detection.
-    let mut inserted: Vec<(i64, String, f64)> = Vec::new();
+    // Insert measurements, collecting info for regression detection.
+    // Each entry: (measurement_id, name, value, identity_tags)
+    let mut inserted: Vec<(i64, String, f64, std::collections::HashMap<String, String>)> =
+        Vec::new();
 
     for step_report in &body.steps {
-        let Some(ref m) = step_report.measurement else {
-            continue;
-        };
-
-        let (measurement_id,): (i64,) = sqlx::query_as(
-            "INSERT INTO measurements \
-             (commit_id, project_id, name, kind, status, value, unit, step) \
-             VALUES ($1, $2, $3, $4, 'complete', $5, $6, $7) RETURNING id",
-        )
-        .bind(commit_id)
-        .bind(project_id)
-        .bind(&m.name)
-        .bind(&m.kind)
-        .bind(m.value)
-        .bind(&m.unit)
-        .bind(&step_report.step)
-        .fetch_one(&pool)
-        .await
-        .map_err(ise)?;
-
-        // Insert detail rows.
-        for detail in &m.detail {
-            sqlx::query(
-                "INSERT INTO measurement_details (measurement_id, name, value) \
-                 VALUES ($1, $2, $3)",
+        for m in &step_report.measurements {
+            let (measurement_id,): (i64,) = sqlx::query_as(
+                "INSERT INTO measurements \
+                 (commit_id, project_id, name, status, value, unit, step) \
+                 VALUES ($1, $2, $3, 'complete', $4, $5, $6) RETURNING id",
             )
-            .bind(measurement_id)
-            .bind(&detail.name)
-            .bind(detail.value)
-            .execute(&pool)
+            .bind(commit_id)
+            .bind(project_id)
+            .bind(&m.name)
+            .bind(m.value)
+            .bind(&m.unit)
+            .bind(&step_report.step)
+            .fetch_one(&pool)
             .await
             .map_err(ise)?;
-        }
 
-        inserted.push((measurement_id, m.name.clone(), m.value));
+            // Insert tags.
+            let mut id_tags = std::collections::HashMap::new();
+            for (key, value) in &m.tags {
+                let is_identity = step_report.identity_tags.contains(key);
+                sqlx::query(
+                    "INSERT INTO measurement_tags (measurement_id, key, value, identity) \
+                     VALUES ($1, $2, $3, $4)",
+                )
+                .bind(measurement_id)
+                .bind(key)
+                .bind(value)
+                .bind(is_identity)
+                .execute(&pool)
+                .await
+                .map_err(ise)?;
+                if is_identity {
+                    id_tags.insert(key.clone(), value.clone());
+                }
+            }
+
+            // Insert detail rows.
+            for detail in &m.detail {
+                sqlx::query(
+                    "INSERT INTO measurement_details (measurement_id, name, value) \
+                     VALUES ($1, $2, $3)",
+                )
+                .bind(measurement_id)
+                .bind(&detail.name)
+                .bind(detail.value)
+                .execute(&pool)
+                .await
+                .map_err(ise)?;
+            }
+
+            inserted.push((measurement_id, m.name.clone(), m.value, id_tags));
+        }
     }
 
     // Get the experiment_name from the token row.
@@ -174,7 +193,7 @@ async fn detect_regressions(
     commit_id: i64,
     commit_sha: &str,
     experiment_name: &str,
-    inserted: &[(i64, String, f64)],
+    inserted: &[(i64, String, f64, std::collections::HashMap<String, String>)],
 ) -> Result<(), StatusCode> {
     let detector = crate::regression::detector();
 
@@ -234,17 +253,38 @@ async fn detect_regressions(
     // Build the list of ancestor commit IDs for the history query.
     let ancestor_commit_ids: Vec<i64> = ancestor_ids.into_iter().map(|(id,)| id).collect();
 
-    for &(_, ref measurement_name, new_value) in inserted {
-        // Get historical values for this measurement across ancestor commits (oldest first).
+    for (_, measurement_name, new_value, id_tags) in inserted {
+        let new_value = *new_value;
+        // Build identity tag key/value arrays for SQL matching.
+        let tag_keys: Vec<&str> = id_tags.keys().map(|k| k.as_str()).collect();
+        let tag_values: Vec<&str> = tag_keys.iter().map(|k| id_tags[*k].as_str()).collect();
+
+        // Get historical values for this measurement across ancestor commits,
+        // matching on identity tags.
         let history: Vec<(f64,)> = sqlx::query_as(
             "SELECT m.value FROM measurements m \
              WHERE m.commit_id = ANY($1) AND m.project_id = $2 AND m.name = $3 \
                AND m.value IS NOT NULL \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM measurement_tags mt \
+                   WHERE mt.measurement_id = m.id AND mt.identity = true \
+                     AND (mt.key, mt.value) NOT IN (SELECT * FROM UNNEST($4::text[], $5::text[])) \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT key, value FROM UNNEST($4::text[], $5::text[]) AS t(key, value) \
+                   WHERE NOT EXISTS ( \
+                       SELECT 1 FROM measurement_tags mt \
+                       WHERE mt.measurement_id = m.id AND mt.identity = true \
+                         AND mt.key = t.key AND mt.value = t.value \
+                   ) \
+               ) \
              ORDER BY m.commit_id ASC",
         )
         .bind(&ancestor_commit_ids)
         .bind(project_id)
         .bind(measurement_name)
+        .bind(&tag_keys)
+        .bind(&tag_values)
         .fetch_all(pool)
         .await
         .map_err(ise)?;
@@ -255,16 +295,20 @@ async fn detect_regressions(
             continue;
         }
 
-        // Check no active bisection already covers this measurement.
+        // Check no active bisection already covers this measurement + identity tags.
+        let id_tags_json =
+            serde_json::to_value(id_tags).unwrap_or(serde_json::Value::Object(Default::default()));
         let existing: Option<(i64,)> = sqlx::query_as(
             "SELECT id FROM bisections \
              WHERE project_id = $1 AND experiment_name = $2 AND measurement_name = $3 \
+               AND identity_tags = $4 \
                AND status = 'active' \
              LIMIT 1",
         )
         .bind(project_id)
         .bind(experiment_name)
         .bind(measurement_name)
+        .bind(&id_tags_json)
         .fetch_optional(pool)
         .await
         .map_err(ise)?;
@@ -282,8 +326,8 @@ async fn detect_regressions(
         let (bisection_id,): (i64,) = sqlx::query_as(
             "INSERT INTO bisections \
              (project_id, experiment_name, measurement_name, branch, \
-              good_sha, bad_sha, good_value, bad_value) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+              good_sha, bad_sha, good_value, bad_value, identity_tags) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
         )
         .bind(project_id)
         .bind(experiment_name)
@@ -293,6 +337,7 @@ async fn detect_regressions(
         .bind(commit_sha)
         .bind(baseline)
         .bind(new_value)
+        .bind(&id_tags_json)
         .fetch_one(pool)
         .await
         .map_err(ise)?;
@@ -318,12 +363,25 @@ async fn progress_bisection(
     pool: &PgPool,
     bisection_id: i64,
     repo_id: i64,
-    inserted: &[(i64, String, f64)],
+    inserted: &[(i64, String, f64, std::collections::HashMap<String, String>)],
 ) -> Result<(), StatusCode> {
     // Load the bisection.
-    let bisection = sqlx::query_as::<_, (i64, String, String, String, String, f64, f64, String)>(
+    let bisection = sqlx::query_as::<
+        _,
+        (
+            i64,
+            String,
+            String,
+            String,
+            String,
+            f64,
+            f64,
+            String,
+            sqlx::types::Json<std::collections::HashMap<String, String>>,
+        ),
+    >(
         "SELECT project_id, experiment_name, measurement_name, good_sha, bad_sha, \
-                good_value, bad_value, status \
+                good_value, bad_value, status, identity_tags \
          FROM bisections WHERE id = $1",
     )
     .bind(bisection_id)
@@ -341,18 +399,19 @@ async fn progress_bisection(
         good_value,
         bad_value,
         status,
+        bisection_id_tags,
     ) = bisection;
 
     if status != "active" {
         return Ok(()); // Already finished.
     }
 
-    // Find the matching measurement from this run.
+    // Find the matching measurement from this run (by name + identity tags).
     let matching = inserted
         .iter()
-        .find(|(_, name, _)| name == &measurement_name);
+        .find(|(_, name, _, id_tags)| name == &measurement_name && *id_tags == bisection_id_tags.0);
 
-    let Some(&(measurement_id, _, value)) = matching else {
+    let Some(&(measurement_id, _, value, _)) = matching else {
         tracing::warn!(
             "bisection {bisection_id}: no matching measurement '{measurement_name}' in run"
         );

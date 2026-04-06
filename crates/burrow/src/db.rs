@@ -83,7 +83,6 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             commit_id BIGINT NOT NULL REFERENCES commits(id),
             project_id BIGINT NOT NULL REFERENCES projects(id),
             name TEXT NOT NULL,
-            kind TEXT NOT NULL,
             status TEXT NOT NULL,
             value DOUBLE PRECISION,
             unit TEXT,
@@ -94,6 +93,13 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             metric_id BIGINT NOT NULL REFERENCES metrics(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
             value DOUBLE PRECISION NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS measurement_tags (
+            measurement_id BIGINT NOT NULL REFERENCES metrics(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            identity BOOLEAN NOT NULL DEFAULT false,
+            PRIMARY KEY (measurement_id, key)
         );
         CREATE TABLE IF NOT EXISTS sessions (
             id TEXT PRIMARY KEY,
@@ -146,6 +152,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             status            TEXT NOT NULL DEFAULT 'active'
                               CHECK(status IN ('active', 'complete', 'abandoned')),
             culprit_sha       TEXT,
+            identity_tags     JSONB NOT NULL DEFAULT '{}',
             created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
             completed_at      TIMESTAMPTZ
         );

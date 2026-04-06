@@ -14,6 +14,51 @@ use crate::{ApiResult, ise};
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
+/// Load tags for a batch of measurement IDs, returning a map of measurement_id → tags.
+pub async fn load_tags(
+    pool: &PgPool,
+    m_ids: &[i64],
+) -> Result<HashMap<i64, HashMap<String, String>>, StatusCode> {
+    let tag_rows = sqlx::query_as::<_, MeasurementTag>(
+        "SELECT measurement_id, key, value \
+         FROM measurement_tags WHERE measurement_id = ANY($1)",
+    )
+    .bind(m_ids)
+    .fetch_all(pool)
+    .await
+    .map_err(ise)?;
+
+    let mut tag_map: HashMap<i64, HashMap<String, String>> = HashMap::new();
+    for t in tag_rows {
+        tag_map
+            .entry(t.measurement_id)
+            .or_default()
+            .insert(t.key, t.value);
+    }
+    Ok(tag_map)
+}
+
+/// Build a list of MeasurementJson from Measurement rows, batch-loading details and tags.
+fn build_measurement_json(
+    measurements: Vec<Measurement>,
+    detail_map: &mut HashMap<i64, Vec<MeasurementDetailJson>>,
+    tag_map: &mut HashMap<i64, HashMap<String, String>>,
+) -> Vec<MeasurementJson> {
+    measurements
+        .into_iter()
+        .map(|m| MeasurementJson {
+            id: m.id,
+            name: m.name,
+            status: m.status,
+            value: m.value,
+            unit: m.unit,
+            tags: tag_map.remove(&m.id).unwrap_or_default(),
+            detail: detail_map.remove(&m.id).unwrap_or_default(),
+            step: m.step,
+        })
+        .collect()
+}
+
 async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> {
     let c = sqlx::query_as::<_, Commit>(
         "SELECT id, repo_id, sha, short_sha, parent_sha, author, message, timestamp \
@@ -25,7 +70,7 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
     .map_err(ise)?;
 
     let measurements = sqlx::query_as::<_, Measurement>(
-        "SELECT id, commit_id, project_id, name, kind, status, value, unit, step \
+        "SELECT id, commit_id, project_id, name, status, value, unit, step \
          FROM measurements WHERE commit_id = $1 ORDER BY id",
     )
     .bind(commit_id)
@@ -55,22 +100,9 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
             });
     }
 
-    let measurements_json: Vec<MeasurementJson> = measurements
-        .into_iter()
-        .map(|m| {
-            let detail = detail_map.remove(&m.id).unwrap_or_default();
-            MeasurementJson {
-                id: m.id,
-                name: m.name,
-                kind: m.kind,
-                status: m.status,
-                value: m.value,
-                unit: m.unit,
-                detail,
-                step: m.step,
-            }
-        })
-        .collect();
+    let mut tag_map = load_tags(pool, &m_ids).await?;
+
+    let measurements_json = build_measurement_json(measurements, &mut detail_map, &mut tag_map);
 
     Ok(CommitJson {
         sha: c.sha,
@@ -127,7 +159,7 @@ async fn build_commit_list(
     let commit_ids: Vec<i64> = commits.iter().map(|c| c.id).collect();
 
     let measurements = sqlx::query_as::<_, Measurement>(
-        "SELECT id, commit_id, project_id, name, kind, status, value, unit, step \
+        "SELECT id, commit_id, project_id, name, status, value, unit, step \
          FROM measurements WHERE commit_id = ANY($1) ORDER BY id",
     )
     .bind(&commit_ids)
@@ -157,6 +189,8 @@ async fn build_commit_list(
             });
     }
 
+    let mut tag_map = load_tags(pool, &m_ids).await?;
+
     let mut measurements_by_commit: HashMap<i64, Vec<MeasurementJson>> = HashMap::new();
     for m in measurements {
         measurements_by_commit
@@ -165,10 +199,10 @@ async fn build_commit_list(
             .push(MeasurementJson {
                 id: m.id,
                 name: m.name,
-                kind: m.kind,
                 status: m.status,
                 value: m.value,
                 unit: m.unit,
+                tags: tag_map.remove(&m.id).unwrap_or_default(),
                 detail: detail_map.remove(&m.id).unwrap_or_default(),
                 step: m.step,
             });

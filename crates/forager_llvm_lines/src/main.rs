@@ -19,9 +19,9 @@ fn main() -> Result<()> {
                     "package": { "type": "string", "description": "Package name (required for workspaces)", "optional": true }
                 },
                 "output": {
-                    "kind": "count",
                     "unit": "lines",
-                    "description": "Total LLVM IR lines; detail is top functions by line count"
+                    "description": "Total LLVM IR lines; detail is top functions by line count",
+                    "identity_tags": []
                 }
             })
         );
@@ -52,14 +52,14 @@ fn main() -> Result<()> {
 
     let measurement = ForagerPluginOutput {
         name: "llvm-lines".to_string(),
-        kind: "count".to_string(),
         value: total as f64,
         unit: Some("lines".to_string()),
+        tags: Default::default(),
         detail,
     };
 
     let envelope = ForagerPluginEnvelope {
-        measurement: Some(measurement),
+        measurements: vec![measurement],
     };
 
     std::fs::write(&out_path, serde_json::to_string(&envelope)?)

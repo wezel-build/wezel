@@ -12,7 +12,10 @@ pub struct BurrowFetcher {
 
 impl BurrowFetcher {
     pub fn new(server_url: String, auto_yes: bool) -> Self {
-        Self { server_url, auto_yes }
+        Self {
+            server_url,
+            auto_yes,
+        }
     }
 }
 
@@ -34,10 +37,15 @@ impl PluginFetcher for BurrowFetcher {
                 .interact()
                 .map_err(|e| FetchError::Other(e.into()))?;
             if !confirmed {
-                return Err(FetchError::Declined { plugin: binary_name });
+                return Err(FetchError::Declined {
+                    plugin: binary_name,
+                });
             }
         } else {
-            eprintln!("Installing plugin `{binary_name}` from {}...", self.server_url);
+            eprintln!(
+                "Installing plugin `{binary_name}` from {}...",
+                self.server_url
+            );
         }
 
         let url = format!(
@@ -55,8 +63,9 @@ impl PluginFetcher for BurrowFetcher {
             .read_to_end(&mut bytes)
             .map_err(|e| FetchError::Other(e.into()))?;
 
-        let dest_dir = fetch::plugin_install_dir()
-            .ok_or_else(|| FetchError::Other(anyhow::anyhow!("cannot determine install directory")))?;
+        let dest_dir = fetch::plugin_install_dir().ok_or_else(|| {
+            FetchError::Other(anyhow::anyhow!("cannot determine install directory"))
+        })?;
         let dest = dest_dir.join(&binary_name);
 
         fetch::extract_and_install(&bytes, &binary_name, &dest)?;
@@ -99,10 +108,15 @@ impl PluginFetcher for GithubFetcher {
                 .interact()
                 .map_err(|e| FetchError::Other(e.into()))?;
             if !confirmed {
-                return Err(FetchError::Declined { plugin: binary_name });
+                return Err(FetchError::Declined {
+                    plugin: binary_name,
+                });
             }
         } else {
-            eprintln!("Installing plugin `{binary_name}` from github.com/{}...", self.repo);
+            eprintln!(
+                "Installing plugin `{binary_name}` from github.com/{}...",
+                self.repo
+            );
         }
 
         let agent = ureq::AgentBuilder::new()
@@ -134,10 +148,7 @@ impl PluginFetcher for GithubFetcher {
                     .is_some_and(|t| t.starts_with("nightly-"))
             })
             .ok_or_else(|| {
-                FetchError::Other(anyhow::anyhow!(
-                    "no nightly release found in {}",
-                    self.repo
-                ))
+                FetchError::Other(anyhow::anyhow!("no nightly release found in {}", self.repo))
             })?;
 
         // Build asset lookup.
@@ -151,7 +162,9 @@ impl PluginFetcher for GithubFetcher {
             .iter()
             .find(|a| {
                 let fname = a["name"].as_str().unwrap_or("");
-                fname.contains(&binary_name) && fname.contains(target) && !fname.ends_with(".sha256")
+                fname.contains(&binary_name)
+                    && fname.contains(target)
+                    && !fname.ends_with(".sha256")
             })
             .ok_or_else(|| FetchError::NotAvailable {
                 plugin: binary_name.clone(),
@@ -179,8 +192,9 @@ impl PluginFetcher for GithubFetcher {
             .read_to_end(&mut bytes)
             .map_err(|e| FetchError::Other(e.into()))?;
 
-        let dest_dir = fetch::plugin_install_dir()
-            .ok_or_else(|| FetchError::Other(anyhow::anyhow!("cannot determine install directory")))?;
+        let dest_dir = fetch::plugin_install_dir().ok_or_else(|| {
+            FetchError::Other(anyhow::anyhow!("cannot determine install directory"))
+        })?;
         let dest = dest_dir.join(&binary_name);
 
         fetch::extract_and_install(&bytes, &binary_name, &dest)?;

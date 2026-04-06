@@ -83,7 +83,9 @@ pub struct ParsedStep {
     pub inputs: serde_json::Value,
 }
 
-pub fn parse_experiment(experiment_dir: &Path) -> Result<(String, Option<String>, Vec<ParsedStep>)> {
+pub fn parse_experiment(
+    experiment_dir: &Path,
+) -> Result<(String, Option<String>, Vec<ParsedStep>)> {
     let toml_path = experiment_dir.join("experiment.toml");
     let raw = std::fs::read_to_string(&toml_path)
         .with_context(|| format!("reading {}", toml_path.display()))?;
@@ -323,13 +325,65 @@ impl StepError {
     }
 }
 
+/// Query a forager plugin's `--schema` output and extract `identity_tags`.
+pub fn query_identity_tags(
+    forager_name: &str,
+    fetcher: Option<&dyn fetch::PluginFetcher>,
+) -> std::result::Result<Vec<String>, StepError> {
+    let binary_name = format!("forager-{forager_name}");
+    let binary = match resolve_plugin(forager_name) {
+        Some(path) => path,
+        None => match fetcher {
+            Some(f) => f.fetch(forager_name).map_err(|e| match e {
+                fetch::FetchError::Declined { .. } => StepError::PluginNotFound {
+                    binary: binary_name.clone(),
+                },
+                other => StepError::Other(other.into()),
+            })?,
+            None => {
+                return Err(StepError::PluginNotFound {
+                    binary: binary_name.clone(),
+                });
+            }
+        },
+    };
+
+    let output = Command::new(&binary)
+        .arg("--schema")
+        .output()
+        .map_err(|e| StepError::SpawnFailed {
+            binary: binary_name.clone(),
+            reason: e.to_string(),
+        })?;
+
+    if !output.status.success() {
+        // Plugin doesn't support --schema; assume no identity tags.
+        return Ok(Vec::new());
+    }
+
+    let schema: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| StepError::Other(anyhow::anyhow!("parsing schema from {binary_name}: {e}")))?;
+
+    let tags = schema
+        .pointer("/output/identity_tags")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(tags)
+}
+
 pub fn invoke_forager(
     forager_name: &str,
     step_name: &str,
     inputs: &serde_json::Value,
     project_dir: &Path,
     fetcher: Option<&dyn fetch::PluginFetcher>,
-) -> std::result::Result<Option<wezel_types::ForagerPluginOutput>, StepError> {
+) -> std::result::Result<Vec<wezel_types::ForagerPluginOutput>, StepError> {
     let binary_name = format!("forager-{forager_name}");
     // Look next to our own executable first, then fall back to PATH.
     // If not found and a fetcher is available, try to download and install.
@@ -389,5 +443,5 @@ pub fn invoke_forager(
     let _ = std::fs::remove_file(&inputs_path);
     let _ = std::fs::remove_file(&out_path);
 
-    Ok(envelope.measurement)
+    Ok(envelope.measurements)
 }

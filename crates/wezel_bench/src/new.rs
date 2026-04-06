@@ -7,7 +7,10 @@ pub fn create_experiment(name: &str, description: Option<&str>, project_dir: &Pa
     let experiment_dir = experiments_dir.join(name);
 
     if experiment_dir.exists() {
-        bail!("experiment '{name}' already exists at {}", experiment_dir.display());
+        bail!(
+            "experiment '{name}' already exists at {}",
+            experiment_dir.display()
+        );
     }
 
     std::fs::create_dir_all(&experiment_dir)?;
@@ -27,7 +30,10 @@ cmd = "cargo build"
     std::fs::write(experiment_dir.join("experiment.toml"), toml_content)?;
 
     eprintln!("Created experiment at {}", experiment_dir.display());
-    eprintln!("  Edit {}/experiment.toml to configure steps", experiment_dir.display());
+    eprintln!(
+        "  Edit {}/experiment.toml to configure steps",
+        experiment_dir.display()
+    );
 
     Ok(())
 }
