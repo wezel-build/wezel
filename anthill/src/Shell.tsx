@@ -51,6 +51,10 @@ export default function Shell() {
   }, [themeColors]);
 
   const { projects, current, setCurrent, loaded, renameProject } = useProject();
+
+  useEffect(() => {
+    document.title = current ? `wezel · ${current.name}` : "wezel";
+  }, [current]);
   const [projectOpen, setProjectOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
