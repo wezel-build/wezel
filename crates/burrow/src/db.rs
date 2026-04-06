@@ -78,7 +78,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             timestamp TEXT NOT NULL DEFAULT '',
             UNIQUE(repo_id, sha)
         );
-        CREATE TABLE IF NOT EXISTS metrics (
+        CREATE TABLE IF NOT EXISTS measurements (
             id BIGSERIAL PRIMARY KEY,
             commit_id BIGINT NOT NULL REFERENCES commits(id),
             project_id BIGINT NOT NULL REFERENCES projects(id),
@@ -88,14 +88,14 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             unit TEXT,
             step TEXT
         );
-        CREATE TABLE IF NOT EXISTS metric_details (
+        CREATE TABLE IF NOT EXISTS measurement_details (
             id BIGSERIAL PRIMARY KEY,
-            metric_id BIGINT NOT NULL REFERENCES metrics(id) ON DELETE CASCADE,
+            measurement_id BIGINT NOT NULL REFERENCES measurements(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
             value DOUBLE PRECISION NOT NULL
         );
         CREATE TABLE IF NOT EXISTS measurement_tags (
-            measurement_id BIGINT NOT NULL REFERENCES metrics(id) ON DELETE CASCADE,
+            measurement_id BIGINT NOT NULL REFERENCES measurements(id) ON DELETE CASCADE,
             key TEXT NOT NULL,
             value TEXT NOT NULL,
             identity BOOLEAN NOT NULL DEFAULT false,
