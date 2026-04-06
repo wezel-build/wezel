@@ -67,12 +67,14 @@ Content-Type: application/json
   "steps": [
     {
       "step": "baseline",
-      "measurement": {
-        "name": "build-time",
-        "kind": "duration",
-        "value": 1234.5,
-        "unit": "ms"
-      }
+      "measurements": [
+        {
+          "name": "build-time",
+          "kind": "duration",
+          "value": 1234.5,
+          "unit": "ms"
+        }
+      ]
     }
   ]
 }
@@ -147,12 +149,14 @@ Content-Type: application/json
   "steps": [
     {
       "step": "baseline",
-      "measurement": {
-        "name": "build-time",
-        "kind": "duration",
-        "value": 2000.0,
-        "unit": "ms"
-      }
+      "measurements": [
+        {
+          "name": "build-time",
+          "kind": "duration",
+          "value": 2000.0,
+          "unit": "ms"
+        }
+      ]
     }
   ]
 }
