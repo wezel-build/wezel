@@ -206,7 +206,9 @@ pub struct SummaryDef {
     pub bisect: bool,
 }
 
-fn bool_true() -> bool { true }
+fn bool_true() -> bool {
+    true
+}
 
 impl SummaryDef {
     /// Compute this conclusion's value from a slice of plugin measurements.
@@ -229,14 +231,8 @@ impl SummaryDef {
         Some(match self.aggregation {
             Aggregation::Sum => values.iter().sum(),
             Aggregation::Mean => values.iter().sum::<f64>() / values.len() as f64,
-            Aggregation::Max => values
-                .iter()
-                .cloned()
-                .fold(f64::NEG_INFINITY, f64::max),
-            Aggregation::Min => values
-                .iter()
-                .cloned()
-                .fold(f64::INFINITY, f64::min),
+            Aggregation::Max => values.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+            Aggregation::Min => values.iter().cloned().fold(f64::INFINITY, f64::min),
             Aggregation::Median => {
                 values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 let mid = values.len() / 2;

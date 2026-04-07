@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use wezel_types::{SummaryDef, ForagerRunReport, ForagerStepReport};
+use wezel_types::{ForagerRunReport, ForagerStepReport, SummaryDef};
 
 use crate::git;
 use crate::{Config, ExperimentToml, fetch, invoke_forager, parse_experiment};

@@ -12,7 +12,7 @@ use anyhow::{Context, Result, bail};
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
-use wezel_types::{Aggregation, SummaryDef, ExperimentDef, ForagerPluginEnvelope, StepDef};
+use wezel_types::{Aggregation, ExperimentDef, ForagerPluginEnvelope, StepDef, SummaryDef};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -86,7 +86,9 @@ struct SummaryToml {
     bisect: bool,
 }
 
-fn bool_true() -> bool { true }
+fn bool_true() -> bool {
+    true
+}
 
 pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
     let toml_path = experiment_dir.join("experiment.toml");

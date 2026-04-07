@@ -168,8 +168,14 @@ pub async fn post_forager_run(
 
     if let Some(bisection_id) = body.bisection_id {
         // ── Bisection progression ────────────────────────────────────────
-        progress_bisection(&pool, bisection_id as i64, repo_id, commit_id, &experiment_name)
-            .await?;
+        progress_bisection(
+            &pool,
+            bisection_id as i64,
+            repo_id,
+            commit_id,
+            &experiment_name,
+        )
+        .await?;
     } else {
         // ── Regression detection (normal runs only) ──────────────────────
         detect_regressions(
@@ -334,7 +340,13 @@ async fn detect_regressions(
         .map_err(ise)?;
 
         enqueue_midpoint(
-            pool, bisection_id, project_id, repo_id, experiment_name, &parent_sha, commit_sha,
+            pool,
+            bisection_id,
+            project_id,
+            repo_id,
+            experiment_name,
+            &parent_sha,
+            commit_sha,
         )
         .await?;
     }
