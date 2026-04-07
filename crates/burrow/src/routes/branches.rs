@@ -54,7 +54,7 @@ async fn build_project_commits(
     let commit_ids: Vec<i64> = commits.iter().map(|c| c.id).collect();
 
     let measurements = sqlx::query_as::<_, Measurement>(
-        "SELECT id, commit_id, project_id, name, status, value, unit, step \
+        "SELECT id, commit_id, project_id, name, status, value, step \
          FROM measurements WHERE commit_id = ANY($1) AND project_id = $2 ORDER BY id",
     )
     .bind(&commit_ids)
@@ -64,27 +64,6 @@ async fn build_project_commits(
     .map_err(ise)?;
 
     let m_ids: Vec<i64> = measurements.iter().map(|m| m.id).collect();
-
-    let details = sqlx::query_as::<_, MeasurementDetail>(
-        "SELECT measurement_id, name, value \
-         FROM measurement_details WHERE measurement_id = ANY($1) ORDER BY id",
-    )
-    .bind(&m_ids)
-    .fetch_all(pool)
-    .await
-    .map_err(ise)?;
-
-    let mut detail_map: HashMap<i64, Vec<MeasurementDetailJson>> = HashMap::new();
-    for d in details {
-        detail_map
-            .entry(d.measurement_id)
-            .or_default()
-            .push(MeasurementDetailJson {
-                name: d.name,
-                value: d.value,
-            });
-    }
-
     let mut tag_map = crate::routes::commits::load_tags(pool, &m_ids).await?;
 
     let mut measurements_by_commit: HashMap<i64, Vec<MeasurementJson>> = HashMap::new();
@@ -96,10 +75,8 @@ async fn build_project_commits(
                 id: m.id,
                 name: m.name,
                 status: m.status,
-                value: m.value,
-                unit: m.unit,
+                value: m.value.map(|v| v.0),
                 tags: tag_map.remove(&m.id).unwrap_or_default(),
-                detail: detail_map.remove(&m.id).unwrap_or_default(),
                 step: m.step,
             });
     }

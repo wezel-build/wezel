@@ -1,10 +1,10 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use wezel_types::{ForagerRunReport, ForagerStepReport};
+use wezel_types::{ConclusionDef, ForagerRunReport, ForagerStepReport};
 
 use crate::git;
-use crate::{Config, ExperimentToml, fetch, invoke_forager, parse_experiment, query_identity_tags};
+use crate::{Config, ExperimentToml, fetch, invoke_forager, parse_experiment};
 
 pub struct BurrowSession {
     agent: ureq::Agent,
@@ -71,7 +71,7 @@ pub fn list_experiments(project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Run an experiment and return the step reports.
+/// Run an experiment and return the step reports plus conclusion definitions.
 ///
 /// This function is pure execution — it knows nothing about Burrow.  The
 /// caller (daemon or CLI) decides whether/how to submit results.
@@ -79,7 +79,7 @@ pub fn run_experiment(
     experiment_name: &str,
     project_dir: &Path,
     fetcher: Option<&dyn fetch::PluginFetcher>,
-) -> Result<Vec<ForagerStepReport>> {
+) -> Result<(Vec<ForagerStepReport>, Vec<ConclusionDef>)> {
     let experiment_dir = project_dir
         .join(".wezel")
         .join("experiments")
@@ -92,14 +92,13 @@ pub fn run_experiment(
         );
     }
 
-    let (_name, _description, steps) = parse_experiment(&experiment_dir)?;
-
+    let experiment = parse_experiment(&experiment_dir)?;
     let commit_sha = git::current_sha(project_dir)?;
 
     // Run each step.
     let mut step_reports: Vec<ForagerStepReport> = Vec::new();
 
-    for step in &steps {
+    for step in &experiment.steps {
         log::info!("step '{}' [forager={}]", step.name, step.forager);
 
         // Apply patch if the step declares one.
@@ -109,9 +108,6 @@ pub fn run_experiment(
             git::apply_patch(project_dir, &patch_path)
                 .with_context(|| format!("applying patch for step '{}'", step.name))?;
         }
-
-        // Query plugin schema for identity tags.
-        let identity_tags = query_identity_tags(&step.forager, fetcher).unwrap_or_default();
 
         // Invoke the forager plugin.
         let result = invoke_forager(
@@ -127,7 +123,6 @@ pub fn run_experiment(
                 step_reports.push(ForagerStepReport {
                     step: step.name.clone(),
                     measurements,
-                    identity_tags,
                 });
             }
             Err(e) if e.is_hard() => bail!("{e}"),
@@ -136,7 +131,6 @@ pub fn run_experiment(
                 step_reports.push(ForagerStepReport {
                     step: step.name.clone(),
                     measurements: vec![],
-                    identity_tags,
                 });
             }
         }
@@ -150,16 +144,10 @@ pub fn run_experiment(
             println!("  {} — (no measurements)", report.step);
         } else {
             for m in &report.measurements {
-                println!(
-                    "  {} — {} = {} {}",
-                    report.step,
-                    m.name,
-                    m.value,
-                    m.unit.as_deref().unwrap_or("")
-                );
+                println!("  {} — {} = {}", report.step, m.name, m.value);
             }
         }
     }
 
-    Ok(step_reports)
+    Ok((step_reports, experiment.conclusions))
 }

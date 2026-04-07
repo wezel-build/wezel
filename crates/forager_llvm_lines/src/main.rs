@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
-use wezel_types::{ForagerPluginEnvelope, ForagerPluginOutput, MeasurementDetail};
+use wezel_types::{ForagerPluginEnvelope, ForagerPluginOutput};
 
 #[derive(Deserialize)]
 struct LlvmLinesInputs {
@@ -19,9 +19,7 @@ fn main() -> Result<()> {
                     "package": { "type": "string", "description": "Package name (required for workspaces)", "optional": true }
                 },
                 "output": {
-                    "unit": "lines",
-                    "description": "Total LLVM IR lines; detail is top functions by line count",
-                    "identity_tags": []
+                    "description": "One `llvm-lines` measurement per function per unit (`lines` or `copies`), tagged with `function` and `unit`. Untagged totals are also emitted."
                 }
             })
         );
@@ -48,24 +46,35 @@ fn main() -> Result<()> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let (total, detail) = parse_llvm_lines_output(&stdout)?;
+    let (total_lines, total_copies, functions) = parse_llvm_lines_output(&stdout)?;
 
-    let measurement = ForagerPluginOutput {
-        name: "llvm-lines".to_string(),
-        value: total as f64,
-        unit: Some("lines".to_string()),
-        tags: Default::default(),
-        detail,
-    };
+    let mut measurements = Vec::with_capacity(2 + functions.len() * 2);
 
-    let envelope = ForagerPluginEnvelope {
-        measurements: vec![measurement],
-    };
+    // Untagged totals for regression detection.
+    measurements.push(m(total_lines, &[]));
+    measurements.push(m(total_copies, &[("unit", "copies")]));
 
+    for (fn_name, lines, copies) in &functions {
+        measurements.push(m(*lines, &[("function", fn_name), ("unit", "lines")]));
+        measurements.push(m(*copies, &[("function", fn_name), ("unit", "copies")]));
+    }
+
+    let envelope = ForagerPluginEnvelope { measurements };
     std::fs::write(&out_path, serde_json::to_string(&envelope)?)
         .with_context(|| format!("writing {out_path}"))?;
 
     Ok(())
+}
+
+fn m(value: u64, tags: &[(&str, &str)]) -> ForagerPluginOutput {
+    ForagerPluginOutput {
+        name: "llvm-lines".to_string(),
+        value: serde_json::json!(value),
+        tags: tags
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+    }
 }
 
 /// Parse `cargo llvm-lines` output.
@@ -75,15 +84,13 @@ fn main() -> Result<()> {
 ///   Lines                 Copies               Function name
 ///   -----                 ------               -------------
 ///   361539                12556                (TOTAL)
-///     6639 (1.8%,  1.8%)     22 (0.2%,  0.2%)  <F as axum::handler::Handler<...>>::call
+///     6639 (1.8%,  1.8%)     22 (0.2%,  0.2%)  core::ops::function::FnOnce::call_once
 /// ```
 ///
-/// The TOTAL line is the first line after the `---` separator.
-/// Detail rows have: lines (pct, pct) copies (pct, pct) name
-fn parse_llvm_lines_output(s: &str) -> Result<(u64, Vec<MeasurementDetail>)> {
+/// Returns `(total_lines, total_copies, Vec<(name, lines, copies)>)`.
+fn parse_llvm_lines_output(s: &str) -> Result<(u64, u64, Vec<(String, u64, u64)>)> {
     let mut lines = s.lines();
 
-    // Skip until the --- separator line.
     loop {
         match lines.next() {
             None => bail!("unexpected end of cargo llvm-lines output: no separator line"),
@@ -92,43 +99,48 @@ fn parse_llvm_lines_output(s: &str) -> Result<(u64, Vec<MeasurementDetail>)> {
         }
     }
 
-    // Next line is the TOTAL row: <lines> <copies> (TOTAL)
+    // TOTAL row: "<total_lines>  <total_copies>  (TOTAL)"
     let total_line = lines.next().context("no TOTAL line after separator")?;
-    let total_parts: Vec<&str> = total_line.split_whitespace().collect();
-    // total_parts: ["361539", "12556", "(TOTAL)"]
-    let total: u64 = total_parts
-        .first()
+    let mut total_parts = total_line.split_whitespace();
+    let total_lines: u64 = total_parts
+        .next()
         .and_then(|s| s.parse().ok())
         .context("could not parse total line count")?;
+    let total_copies: u64 = total_parts
+        .next()
+        .and_then(|s| s.parse().ok())
+        .context("could not parse total copies count")?;
 
-    // Remaining lines are detail rows.
-    let mut detail = Vec::new();
+    // Per-function rows: "<lines> (<pct>, <pct>)  <copies> (<pct>, <pct>)  <name>"
+    let mut functions = Vec::new();
     for line in lines {
-        if detail.len() >= 50 {
+        if functions.len() >= 50 {
             break;
         }
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-        // First token is the line count.
-        let count_str = trimmed.split_whitespace().next().unwrap_or("");
-        let Ok(count) = count_str.parse::<u64>() else {
-            continue;
+        let fn_lines: u64 = match trimmed.split_whitespace().next().and_then(|s| s.parse().ok()) {
+            Some(n) => n,
+            None => continue,
         };
-        // Function name is the last whitespace-delimited "word" that doesn't
-        // look like a number or percentage. Find it after the last ')'.
+        let fn_copies: u64 = match trimmed.find(')').and_then(|pos| {
+            trimmed[pos + 1..]
+                .split_whitespace()
+                .find_map(|t| t.parse().ok())
+        }) {
+            Some(n) => n,
+            None => continue,
+        };
         let name = match trimmed.rfind(')') {
             Some(pos) => trimmed[pos + 1..].trim(),
             None => continue,
         };
         if !name.is_empty() {
-            detail.push(MeasurementDetail {
-                name: name.to_string(),
-                value: count as f64,
-            });
+            functions.push((name.to_string(), fn_lines, fn_copies));
         }
     }
 
-    Ok((total, detail))
+    Ok((total_lines, total_copies, functions))
 }

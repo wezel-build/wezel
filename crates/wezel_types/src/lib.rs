@@ -92,25 +92,14 @@ pub enum MeasurementStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MeasurementDetail {
-    pub name: String,
-    pub value: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Measurement {
     pub id: u64,
     pub name: String,
     pub status: MeasurementStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub value: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unit: Option<String>,
+    pub value: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub tags: HashMap<String, String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<Vec<MeasurementDetail>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -171,6 +160,8 @@ pub struct ExperimentDef {
     pub name: String,
     pub description: Option<String>,
     pub steps: Vec<StepDef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conclusions: Vec<ConclusionDef>,
 }
 
 /// A single step in an experiment.
@@ -185,6 +176,78 @@ pub struct StepDef {
     pub diff: Option<String>,
     /// Forager-specific inputs serialised from the remaining TOML fields.
     pub inputs: serde_json::Value,
+}
+
+/// How to aggregate measurement values into a conclusion scalar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Aggregation {
+    Sum,
+    Mean,
+    Median,
+    Max,
+    Min,
+}
+
+/// A named scalar derived from measurements, used for regression detection.
+///
+/// Defined in `.wezel/experiments/<name>/experiment.toml` under `[[conclusions]]`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConclusionDef {
+    pub name: String,
+    /// Measurement name to aggregate over.
+    pub measurement: String,
+    pub aggregation: Aggregation,
+    /// Tag key=value filters applied before aggregation.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub filter: HashMap<String, String>,
+    /// Whether to trigger bisection on regression (default true).
+    #[serde(default = "bool_true")]
+    pub bisect: bool,
+}
+
+fn bool_true() -> bool { true }
+
+impl ConclusionDef {
+    /// Compute this conclusion's value from a slice of plugin measurements.
+    pub fn compute(&self, measurements: &[ForagerPluginOutput]) -> Option<f64> {
+        let mut values: Vec<f64> = measurements
+            .iter()
+            .filter(|m| m.name == self.measurement)
+            .filter(|m| {
+                self.filter
+                    .iter()
+                    .all(|(k, v)| m.tags.get(k).map(|s| s.as_str()) == Some(v.as_str()))
+            })
+            .filter_map(|m| m.value.as_f64())
+            .collect();
+
+        if values.is_empty() {
+            return None;
+        }
+
+        Some(match self.aggregation {
+            Aggregation::Sum => values.iter().sum(),
+            Aggregation::Mean => values.iter().sum::<f64>() / values.len() as f64,
+            Aggregation::Max => values
+                .iter()
+                .cloned()
+                .fold(f64::NEG_INFINITY, f64::max),
+            Aggregation::Min => values
+                .iter()
+                .cloned()
+                .fold(f64::INFINITY, f64::min),
+            Aggregation::Median => {
+                values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let mid = values.len() / 2;
+                if values.len() % 2 == 0 {
+                    (values[mid - 1] + values[mid]) / 2.0
+                } else {
+                    values[mid]
+                }
+            }
+        })
+    }
 }
 
 /// A forager job with claim token, returned by `POST /api/forager/jobs/next`.
@@ -206,13 +269,9 @@ pub struct ForagerJob {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForagerPluginOutput {
     pub name: String,
-    pub value: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub unit: Option<String>,
+    pub value: serde_json::Value,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub tags: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub detail: Vec<MeasurementDetail>,
 }
 
 /// Envelope written by a forager plugin to `FORAGER_OUT`.
@@ -229,9 +288,6 @@ pub struct ForagerStepReport {
     /// Empty when the forager produced no measurements (e.g. `exec`).
     #[serde(default)]
     pub measurements: Vec<ForagerPluginOutput>,
-    /// Tag keys that form measurement identity (from plugin schema).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub identity_tags: Vec<String>,
 }
 
 /// Body of `POST /api/forager/run`.
@@ -239,6 +295,9 @@ pub struct ForagerStepReport {
 pub struct ForagerRunReport {
     pub token: String,
     pub steps: Vec<ForagerStepReport>,
+    /// Conclusion definitions from the experiment TOML.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conclusions: Vec<ConclusionDef>,
     /// Forwarded from the job; lets burrow progress a bisection.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bisection_id: Option<u64>,

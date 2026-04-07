@@ -12,7 +12,7 @@ use anyhow::{Context, Result, bail};
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
-use wezel_types::ForagerPluginEnvelope;
+use wezel_types::{Aggregation, ConclusionDef, ExperimentDef, ForagerPluginEnvelope, StepDef};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +53,8 @@ pub(crate) struct ExperimentToml {
     pub name: String,
     pub description: Option<String>,
     pub steps: Vec<ExperimentStepToml>,
+    #[serde(default)]
+    pub conclusions: Vec<ConclusionToml>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -73,19 +75,20 @@ struct ExperimentStepToml {
     rest: HashMap<String, toml::Value>,
 }
 
-pub struct ParsedStep {
-    pub name: String,
-    pub forager: String,
-    #[allow(dead_code)]
-    pub description: Option<String>,
-    /// Resolved patch stem: `Some("add-one-fn")` means `add-one-fn.patch` must exist.
-    pub diff: Option<String>,
-    pub inputs: serde_json::Value,
+#[derive(Debug, Deserialize)]
+struct ConclusionToml {
+    name: String,
+    measurement: String,
+    aggregation: Aggregation,
+    #[serde(default)]
+    filter: HashMap<String, String>,
+    #[serde(default = "bool_true")]
+    bisect: bool,
 }
 
-pub fn parse_experiment(
-    experiment_dir: &Path,
-) -> Result<(String, Option<String>, Vec<ParsedStep>)> {
+fn bool_true() -> bool { true }
+
+pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
     let toml_path = experiment_dir.join("experiment.toml");
     let raw = std::fs::read_to_string(&toml_path)
         .with_context(|| format!("reading {}", toml_path.display()))?;
@@ -112,7 +115,7 @@ pub fn parse_experiment(
             Some(DiffField::Name(s)) => Some(s),
         };
 
-        steps.push(ParsedStep {
+        steps.push(StepDef {
             name: raw_step.name,
             forager,
             description: raw_step.description,
@@ -121,7 +124,24 @@ pub fn parse_experiment(
         });
     }
 
-    Ok((experiment.name, experiment.description, steps))
+    let conclusions = experiment
+        .conclusions
+        .into_iter()
+        .map(|c| ConclusionDef {
+            name: c.name,
+            measurement: c.measurement,
+            aggregation: c.aggregation,
+            filter: c.filter,
+            bisect: c.bisect,
+        })
+        .collect();
+
+    Ok(ExperimentDef {
+        name: experiment.name,
+        description: experiment.description,
+        steps,
+        conclusions,
+    })
 }
 
 fn toml_to_json(v: toml::Value) -> Result<serde_json::Value> {
@@ -323,58 +343,6 @@ impl StepError {
     pub fn is_hard(&self) -> bool {
         matches!(self, Self::PluginNotFound { .. } | Self::SpawnFailed { .. })
     }
-}
-
-/// Query a forager plugin's `--schema` output and extract `identity_tags`.
-pub fn query_identity_tags(
-    forager_name: &str,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
-) -> std::result::Result<Vec<String>, StepError> {
-    let binary_name = format!("forager-{forager_name}");
-    let binary = match resolve_plugin(forager_name) {
-        Some(path) => path,
-        None => match fetcher {
-            Some(f) => f.fetch(forager_name).map_err(|e| match e {
-                fetch::FetchError::Declined { .. } => StepError::PluginNotFound {
-                    binary: binary_name.clone(),
-                },
-                other => StepError::Other(other.into()),
-            })?,
-            None => {
-                return Err(StepError::PluginNotFound {
-                    binary: binary_name.clone(),
-                });
-            }
-        },
-    };
-
-    let output = Command::new(&binary)
-        .arg("--schema")
-        .output()
-        .map_err(|e| StepError::SpawnFailed {
-            binary: binary_name.clone(),
-            reason: e.to_string(),
-        })?;
-
-    if !output.status.success() {
-        // Plugin doesn't support --schema; assume no identity tags.
-        return Ok(Vec::new());
-    }
-
-    let schema: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| StepError::Other(anyhow::anyhow!("parsing schema from {binary_name}: {e}")))?;
-
-    let tags = schema
-        .pointer("/output/identity_tags")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Ok(tags)
 }
 
 pub fn invoke_forager(
