@@ -14,6 +14,27 @@ pub fn github_commit_cache() -> &'static Mutex<HashMap<String, GithubCommitJson>
     GITHUB_COMMIT_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Strip protocol prefix, `git@host:` prefix, trailing `.git`, and trailing
+/// slash so that SSH, HTTPS, and HTTP remotes all produce the same canonical
+/// form (e.g. `github.com/owner/repo`).
+///
+/// Must stay in sync with `normalize_upstream` in `wezel_bench` and
+/// `wezel_cli`.
+pub fn normalize_upstream(url: &str) -> String {
+    let s = url
+        .trim()
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_start_matches("ssh://")
+        .trim_start_matches("git://");
+    let s = if let Some(rest) = s.strip_prefix("git@") {
+        rest.replacen(':', "/", 1)
+    } else {
+        s.to_string()
+    };
+    s.trim_end_matches('/').trim_end_matches(".git").to_string()
+}
+
 pub fn github_owner_repo(upstream: &str) -> Option<(String, String)> {
     let trimmed = upstream.trim().trim_end_matches('/');
 

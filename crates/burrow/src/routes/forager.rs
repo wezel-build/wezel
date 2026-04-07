@@ -11,6 +11,7 @@ use crate::{ApiResult, ise};
 
 /// Find or create a repo + project from an upstream URL, returning (repo_id, project_id).
 async fn find_or_create_project(pool: &PgPool, upstream: &str) -> Result<(i64, i64), StatusCode> {
+    let upstream = &crate::github::normalize_upstream(upstream);
     let project_name = upstream.rsplit('/').next().unwrap_or(upstream);
 
     // Find or create repo.

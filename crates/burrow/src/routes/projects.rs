@@ -17,9 +17,11 @@ pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>)
     let Some(name) = body["name"].as_str() else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    let Some(upstream) = body["upstream"].as_str() else {
+    let Some(upstream_raw) = body["upstream"].as_str() else {
         return StatusCode::BAD_REQUEST.into_response();
     };
+    let upstream = crate::github::normalize_upstream(upstream_raw);
+    let upstream = upstream.as_str();
 
     // Find or create repo.
     let repo_id: i64 = match sqlx::query_as::<_, (i64,)>("SELECT id FROM repos WHERE upstream = $1")
