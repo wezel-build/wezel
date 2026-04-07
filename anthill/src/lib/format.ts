@@ -2,6 +2,14 @@ export const MONO =
   "'CommitMono', 'Commit Mono', 'JetBrains Mono', 'Fira Code', monospace";
 export const SANS = "'Inter', -apple-system, system-ui, sans-serif";
 
+export function fmtUnknown(value: unknown): string {
+  if (value == null) return "—";
+  if (typeof value === "number") return value.toLocaleString();
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+}
+
 export function fmtValue(value: number, unit?: string): string {
   if (!unit) return value.toLocaleString();
   switch (unit) {

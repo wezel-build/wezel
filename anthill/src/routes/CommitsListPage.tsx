@@ -33,7 +33,7 @@ function statusBadge(status: CommitStatus) {
   return { color: C.textDim, bg: C.surface3, label: "not started" };
 }
 
-const GRID = "grid grid-cols-[16px_74px_1fr_130px_86px_78px_104px] gap-[8px]";
+const GRID = "grid grid-cols-[16px_74px_1fr_130px_86px_1fr_104px] gap-[8px]";
 
 export default function CommitsListPage() {
   const { commits, loading, error } = useCommits();
@@ -63,7 +63,7 @@ export default function CommitsListPage() {
             <span>Message</span>
             <span>Author</span>
             <span>Time</span>
-            <span className="text-right">Measures</span>
+            <span>Measurements</span>
             <span>Status</span>
           </div>
 
@@ -123,10 +123,19 @@ export default function CommitsListPage() {
                   <span className="text-[10px] text-dim font-mono">
                     {fmtTime(c.timestamp)}
                   </span>
-                  <span className="flex justify-end">
-                    <Badge color={C.textMid} bg={C.surface2}>
-                      {c.measurements.length}
-                    </Badge>
+                  <span className="flex flex-wrap gap-[3px] items-center overflow-hidden">
+                    {[...new Set(c.measurements.map((m) => m.name))]
+                      .slice(0, 4)
+                      .map((name) => (
+                        <Badge key={name} color={C.accent} bg={C.surface2}>
+                          {name}
+                        </Badge>
+                      ))}
+                    {new Set(c.measurements.map((m) => m.name)).size > 4 && (
+                      <Badge color={C.textDim} bg={C.surface2}>
+                        +{new Set(c.measurements.map((m) => m.name)).size - 4}
+                      </Badge>
+                    )}
                   </span>
                   <span>
                     <Badge color={badge.color} bg={badge.bg}>

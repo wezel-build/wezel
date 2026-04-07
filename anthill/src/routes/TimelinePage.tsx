@@ -2,10 +2,17 @@ import { useParams, Link } from "react-router-dom";
 import { GitBranch } from "lucide-react";
 import { useBranchTimeline } from "../lib/hooks";
 import { C } from "../lib/colors";
-import { fmtTime, fmtValue } from "../lib/format";
+import { fmtTime, fmtUnknown } from "../lib/format";
 import { DeltaBadge } from "../components/DeltaBadge";
 import { useProject } from "../lib/useProject";
-import { type Measurement, measurementKey } from "../lib/data";
+import { type Measurement } from "../lib/data";
+
+function mKey(m: Measurement): string {
+  const tags = m.tags ?? {};
+  const sorted = Object.entries(tags).sort(([a], [b]) => a.localeCompare(b));
+  if (sorted.length === 0) return m.name;
+  return m.name + "|" + sorted.map(([k, v]) => `${k}=${v}`).join(",");
+}
 
 export default function TimelinePage() {
   const { branch } = useParams<{ branch: string }>();
@@ -16,10 +23,8 @@ export default function TimelinePage() {
   /** The "previous" commit for delta computation is the next index (parent). */
   function findPrev(idx: number, m: Measurement): Measurement | undefined {
     if (idx + 1 >= commits.length) return undefined;
-    const key = measurementKey(m);
-    return commits[idx + 1].measurements.find(
-      (pm) => measurementKey(pm) === key,
-    );
+    const key = mKey(m);
+    return commits[idx + 1].measurements.find((pm) => mKey(pm) === key);
   }
 
   return (
@@ -90,15 +95,15 @@ export default function TimelinePage() {
                           {m.name}
                         </span>
                         <span className="text-fg font-semibold shrink-0">
-                          {m.value != null ? fmtValue(m.value, m.unit) : "—"}
+                          {m.value != null ? fmtUnknown(m.value) : "—"}
                         </span>
-                        {m.value != null && prev?.value != null && (
-                          <DeltaBadge
-                            current={m.value}
-                            baseline={prev.value}
-                            unit={m.unit}
-                          />
-                        )}
+                        {typeof m.value === "number" &&
+                          typeof prev?.value === "number" && (
+                            <DeltaBadge
+                              current={m.value}
+                              baseline={prev.value}
+                            />
+                          )}
                       </div>
                     );
                   })}
