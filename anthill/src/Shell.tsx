@@ -127,7 +127,7 @@ export default function Shell() {
   const onAdminPage = location.pathname.startsWith("/admin");
 
   return (
-    <ThemeCtx.Provider value={{ heatColor: theme.heatColor, dark: theme.dark }}>
+    <ThemeCtx.Provider value={{ heatColor: theme.heatColor, dark: theme.dark, colors: theme.C }}>
       <div className="w-screen h-screen bg-bg text-fg font-sans flex flex-col overflow-hidden">
         {/* ── Top bar ──────────────────────────────────────── */}
         <div className="flex items-center px-4 h-[40px] min-h-[40px] border-b border-[var(--c-border)] bg-surface justify-between">

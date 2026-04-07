@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { VizSpec } from "../lib/data";
 import { fmtValue } from "../lib/format";
 import { C } from "../lib/colors";
+import { useTheme } from "../lib/theme";
 
 interface Props {
   spec: VizSpec;
@@ -52,6 +53,7 @@ function VegaLiteChart({
   data: Record<string, unknown>[];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { colors } = useTheme();
 
   useEffect(() => {
     const el = containerRef.current;
@@ -60,10 +62,28 @@ function VegaLiteChart({
     let cancelled = false;
     let finalize: (() => void) | undefined;
 
+    const vegaConfig = {
+      background: colors.bg,
+      axis: {
+        labelColor: colors.textMid,
+        titleColor: colors.textMid,
+        gridColor: colors.border,
+        domainColor: colors.border,
+        tickColor: colors.border,
+      },
+      legend: {
+        labelColor: colors.textMid,
+        titleColor: colors.textMid,
+      },
+      title: { color: colors.text },
+      mark: { color: colors.accent },
+    };
+
     import("vega-embed").then(({ default: embed }) => {
       if (cancelled || !el) return;
       embed(el, { ...spec, data: { values: data } } as never, {
         actions: false,
+        config: vegaConfig,
       }).then((result) => {
         finalize = () => result.finalize();
       });
@@ -73,7 +93,7 @@ function VegaLiteChart({
       cancelled = true;
       finalize?.();
     };
-  }, [spec, data]);
+  }, [spec, data, colors]);
 
   return <div ref={containerRef} />;
 }

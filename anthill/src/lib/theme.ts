@@ -59,9 +59,11 @@ export interface Theme {
 
 // Slimmed context — only what components actually need from React context.
 // Color values are accessed statically via CSS variables in lib/colors.ts.
+// `colors` is included for renderers (e.g. Vega-Lite) that cannot read CSS variables.
 export interface ThemeCtxValue {
   heatColor: HeatFn;
   dark: boolean;
+  colors: Colors;
 }
 
 const WARM: Theme = {
@@ -138,6 +140,7 @@ export const THEMES: Record<ThemeKey, Theme> = {
 export const ThemeCtx = createContext<ThemeCtxValue>({
   heatColor: warmHeat,
   dark: true,
+  colors: WARM.C,
 });
 export function useTheme() {
   return useContext(ThemeCtx);
