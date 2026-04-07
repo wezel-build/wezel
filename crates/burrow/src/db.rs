@@ -9,6 +9,33 @@ pub async fn connect(url: &str) -> sqlx::Result<PgPool> {
 }
 
 async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
+    // Schema migrations that must run before the CREATE TABLE IF NOT EXISTS
+    // block. Each statement is idempotent.
+    sqlx::raw_sql(
+        "
+        -- Migrate measurements.value from double precision to jsonb.
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'measurements' AND column_name = 'value'
+                  AND data_type = 'double precision'
+            ) THEN
+                ALTER TABLE measurements
+                    ALTER COLUMN value TYPE jsonb
+                    USING CASE WHEN value IS NULL THEN NULL ELSE to_jsonb(value) END;
+            END IF;
+        END $$;
+        -- Drop unit column (units are now expressed as tags).
+        ALTER TABLE measurements DROP COLUMN IF EXISTS unit;
+        -- Drop measurement_details if it still exists.
+        DROP TABLE IF EXISTS measurement_details;
+        -- Drop identity column from measurement_tags (replaced by conclusions).
+        ALTER TABLE measurement_tags DROP COLUMN IF EXISTS identity;
+        ",
+    )
+    .execute(pool)
+    .await?;
+
     sqlx::raw_sql(
         "
         CREATE TABLE IF NOT EXISTS repos (
@@ -84,21 +111,13 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             project_id BIGINT NOT NULL REFERENCES projects(id),
             name TEXT NOT NULL,
             status TEXT NOT NULL,
-            value DOUBLE PRECISION,
-            unit TEXT,
+            value JSONB,
             step TEXT
-        );
-        CREATE TABLE IF NOT EXISTS measurement_details (
-            id BIGSERIAL PRIMARY KEY,
-            measurement_id BIGINT NOT NULL REFERENCES measurements(id) ON DELETE CASCADE,
-            name TEXT NOT NULL,
-            value DOUBLE PRECISION NOT NULL
         );
         CREATE TABLE IF NOT EXISTS measurement_tags (
             measurement_id BIGINT NOT NULL REFERENCES measurements(id) ON DELETE CASCADE,
             key TEXT NOT NULL,
             value TEXT NOT NULL,
-            identity BOOLEAN NOT NULL DEFAULT false,
             PRIMARY KEY (measurement_id, key)
         );
         CREATE TABLE IF NOT EXISTS sessions (
@@ -174,6 +193,16 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             bisection_id   BIGINT NOT NULL REFERENCES bisections(id),
             measurement_id BIGINT NOT NULL REFERENCES measurements(id),
             PRIMARY KEY (bisection_id, measurement_id)
+        );
+        CREATE TABLE IF NOT EXISTS conclusion_values (
+            id              BIGSERIAL PRIMARY KEY,
+            project_id      BIGINT NOT NULL REFERENCES projects(id),
+            experiment_name TEXT NOT NULL,
+            commit_id       BIGINT NOT NULL REFERENCES commits(id),
+            name            TEXT NOT NULL,
+            value           DOUBLE PRECISION NOT NULL,
+            computed_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+            UNIQUE (project_id, experiment_name, commit_id, name)
         );
         ",
     )

@@ -38,10 +38,9 @@ pub async fn load_tags(
     Ok(tag_map)
 }
 
-/// Build a list of MeasurementJson from Measurement rows, batch-loading details and tags.
+/// Build a list of MeasurementJson from Measurement rows, batch-loading tags.
 fn build_measurement_json(
     measurements: Vec<Measurement>,
-    detail_map: &mut HashMap<i64, Vec<MeasurementDetailJson>>,
     tag_map: &mut HashMap<i64, HashMap<String, String>>,
 ) -> Vec<MeasurementJson> {
     measurements
@@ -50,10 +49,8 @@ fn build_measurement_json(
             id: m.id,
             name: m.name,
             status: m.status,
-            value: m.value,
-            unit: m.unit,
+            value: m.value.map(|v| v.0),
             tags: tag_map.remove(&m.id).unwrap_or_default(),
-            detail: detail_map.remove(&m.id).unwrap_or_default(),
             step: m.step,
         })
         .collect()
@@ -70,7 +67,7 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
     .map_err(ise)?;
 
     let measurements = sqlx::query_as::<_, Measurement>(
-        "SELECT id, commit_id, project_id, name, status, value, unit, step \
+        "SELECT id, commit_id, project_id, name, status, value, step \
          FROM measurements WHERE commit_id = $1 ORDER BY id",
     )
     .bind(commit_id)
@@ -79,30 +76,8 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
     .map_err(ise)?;
 
     let m_ids: Vec<i64> = measurements.iter().map(|m| m.id).collect();
-
-    let details = sqlx::query_as::<_, MeasurementDetail>(
-        "SELECT measurement_id, name, value \
-         FROM measurement_details WHERE measurement_id = ANY($1) ORDER BY id",
-    )
-    .bind(&m_ids)
-    .fetch_all(pool)
-    .await
-    .map_err(ise)?;
-
-    let mut detail_map: HashMap<i64, Vec<MeasurementDetailJson>> = HashMap::new();
-    for d in details {
-        detail_map
-            .entry(d.measurement_id)
-            .or_default()
-            .push(MeasurementDetailJson {
-                name: d.name,
-                value: d.value,
-            });
-    }
-
     let mut tag_map = load_tags(pool, &m_ids).await?;
-
-    let measurements_json = build_measurement_json(measurements, &mut detail_map, &mut tag_map);
+    let measurements_json = build_measurement_json(measurements, &mut tag_map);
 
     Ok(CommitJson {
         sha: c.sha,
@@ -159,7 +134,7 @@ async fn build_commit_list(
     let commit_ids: Vec<i64> = commits.iter().map(|c| c.id).collect();
 
     let measurements = sqlx::query_as::<_, Measurement>(
-        "SELECT id, commit_id, project_id, name, status, value, unit, step \
+        "SELECT id, commit_id, project_id, name, status, value, step \
          FROM measurements WHERE commit_id = ANY($1) ORDER BY id",
     )
     .bind(&commit_ids)
@@ -168,27 +143,6 @@ async fn build_commit_list(
     .map_err(ise)?;
 
     let m_ids: Vec<i64> = measurements.iter().map(|m| m.id).collect();
-
-    let details = sqlx::query_as::<_, MeasurementDetail>(
-        "SELECT measurement_id, name, value \
-         FROM measurement_details WHERE measurement_id = ANY($1) ORDER BY id",
-    )
-    .bind(&m_ids)
-    .fetch_all(pool)
-    .await
-    .map_err(ise)?;
-
-    let mut detail_map: HashMap<i64, Vec<MeasurementDetailJson>> = HashMap::new();
-    for d in details {
-        detail_map
-            .entry(d.measurement_id)
-            .or_default()
-            .push(MeasurementDetailJson {
-                name: d.name,
-                value: d.value,
-            });
-    }
-
     let mut tag_map = load_tags(pool, &m_ids).await?;
 
     let mut measurements_by_commit: HashMap<i64, Vec<MeasurementJson>> = HashMap::new();
@@ -200,10 +154,8 @@ async fn build_commit_list(
                 id: m.id,
                 name: m.name,
                 status: m.status,
-                value: m.value,
-                unit: m.unit,
+                value: m.value.map(|v| v.0),
                 tags: tag_map.remove(&m.id).unwrap_or_default(),
-                detail: detail_map.remove(&m.id).unwrap_or_default(),
                 step: m.step,
             });
     }

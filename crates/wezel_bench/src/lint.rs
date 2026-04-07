@@ -44,7 +44,7 @@ pub fn run_lint(project_dir: &Path, fetcher: Option<&dyn fetch::PluginFetcher>) 
 
         // Parse the TOML.
         let steps = match parse_experiment(&experiment_dir) {
-            Ok((_name, _desc, steps)) => steps,
+            Ok(exp) => exp.steps,
             Err(e) => {
                 results.push(ExperimentResult {
                     name: experiment_name,
