@@ -9,35 +9,8 @@ pub async fn connect(url: &str) -> sqlx::Result<PgPool> {
 }
 
 async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
-    // Schema migrations that must run before the CREATE TABLE IF NOT EXISTS
-    // block. Each statement is idempotent.
-    sqlx::raw_sql(
-        "
-        -- Migrate measurements.value from double precision to jsonb.
-        DO $$ BEGIN
-            IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'measurements' AND column_name = 'value'
-                  AND data_type = 'double precision'
-            ) THEN
-                ALTER TABLE measurements
-                    ALTER COLUMN value TYPE jsonb
-                    USING CASE WHEN value IS NULL THEN NULL ELSE to_jsonb(value) END;
-            END IF;
-        END $$;
-        -- Drop unit column (units are now expressed as tags).
-        ALTER TABLE measurements DROP COLUMN IF EXISTS unit;
-        -- Drop measurement_details if it still exists.
-        DROP TABLE IF EXISTS measurement_details;
-        -- Drop identity column from measurement_tags (replaced by summaries).
-        ALTER TABLE measurement_tags DROP COLUMN IF EXISTS identity;
-        -- Add experiment_name to measurements.
-        ALTER TABLE measurements ADD COLUMN IF NOT EXISTS experiment_name TEXT;
-        ",
-    )
-    .execute(pool)
-    .await?;
-
+    // Create tables first so that the schema-evolution block below is safe on
+    // a fresh database.
     sqlx::raw_sql(
         "
         CREATE TABLE IF NOT EXISTS repos (
@@ -206,6 +179,35 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             computed_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
             UNIQUE (project_id, experiment_name, commit_id, name)
         );
+        ",
+    )
+    .execute(pool)
+    .await?;
+
+    // Schema-evolution: idempotent ALTER TABLE statements safe to run after
+    // the CREATE TABLE block above.
+    sqlx::raw_sql(
+        "
+        -- Migrate measurements.value from double precision to jsonb.
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'measurements' AND column_name = 'value'
+                  AND data_type = 'double precision'
+            ) THEN
+                ALTER TABLE measurements
+                    ALTER COLUMN value TYPE jsonb
+                    USING CASE WHEN value IS NULL THEN NULL ELSE to_jsonb(value) END;
+            END IF;
+        END $$;
+        -- Drop unit column (units are now expressed as tags).
+        ALTER TABLE measurements DROP COLUMN IF EXISTS unit;
+        -- Drop measurement_details if it still exists.
+        DROP TABLE IF EXISTS measurement_details;
+        -- Drop identity column from measurement_tags (replaced by summaries).
+        ALTER TABLE measurement_tags DROP COLUMN IF EXISTS identity;
+        -- Add experiment_name to measurements.
+        ALTER TABLE measurements ADD COLUMN IF NOT EXISTS experiment_name TEXT;
         ",
     )
     .execute(pool)
