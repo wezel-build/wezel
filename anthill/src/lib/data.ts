@@ -70,6 +70,14 @@ export interface Measurement {
   status: MeasurementStatus;
   value?: unknown;
   tags?: Record<string, string>;
+  step?: string;
+  experimentName?: string;
+}
+
+export interface SummaryValue {
+  experimentName: string;
+  name: string;
+  value: number;
 }
 
 export interface ForagerCommit {
@@ -79,6 +87,7 @@ export interface ForagerCommit {
   message: string;
   timestamp: string;
   measurements: Measurement[];
+  summaries?: SummaryValue[];
 }
 
 // ── Branch timeline ─────────────────────────────────────────────────────────

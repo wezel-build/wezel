@@ -52,8 +52,36 @@ fn build_measurement_json(
             value: m.value.map(|v| v.0),
             tags: tag_map.remove(&m.id).unwrap_or_default(),
             step: m.step,
+            experiment_name: m.experiment_name,
         })
         .collect()
+}
+
+/// Load summary values for a batch of commit IDs.
+pub async fn load_summaries(
+    pool: &PgPool,
+    commit_ids: &[i64],
+) -> Result<HashMap<i64, Vec<crate::models::SummaryValueJson>>, StatusCode> {
+    let rows: Vec<(i64, String, String, f64)> = sqlx::query_as(
+        "SELECT commit_id, experiment_name, name, value \
+         FROM summary_values WHERE commit_id = ANY($1)",
+    )
+    .bind(commit_ids)
+    .fetch_all(pool)
+    .await
+    .map_err(ise)?;
+
+    let mut map: HashMap<i64, Vec<crate::models::SummaryValueJson>> = HashMap::new();
+    for (commit_id, experiment_name, name, value) in rows {
+        map.entry(commit_id)
+            .or_default()
+            .push(crate::models::SummaryValueJson {
+                experiment_name,
+                name,
+                value,
+            });
+    }
+    Ok(map)
 }
 
 async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> {
@@ -67,7 +95,7 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
     .map_err(ise)?;
 
     let measurements = sqlx::query_as::<_, Measurement>(
-        "SELECT id, commit_id, project_id, name, status, value, step \
+        "SELECT id, commit_id, project_id, name, status, value, step, experiment_name \
          FROM measurements WHERE commit_id = $1 ORDER BY id",
     )
     .bind(commit_id)
@@ -79,6 +107,11 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
     let mut tag_map = load_tags(pool, &m_ids).await?;
     let measurements_json = build_measurement_json(measurements, &mut tag_map);
 
+    let summaries = load_summaries(pool, &[c.id])
+        .await?
+        .remove(&c.id)
+        .unwrap_or_default();
+
     Ok(CommitJson {
         sha: c.sha,
         short_sha: c.short_sha,
@@ -86,6 +119,7 @@ async fn commit_to_json(pool: &PgPool, commit_id: i64) -> ApiResult<CommitJson> 
         message: c.message,
         timestamp: c.timestamp,
         measurements: measurements_json,
+        summaries,
     })
 }
 
@@ -134,7 +168,7 @@ async fn build_commit_list(
     let commit_ids: Vec<i64> = commits.iter().map(|c| c.id).collect();
 
     let measurements = sqlx::query_as::<_, Measurement>(
-        "SELECT id, commit_id, project_id, name, status, value, step \
+        "SELECT id, commit_id, project_id, name, status, value, step, experiment_name \
          FROM measurements WHERE commit_id = ANY($1) ORDER BY id",
     )
     .bind(&commit_ids)
@@ -144,6 +178,7 @@ async fn build_commit_list(
 
     let m_ids: Vec<i64> = measurements.iter().map(|m| m.id).collect();
     let mut tag_map = load_tags(pool, &m_ids).await?;
+    let mut summary_map = load_summaries(pool, &commit_ids).await?;
 
     let mut measurements_by_commit: HashMap<i64, Vec<MeasurementJson>> = HashMap::new();
     for m in measurements {
@@ -157,6 +192,7 @@ async fn build_commit_list(
                 value: m.value.map(|v| v.0),
                 tags: tag_map.remove(&m.id).unwrap_or_default(),
                 step: m.step,
+                experiment_name: m.experiment_name,
             });
     }
 
@@ -169,6 +205,7 @@ async fn build_commit_list(
             message: c.message,
             timestamp: c.timestamp,
             measurements: measurements_by_commit.remove(&c.id).unwrap_or_default(),
+            summaries: summary_map.remove(&c.id).unwrap_or_default(),
         })
         .collect();
 

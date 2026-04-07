@@ -96,7 +96,15 @@ pub async fn post_forager_run(
         .await
         .map_err(ise)?;
 
-    // Collect all measurements across steps for conclusion computation.
+    // Get the experiment_name from the token row.
+    let (experiment_name,): (String,) =
+        sqlx::query_as("SELECT experiment_name FROM forager_tokens WHERE token = $1")
+            .bind(&body.token)
+            .fetch_one(&pool)
+            .await
+            .map_err(ise)?;
+
+    // Collect all measurements across steps for summary computation.
     let all_measurements: Vec<wezel_types::ForagerPluginOutput> = body
         .steps
         .iter()
@@ -107,14 +115,15 @@ pub async fn post_forager_run(
         for m in &step_report.measurements {
             let (measurement_id,): (i64,) = sqlx::query_as(
                 "INSERT INTO measurements \
-                 (commit_id, project_id, name, status, value, step) \
-                 VALUES ($1, $2, $3, 'complete', $4, $5) RETURNING id",
+                 (commit_id, project_id, name, status, value, step, experiment_name) \
+                 VALUES ($1, $2, $3, 'complete', $4, $5, $6) RETURNING id",
             )
             .bind(commit_id)
             .bind(project_id)
             .bind(&m.name)
             .bind(sqlx::types::Json(&m.value))
             .bind(&step_report.step)
+            .bind(&experiment_name)
             .fetch_one(&pool)
             .await
             .map_err(ise)?;
@@ -133,14 +142,6 @@ pub async fn post_forager_run(
             }
         }
     }
-
-    // Get the experiment_name from the token row.
-    let (experiment_name,): (String,) =
-        sqlx::query_as("SELECT experiment_name FROM forager_tokens WHERE token = $1")
-            .bind(&body.token)
-            .fetch_one(&pool)
-            .await
-            .map_err(ise)?;
 
     // Compute and store summary values.
     let mut computed: Vec<(String, f64)> = Vec::new();
@@ -197,6 +198,7 @@ pub async fn post_forager_run(
 /// After storing conclusion values for a normal run, compare each bisect-eligible
 /// conclusion against recent history. If the regression detector fires, create a
 /// bisection and enqueue the midpoint.
+#[expect(clippy::too_many_arguments)]
 async fn detect_regressions(
     pool: &PgPool,
     repo_id: i64,
