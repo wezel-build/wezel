@@ -17,9 +17,9 @@ import {
 import { C } from "../lib/colors";
 import { fmtUnknown, fmtTime } from "../lib/format";
 import {
-  type ForagerCommit,
   type Measurement,
   type MeasurementStatus,
+  type SummaryValue,
   buildVizMap,
 } from "../lib/data";
 import { useCommits, useGithubCommit, usePheromones } from "../lib/hooks";
@@ -62,7 +62,7 @@ function MeasurementRow({ m }: { m: Measurement }) {
   const isDone = m.status === "complete" && m.value != null;
 
   return (
-    <div className="grid grid-cols-[18px_1fr_120px_110px] gap-[8px] px-[12px] py-[8px] items-center border-b border-[var(--c-border)] text-[11px] font-mono cursor-default">
+    <div className="grid grid-cols-[18px_1fr_120px] gap-[8px] px-[12px] py-[8px] items-center border-b border-[var(--c-border)] text-[11px] font-mono cursor-default">
       <StatusIcon status={m.status} />
 
       <div className="flex items-center gap-[6px] overflow-hidden">
@@ -83,46 +83,29 @@ function MeasurementRow({ m }: { m: Measurement }) {
       >
         {isDone ? fmtUnknown(m.value) : statusLabel(m.status)}
       </span>
-
-      <span className="text-dim text-[10px]">—</span>
     </div>
   );
 }
 
-// ── Commit header ────────────────────────────────────────────────────────────
+// ── Summaries panel ──────────────────────────────────────────────────────────
 
-function CommitHeader({ commit }: { commit: ForagerCommit }) {
+function SummariesPanel({ summaries }: { summaries: SummaryValue[] }) {
+  if (summaries.length === 0) return null;
   return (
-    <div className="flex flex-col gap-[12px] px-[20px] py-[16px] bg-surface border-b border-[var(--c-border)] rounded-t-md">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-[8px]">
-          <GitCommit size={16} color={C.accent} />
-          <span className="text-sm font-bold font-mono text-accent tracking-[-0.3px]">
-            {commit.shortSha}
+    <div className="flex flex-wrap gap-[8px] px-[12px] py-[8px] border-b border-[var(--c-border)] bg-surface2">
+      {summaries.map((s) => (
+        <div key={s.name} className="flex flex-col gap-[1px] min-w-[80px]">
+          <span className="text-[9px] font-mono text-dim uppercase tracking-[0.6px]">
+            {s.name}
+          </span>
+          <span
+            className="text-[12px] font-mono font-semibold"
+            style={{ color: C.pink }}
+          >
+            {s.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}
           </span>
         </div>
-        <span className="text-[10px] font-mono text-dim">
-          {fmtTime(commit.timestamp)}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-[4px]">
-        <span className="text-[13px] text-fg font-medium">
-          {commit.message}
-        </span>
-        <span className="text-[10px] text-dim font-mono">
-          by {commit.author}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-[1px]">
-        <span className="text-[10px] text-dim uppercase tracking-[0.8px] font-semibold">
-          Measurements
-        </span>
-        <span className="text-lg font-bold font-mono" style={{ color: C.pink }}>
-          {commit.measurements.length}
-        </span>
-      </div>
+      ))}
     </div>
   );
 }
@@ -195,16 +178,24 @@ export default function CommitPage() {
 
   useKeyboardNav(keyMap);
 
-  const grouped = useMemo(() => {
+  const byExperiment = useMemo(() => {
     if (!commit) return [];
-    const groups = new Map<string, Measurement[]>();
+    const expMap = new Map<string, Map<string, Measurement[]>>();
     for (const m of commit.measurements) {
-      const key = m.name;
-      const list = groups.get(key) ?? [];
-      list.push(m);
-      groups.set(key, list);
+      const exp = m.experimentName ?? "";
+      const step = m.step ?? m.name;
+      if (!expMap.has(exp)) expMap.set(exp, new Map());
+      const stepMap = expMap.get(exp)!;
+      if (!stepMap.has(step)) stepMap.set(step, []);
+      stepMap.get(step)!.push(m);
     }
-    return Array.from(groups.entries());
+    return Array.from(expMap.entries()).map(([exp, stepMap]) => ({
+      exp,
+      steps: Array.from(stepMap.entries()),
+      summaries: (commit.summaries ?? []).filter(
+        (s) => s.experimentName === exp,
+      ),
+    }));
   }, [commit]);
 
   const ghMessage = githubCommit?.message?.trim() ?? "";
@@ -436,49 +427,60 @@ export default function CommitPage() {
             )}
           </div>
 
-          {commit ? (
-            <div className="border border-[var(--c-border)] rounded-md overflow-hidden">
-              <CommitHeader commit={commit} />
+          {commit && byExperiment.length > 0 ? (
+            byExperiment.map(({ exp, steps, summaries }) => (
+              <div
+                key={exp}
+                className="border border-[var(--c-border)] rounded-md overflow-hidden"
+              >
+                <div className="px-[12px] py-[8px] bg-surface2 border-b border-[var(--c-border)] flex items-center gap-[6px]">
+                  <span className="text-[10px] font-bold font-mono text-dim uppercase tracking-[0.8px]">
+                    experiment
+                  </span>
+                  <span className="text-[11px] font-mono font-semibold text-accent">
+                    {exp || "(default)"}
+                  </span>
+                </div>
 
-              <div className="grid grid-cols-[18px_1fr_120px_110px] gap-[8px] px-[12px] py-[8px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2">
-                <span />
-                <span>Measurement</span>
-                <span className="text-right">Value</span>
-                <span>Δ prev</span>
+                <SummariesPanel summaries={summaries} />
+
+                <div className="grid grid-cols-[18px_1fr_120px] gap-[8px] px-[12px] py-[6px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface">
+                  <span />
+                  <span>Measurement</span>
+                  <span className="text-right">Value</span>
+                </div>
+
+                {steps.map(([stepName, measurements]) => {
+                  const summarySpec = vizMap[stepName]?.summary;
+                  const completedMs = measurements.filter(
+                    (m) => m.status === "complete" && m.value != null,
+                  );
+                  return (
+                    <div key={stepName}>
+                      {steps.length > 1 && (
+                        <div className="px-[12px] py-[5px] text-[10px] font-bold font-mono text-mid bg-surface border-b border-[var(--c-border)]">
+                          {stepName}
+                        </div>
+                      )}
+                      {summarySpec && completedMs.length > 0 && (
+                        <div className="px-[12px] py-[8px] border-b border-[var(--c-border)] bg-surface">
+                          <VizRenderer
+                            spec={summarySpec}
+                            data={completedMs.map((m) => ({
+                              name: m.name,
+                              value: m.value,
+                            }))}
+                          />
+                        </div>
+                      )}
+                      {measurements.map((m) => (
+                        <MeasurementRow key={m.id} m={m} />
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
-
-              {grouped.map(([groupName, measurements], gi) => {
-                const summarySpec = vizMap[groupName]?.summary;
-                const completedMs = measurements.filter(
-                  (m) => m.status === "complete" && m.value != null,
-                );
-                return (
-                  <div key={groupName}>
-                    {grouped.length > 1 && (
-                      <div
-                        className={`px-[12px] py-[6px] text-[10px] font-bold font-mono text-dim uppercase tracking-[0.8px] bg-surface border-b border-[var(--c-border)]${gi > 0 ? " border-t border-[var(--c-border)]" : ""}`}
-                      >
-                        {groupName}
-                      </div>
-                    )}
-                    {summarySpec && completedMs.length > 0 && (
-                      <div className="px-[12px] py-[8px] border-b border-[var(--c-border)] bg-surface">
-                        <VizRenderer
-                          spec={summarySpec}
-                          data={completedMs.map((m) => ({
-                            name: m.name,
-                            value: m.value,
-                          }))}
-                        />
-                      </div>
-                    )}
-                    {measurements.map((m) => (
-                      <MeasurementRow key={m.id} m={m} />
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
+            ))
           ) : (
             <div className="border border-[var(--c-border)] rounded-md bg-surface px-[16px] py-[14px] text-dim text-[11px] font-mono">
               No Forager measurements yet for this commit.

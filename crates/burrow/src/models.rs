@@ -103,6 +103,7 @@ pub struct Measurement {
     pub status: String,
     pub value: Option<sqlx::types::Json<serde_json::Value>>,
     pub step: Option<String>,
+    pub experiment_name: Option<String>,
 }
 
 #[derive(FromRow)]
@@ -183,6 +184,7 @@ pub struct ObservationJson {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MeasurementJson {
     pub id: i64,
     pub name: String,
@@ -193,17 +195,29 @@ pub struct MeasurementJson {
     pub tags: HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub step: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub experiment_name: Option<String>,
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SummaryValueJson {
+    pub experiment_name: String,
+    pub name: String,
+    pub value: f64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommitJson {
     pub sha: String,
-    #[serde(rename = "shortSha")]
     pub short_sha: String,
     pub author: String,
     pub message: String,
     pub timestamp: String,
     pub measurements: Vec<MeasurementJson>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub summaries: Vec<SummaryValueJson>,
 }
 
 #[derive(Serialize)]

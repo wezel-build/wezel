@@ -1,4 +1,7 @@
 use anyhow::{Context, Result, bail};
+
+type LlvmRow = (String, u64, u64);
+type LlvmLinesOutput = (u64, u64, Vec<LlvmRow>);
 use serde::Deserialize;
 use wezel_types::{ForagerPluginEnvelope, ForagerPluginOutput};
 
@@ -88,7 +91,7 @@ fn m(value: u64, tags: &[(&str, &str)]) -> ForagerPluginOutput {
 /// ```
 ///
 /// Returns `(total_lines, total_copies, Vec<(name, lines, copies)>)`.
-fn parse_llvm_lines_output(s: &str) -> Result<(u64, u64, Vec<(String, u64, u64)>)> {
+fn parse_llvm_lines_output(s: &str) -> Result<LlvmLinesOutput> {
     let mut lines = s.lines();
 
     loop {

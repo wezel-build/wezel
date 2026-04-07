@@ -124,18 +124,29 @@ export default function CommitsListPage() {
                     {fmtTime(c.timestamp)}
                   </span>
                   <span className="flex flex-wrap gap-[3px] items-center overflow-hidden">
-                    {[...new Set(c.measurements.map((m) => m.name))]
-                      .slice(0, 4)
-                      .map((name) => (
-                        <Badge key={name} color={C.accent} bg={C.surface2}>
-                          {name}
-                        </Badge>
-                      ))}
-                    {new Set(c.measurements.map((m) => m.name)).size > 4 && (
-                      <Badge color={C.textDim} bg={C.surface2}>
-                        +{new Set(c.measurements.map((m) => m.name)).size - 4}
-                      </Badge>
-                    )}
+                    {(() => {
+                      const exps = [
+                        ...new Set(
+                          c.measurements
+                            .map((m) => m.experimentName)
+                            .filter((e): e is string => !!e),
+                        ),
+                      ];
+                      return (
+                        <>
+                          {exps.slice(0, 4).map((name) => (
+                            <Badge key={name} color={C.accent} bg={C.surface2}>
+                              {name}
+                            </Badge>
+                          ))}
+                          {exps.length > 4 && (
+                            <Badge color={C.textDim} bg={C.surface2}>
+                              +{exps.length - 4}
+                            </Badge>
+                          )}
+                        </>
+                      );
+                    })()}
                   </span>
                   <span>
                     <Badge color={badge.color} bg={badge.bg}>

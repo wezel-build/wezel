@@ -31,6 +31,8 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
         DROP TABLE IF EXISTS measurement_details;
         -- Drop identity column from measurement_tags (replaced by summaries).
         ALTER TABLE measurement_tags DROP COLUMN IF EXISTS identity;
+        -- Add experiment_name to measurements.
+        ALTER TABLE measurements ADD COLUMN IF NOT EXISTS experiment_name TEXT;
         ",
     )
     .execute(pool)
