@@ -69,7 +69,7 @@ fn normalize_repo_url(push_repo: &PushRepo) -> Option<String> {
         .as_deref()
         .or(push_repo.clone_url.as_deref())
         .or(push_repo.ssh_url.as_deref())
-        .map(|u| u.trim_end_matches('/').trim_end_matches(".git").to_string())
+        .map(crate::github::normalize_upstream)
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────────
