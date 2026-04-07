@@ -121,7 +121,11 @@ fn parse_llvm_lines_output(s: &str) -> Result<(u64, u64, Vec<(String, u64, u64)>
         if trimmed.is_empty() {
             continue;
         }
-        let fn_lines: u64 = match trimmed.split_whitespace().next().and_then(|s| s.parse().ok()) {
+        let fn_lines: u64 = match trimmed
+            .split_whitespace()
+            .next()
+            .and_then(|s| s.parse().ok())
+        {
             Some(n) => n,
             None => continue,
         };
