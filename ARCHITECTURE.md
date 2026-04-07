@@ -12,12 +12,20 @@ Wezel slides into that reality by helping keep your hand on a pulse. It's a suit
 your dev experience regresses. It let's you introspect your code and how it corresponds to the impact on a total build time.
 
 
-### Measures
+### Measurements and Summaries
 
-The ultimate measure of a build is *time*. Time measurements are not deterministic. They are the ground truth though, so we need to use all the tools at our disposal to correllate a change in build time with the change in code or infrastructure.
+The ultimate measure of a build is *time*. Time measurements are not deterministic. They are the ground truth though, so we need to use all the tools at our disposal to correlate a change in build time with the change in code or infrastructure.
 We need to combine time measurements (volatile) with the data we can collect from a build graph (non-volatile). An example of non-volatile measurement is `cargo llvm-lines`. It does not change based on which crate you're rebuilding from and such. It depends on the build profile (dev vs release).
 
 Non-volatile measures can be gathered as an asynchronous CI step (since it doesn't matter who runs the build, the data *must* be the same). The volatile measures will be gathered locally. They are dependent on the machine (cores, mostly) and the state of the codebase.
+
+Wezel distinguishes between two levels of data:
+
+- **Measurements** — raw observations emitted by a forager plugin. A single experiment step can produce many measurements (e.g. `cargo llvm-lines` emits one measurement per function, tagged with `function` and `unit`). Measurements carry arbitrary JSON values and are always surfaced to users for inspection.
+
+- **Summaries** — named scalars derived from measurements via a pure aggregation function (`sum`, `mean`, `median`, `max`, or `min`), optionally filtered by tags. Summaries are defined in the experiment TOML and are the only thing used for regression detection and bisection. For example, `total-llvm-lines` might be the `sum` of all `llvm-lines` measurements where `unit=lines`.
+
+This split keeps raw data intact for debugging while giving regression detection a clean, well-typed scalar to compare.
 
 ### Wezel's approach
 Wezel places emphasis on highlighting the scenarios that get executed the most often. It associates *builds* with their *scenarios* (what code gets built - tests/non tests) and *configurations* (how it is built). 
@@ -36,9 +44,9 @@ Forager is the experimentation arm of Wezel. It runs on dedicated hardware provi
 2. The user pins interesting scenarios for tracking and defines them as **mutations**: a recipe like "build the workspace clean, then add this function to this source file, then rebuild."
 3. Forager runs tracked scenarios periodically (e.g. nightly) against HEAD of the main branch.
 4. Each scenario is executed multiple times to establish statistical confidence — a single timing is not trustworthy even on dedicated hardware.
-5. Results (wall time, peak RSS, and any non-volatile measures like `cargo llvm-lines`) are reported to Burrow as experiment results.
-6. Burrow compares results against a configurable baseline (previous run, rolling average, or a pinned threshold).
-7. If a regression is detected, Forager bisects the commits between the last known-good run and the current HEAD to identify the culprit.
+5. Results are reported to Burrow: raw **measurements** from each step, plus **summaries** computed by aggregating those measurements according to formulas defined in the experiment TOML.
+6. Burrow compares each summary against recent history. If a regression is detected in a bisect-eligible summary, Burrow enqueues a bisection.
+7. Forager workers test the midpoint commits; bisection narrows until the culprit is identified.
 
 #### Bisection
 Bisection is embarrassingly parallel. Each commit under test is independent, so the user can provision multiple worker machines to test commits concurrently. With enough workers, every commit in the range can be tested in a single round — no binary search needed.
@@ -49,13 +57,34 @@ The architecture is:
 
 Worker provisioning and scaling is the client's responsibility. Forager just needs a way to reach them (or they pull from a queue).
 
-#### Scenario definition
-A scenario is a user-defined **mutation recipe**:
-1. A baseline build step (e.g. clean build of the workspace).
-2. A mutation (e.g. "add this function to `src/lib.rs` in crate `foo`").
-3. A rebuild step (e.g. `cargo build`).
+#### Experiment definition
+An experiment lives in `.wezel/experiments/<name>/experiment.toml`. It declares:
 
-This makes incremental build experiments deterministic and reproducible. The user controls exactly what "dirty" means.
+- **Steps** — ordered list of forager plugin invocations (e.g. `llvm-lines`, `exec`). Each step produces zero or more tagged measurements.
+- **Summaries** — aggregation formulas over measurements, with optional tag filters. Each summary has a name, an aggregation function (`sum`, `mean`, `median`, `max`, `min`), and a `bisect` flag controlling whether regressions in that summary trigger bisection.
+
+```toml
+[[steps]]
+name = "measure-llvm"
+tool = "llvm-lines"
+package = "my-crate"
+
+[[summaries]]
+name = "total-llvm-lines"
+measurement = "llvm-lines"
+aggregation = "sum"
+filter = { unit = "lines" }
+bisect = true
+
+[[summaries]]
+name = "total-copies"
+measurement = "llvm-lines"
+aggregation = "sum"
+filter = { unit = "copies" }
+bisect = false   # informational only
+```
+
+Steps may also apply a patch file before running (`apply-diff = true`), enabling incremental build experiments: run a baseline, apply the patch, rebuild, compare.
 
 #### Alerting
 When Forager identifies a culprit commit, it needs to notify someone. At minimum, Forager exposes a **webhook** so users can wire it to Slack, email, GitHub comments, or whatever fits their workflow. Anthill also surfaces bisect results in the dashboard.
