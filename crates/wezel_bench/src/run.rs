@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use wezel_types::{ConclusionDef, ForagerRunReport, ForagerStepReport};
+use wezel_types::{SummaryDef, ForagerRunReport, ForagerStepReport};
 
 use crate::git;
 use crate::{Config, ExperimentToml, fetch, invoke_forager, parse_experiment};
@@ -79,7 +79,7 @@ pub fn run_experiment(
     experiment_name: &str,
     project_dir: &Path,
     fetcher: Option<&dyn fetch::PluginFetcher>,
-) -> Result<(Vec<ForagerStepReport>, Vec<ConclusionDef>)> {
+) -> Result<(Vec<ForagerStepReport>, Vec<SummaryDef>)> {
     let experiment_dir = project_dir
         .join(".wezel")
         .join("experiments")
@@ -149,5 +149,5 @@ pub fn run_experiment(
         }
     }
 
-    Ok((step_reports, experiment.conclusions))
+    Ok((step_reports, experiment.summaries))
 }

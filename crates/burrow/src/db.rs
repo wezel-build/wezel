@@ -29,7 +29,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
         ALTER TABLE measurements DROP COLUMN IF EXISTS unit;
         -- Drop measurement_details if it still exists.
         DROP TABLE IF EXISTS measurement_details;
-        -- Drop identity column from measurement_tags (replaced by conclusions).
+        -- Drop identity column from measurement_tags (replaced by summaries).
         ALTER TABLE measurement_tags DROP COLUMN IF EXISTS identity;
         ",
     )
@@ -194,7 +194,7 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             measurement_id BIGINT NOT NULL REFERENCES measurements(id),
             PRIMARY KEY (bisection_id, measurement_id)
         );
-        CREATE TABLE IF NOT EXISTS conclusion_values (
+        CREATE TABLE IF NOT EXISTS summary_values (
             id              BIGSERIAL PRIMARY KEY,
             project_id      BIGINT NOT NULL REFERENCES projects(id),
             experiment_name TEXT NOT NULL,

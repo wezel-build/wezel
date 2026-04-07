@@ -174,11 +174,11 @@ fn run_loop(
 
         // Submit results to Burrow and update the queue job status.
         let (patch_body, finished) = match result {
-            Ok((ref step_reports, ref conclusions)) => {
+            Ok((ref step_reports, ref summaries)) => {
                 let report = ForagerRunReport {
                     token: job.token.clone(),
                     steps: step_reports.clone(),
-                    conclusions: conclusions.clone(),
+                    summaries: summaries.clone(),
                     bisection_id: job.bisection_id,
                 };
                 if let Err(e) = burrow.submit(&report) {

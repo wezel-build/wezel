@@ -161,7 +161,7 @@ pub struct ExperimentDef {
     pub description: Option<String>,
     pub steps: Vec<StepDef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub conclusions: Vec<ConclusionDef>,
+    pub summaries: Vec<SummaryDef>,
 }
 
 /// A single step in an experiment.
@@ -191,9 +191,9 @@ pub enum Aggregation {
 
 /// A named scalar derived from measurements, used for regression detection.
 ///
-/// Defined in `.wezel/experiments/<name>/experiment.toml` under `[[conclusions]]`.
+/// Defined in `.wezel/experiments/<name>/experiment.toml` under `[[summaries]]`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConclusionDef {
+pub struct SummaryDef {
     pub name: String,
     /// Measurement name to aggregate over.
     pub measurement: String,
@@ -208,7 +208,7 @@ pub struct ConclusionDef {
 
 fn bool_true() -> bool { true }
 
-impl ConclusionDef {
+impl SummaryDef {
     /// Compute this conclusion's value from a slice of plugin measurements.
     pub fn compute(&self, measurements: &[ForagerPluginOutput]) -> Option<f64> {
         let mut values: Vec<f64> = measurements
@@ -297,7 +297,7 @@ pub struct ForagerRunReport {
     pub steps: Vec<ForagerStepReport>,
     /// Conclusion definitions from the experiment TOML.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub conclusions: Vec<ConclusionDef>,
+    pub summaries: Vec<SummaryDef>,
     /// Forwarded from the job; lets burrow progress a bisection.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bisection_id: Option<u64>,

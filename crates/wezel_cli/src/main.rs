@@ -581,7 +581,7 @@ fn main() -> ExitCode {
                 let caching = wezel_bench::fetch::CachingFetcher::new(&*fetcher);
                 run_result(
                     wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&caching))
-                        .map(|_| ()), // returns (reports, conclusions); we only care about errors here
+                        .map(|_| ()), // returns (reports, summaries); we only care about errors here
                 )
             }
             ExperimentCmd::List { project_dir } => {
