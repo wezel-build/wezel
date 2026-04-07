@@ -1,11 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useKeyboardNav } from "../lib/useKeyboardNav";
-import {
-  useParams,
-  Link,
-  useNavigate,
-  type NavigateFunction,
-} from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   GitCommit,
@@ -20,7 +15,7 @@ import {
   Play,
 } from "lucide-react";
 import { C } from "../lib/colors";
-import { fmtValue, fmtTime } from "../lib/format";
+import { fmtUnknown, fmtTime } from "../lib/format";
 import {
   type ForagerCommit,
   type Measurement,
@@ -63,36 +58,11 @@ function statusLabel(s: MeasurementStatus): string {
 
 // ── Measurement row ──────────────────────────────────────────────────────────
 
-function MeasurementRow({
-  m,
-  projectId,
-  commitSha,
-  navigate,
-}: {
-  m: Measurement;
-  projectId: number;
-  commitSha: string;
-  navigate: NavigateFunction;
-}) {
-  const [hovered, setHovered] = useState(false);
+function MeasurementRow({ m }: { m: Measurement }) {
   const isDone = m.status === "complete" && m.value != null;
-  const hasDetail = m.detail != null && m.detail.length > 0;
 
   return (
-    <div
-      onClick={
-        hasDetail
-          ? () =>
-              navigate(`/project/${projectId}/commit/${commitSha}/m/${m.id}`)
-          : undefined
-      }
-      className={`grid grid-cols-[18px_1fr_70px_56px_110px] gap-[8px] px-[12px] py-[8px] items-center border-b border-[var(--c-border)] text-[11px] font-mono ${hasDetail ? "cursor-pointer" : "cursor-default"}`}
-      style={{
-        background: hovered && hasDetail ? C.surface2 : "transparent",
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
+    <div className="grid grid-cols-[18px_1fr_120px_110px] gap-[8px] px-[12px] py-[8px] items-center border-b border-[var(--c-border)] text-[11px] font-mono cursor-default">
       <StatusIcon status={m.status} />
 
       <div className="flex items-center gap-[6px] overflow-hidden">
@@ -108,14 +78,10 @@ function MeasurementRow({
       </div>
 
       <span
-        className="text-right"
+        className="text-right overflow-hidden text-ellipsis whitespace-nowrap"
         style={{ color: isDone ? C.textMid : C.textDim }}
       >
-        {isDone ? fmtValue(m.value!, m.unit) : statusLabel(m.status)}
-      </span>
-
-      <span className="text-dim text-[10px]">
-        {isDone && m.unit ? m.unit : ""}
+        {isDone ? fmtUnknown(m.value) : statusLabel(m.status)}
       </span>
 
       <span className="text-dim text-[10px]">—</span>
@@ -126,15 +92,6 @@ function MeasurementRow({
 // ── Commit header ────────────────────────────────────────────────────────────
 
 function CommitHeader({ commit }: { commit: ForagerCommit }) {
-  const completedMs = commit.measurements.filter(
-    (m) => m.status === "complete" && m.value != null && m.unit === "ms",
-  );
-
-  const totalMs =
-    completedMs.length > 0
-      ? completedMs.reduce((s, m) => s + (m.value ?? 0), 0)
-      : null;
-
   return (
     <div className="flex flex-col gap-[12px] px-[20px] py-[16px] bg-surface border-b border-[var(--c-border)] rounded-t-md">
       <div className="flex items-center justify-between">
@@ -158,29 +115,13 @@ function CommitHeader({ commit }: { commit: ForagerCommit }) {
         </span>
       </div>
 
-      <div className="flex gap-[20px] items-end flex-wrap">
-        {totalMs != null && (
-          <div className="flex flex-col gap-[1px]">
-            <span className="text-[10px] text-dim uppercase tracking-[0.8px] font-semibold">
-              Σ timed measurements
-            </span>
-            <span className="text-lg font-bold font-mono text-fg">
-              {fmtValue(totalMs, "ms")}
-            </span>
-          </div>
-        )}
-
-        <div className="flex flex-col gap-[1px]">
-          <span className="text-[10px] text-dim uppercase tracking-[0.8px] font-semibold">
-            Measurements
-          </span>
-          <span
-            className="text-lg font-bold font-mono"
-            style={{ color: C.pink }}
-          >
-            {commit.measurements.length}
-          </span>
-        </div>
+      <div className="flex flex-col gap-[1px]">
+        <span className="text-[10px] text-dim uppercase tracking-[0.8px] font-semibold">
+          Measurements
+        </span>
+        <span className="text-lg font-bold font-mono" style={{ color: C.pink }}>
+          {commit.measurements.length}
+        </span>
       </div>
     </div>
   );
@@ -499,11 +440,10 @@ export default function CommitPage() {
             <div className="border border-[var(--c-border)] rounded-md overflow-hidden">
               <CommitHeader commit={commit} />
 
-              <div className="grid grid-cols-[18px_1fr_70px_56px_110px] gap-[8px] px-[12px] py-[8px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2">
+              <div className="grid grid-cols-[18px_1fr_120px_110px] gap-[8px] px-[12px] py-[8px] text-[10px] font-bold text-dim uppercase tracking-[0.8px] border-b border-[var(--c-border)] bg-surface2">
                 <span />
                 <span>Measurement</span>
                 <span className="text-right">Value</span>
-                <span>Unit</span>
                 <span>Δ prev</span>
               </div>
 
@@ -529,18 +469,11 @@ export default function CommitPage() {
                             name: m.name,
                             value: m.value,
                           }))}
-                          unit={completedMs[0]?.unit}
                         />
                       </div>
                     )}
                     {measurements.map((m) => (
-                      <MeasurementRow
-                        key={m.id}
-                        m={m}
-                        projectId={projectId}
-                        commitSha={commit.shortSha}
-                        navigate={navigate}
-                      />
+                      <MeasurementRow key={m.id} m={m} />
                     ))}
                   </div>
                 );

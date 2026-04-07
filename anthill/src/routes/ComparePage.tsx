@@ -3,14 +3,17 @@ import { useSearchParams, Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { useCompare } from "../lib/hooks";
 import { C, alpha } from "../lib/colors";
-import { fmtValue } from "../lib/format";
+import { fmtUnknown } from "../lib/format";
 import { DeltaBadge } from "../components/DeltaBadge";
 import { useProject } from "../lib/useProject";
-import {
-  type ForagerCommit,
-  type Measurement,
-  measurementKey,
-} from "../lib/data";
+import { type ForagerCommit, type Measurement } from "../lib/data";
+
+function mKey(m: Measurement): string {
+  const tags = m.tags ?? {};
+  const sorted = Object.entries(tags).sort(([a], [b]) => a.localeCompare(b));
+  if (sorted.length === 0) return m.name;
+  return m.name + "|" + sorted.map(([k, v]) => `${k}=${v}`).join(",");
+}
 
 const GRID = "grid grid-cols-[1fr_110px_110px_120px] gap-[8px] items-center";
 
@@ -57,12 +60,8 @@ export default function ComparePage() {
 
   const pairs = useMemo(() => {
     if (!compare) return [];
-    const baseMap = new Map(
-      compare.base.measurements.map((m) => [measurementKey(m), m]),
-    );
-    const headMap = new Map(
-      compare.head.measurements.map((m) => [measurementKey(m), m]),
-    );
+    const baseMap = new Map(compare.base.measurements.map((m) => [mKey(m), m]));
+    const headMap = new Map(compare.head.measurements.map((m) => [mKey(m), m]));
     const allKeys = new Set([...baseMap.keys(), ...headMap.keys()]);
     return Array.from(allKeys)
       .sort()
@@ -151,12 +150,9 @@ export default function ComparePage() {
                   {fmtMeasurement(head)}
                 </span>
                 <span className="flex justify-end">
-                  {base?.value != null && head?.value != null ? (
-                    <DeltaBadge
-                      current={head.value}
-                      baseline={base.value}
-                      unit={head.unit}
-                    />
+                  {typeof base?.value === "number" &&
+                  typeof head?.value === "number" ? (
+                    <DeltaBadge current={head.value} baseline={base.value} />
                   ) : (
                     <span className="text-dim">—</span>
                   )}
@@ -172,5 +168,5 @@ export default function ComparePage() {
 
 function fmtMeasurement(m: Measurement | undefined): string {
   if (!m || m.value == null) return "—";
-  return fmtValue(m.value, m.unit);
+  return fmtUnknown(m.value);
 }

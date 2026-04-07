@@ -64,19 +64,12 @@ export type MeasurementStatus =
   | "complete"
   | "failed";
 
-export interface MeasurementDetail {
-  name: string;
-  value: number;
-}
-
 export interface Measurement {
   id: number;
   name: string;
   status: MeasurementStatus;
-  value?: number;
-  unit?: string;
+  value?: unknown;
   tags?: Record<string, string>;
-  detail?: MeasurementDetail[];
 }
 
 export interface ForagerCommit {
@@ -118,7 +111,6 @@ export interface Bisection {
   badValue: number;
   status: BisectionStatus;
   culpritSha?: string;
-  identityTags?: Record<string, string>;
 }
 
 // ── Pheromone registry ───────────────────────────────────────────────────────
@@ -198,16 +190,6 @@ export interface RegistryAdapter {
   toolchain: string;
   detectPatterns: string[];
   templates: RegistryTemplate[];
-}
-
-// ── Measurement identity ─────────────────────────────────────────────────────
-
-/** Stable identity key for a measurement: name + sorted identity tags. */
-export function measurementKey(m: Measurement): string {
-  const tags = m.tags ?? {};
-  const sorted = Object.entries(tags).sort(([a], [b]) => a.localeCompare(b));
-  if (sorted.length === 0) return m.name;
-  return m.name + "|" + sorted.map(([k, v]) => `${k}=${v}`).join(",");
 }
 
 // ── Heat computation ─────────────────────────────────────────────────────────

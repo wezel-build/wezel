@@ -7,9 +7,6 @@ import { AuthProvider, useAuth } from "./lib/AuthContext";
 import LoginPage from "./routes/LoginPage";
 
 const CommitPage = lazy(() => import("./routes/CommitPage"));
-const MeasurementDetailPage = lazy(
-  () => import("./routes/MeasurementDetailPage"),
-);
 const NewProjectPage = lazy(() => import("./routes/NewProjectPage"));
 const CommitsListPage = lazy(() => import("./routes/CommitsListPage"));
 const PheromoneAdminPage = lazy(() => import("./routes/PheromoneAdminPage"));
@@ -53,14 +50,6 @@ const router = createBrowserRouter([
         element: (
           <Suspense>
             <CommitPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: "project/:projectId/commit/:sha/m/:id",
-        element: (
-          <Suspense>
-            <MeasurementDetailPage />
           </Suspense>
         ),
       },
