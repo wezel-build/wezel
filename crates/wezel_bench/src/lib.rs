@@ -12,7 +12,7 @@ use anyhow::{Context, Result, bail};
 use figment::Figment;
 use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
-use wezel_types::{Aggregation, ConclusionDef, ExperimentDef, ForagerPluginEnvelope, StepDef};
+use wezel_types::{Aggregation, SummaryDef, ExperimentDef, ForagerPluginEnvelope, StepDef};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ pub(crate) struct ExperimentToml {
     pub description: Option<String>,
     pub steps: Vec<ExperimentStepToml>,
     #[serde(default)]
-    pub conclusions: Vec<ConclusionToml>,
+    pub summaries: Vec<SummaryToml>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -76,7 +76,7 @@ struct ExperimentStepToml {
 }
 
 #[derive(Debug, Deserialize)]
-struct ConclusionToml {
+struct SummaryToml {
     name: String,
     measurement: String,
     aggregation: Aggregation,
@@ -124,10 +124,10 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
         });
     }
 
-    let conclusions = experiment
-        .conclusions
+    let summaries = experiment
+        .summaries
         .into_iter()
-        .map(|c| ConclusionDef {
+        .map(|c| SummaryDef {
             name: c.name,
             measurement: c.measurement,
             aggregation: c.aggregation,
@@ -140,7 +140,7 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
         name: experiment.name,
         description: experiment.description,
         steps,
-        conclusions,
+        summaries,
     })
 }
 

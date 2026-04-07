@@ -142,12 +142,12 @@ pub async fn post_forager_run(
             .await
             .map_err(ise)?;
 
-    // Compute and store conclusion values.
+    // Compute and store summary values.
     let mut computed: Vec<(String, f64)> = Vec::new();
-    for def in &body.conclusions {
+    for def in &body.summaries {
         if let Some(value) = def.compute(&all_measurements) {
             sqlx::query(
-                "INSERT INTO conclusion_values \
+                "INSERT INTO summary_values \
                  (project_id, experiment_name, commit_id, name, value) \
                  VALUES ($1, $2, $3, $4, $5) \
                  ON CONFLICT (project_id, experiment_name, commit_id, name) \
@@ -179,7 +179,7 @@ pub async fn post_forager_run(
             commit_id,
             &commit_sha,
             &experiment_name,
-            &body.conclusions,
+            &body.summaries,
             &computed,
         )
         .await?;
@@ -198,7 +198,7 @@ async fn detect_regressions(
     commit_id: i64,
     commit_sha: &str,
     experiment_name: &str,
-    conclusion_defs: &[wezel_types::ConclusionDef],
+    conclusion_defs: &[wezel_types::SummaryDef],
     computed: &[(String, f64)],
 ) -> Result<(), StatusCode> {
     if computed.is_empty() {
@@ -272,7 +272,7 @@ async fn detect_regressions(
         }
 
         let history: Vec<(f64,)> = sqlx::query_as(
-            "SELECT value FROM conclusion_values \
+            "SELECT value FROM summary_values \
              WHERE project_id = $1 AND experiment_name = $2 AND name = $3 \
                AND commit_id = ANY($4) \
              ORDER BY commit_id ASC",
@@ -367,9 +367,9 @@ async fn progress_bisection(
         return Ok(());
     }
 
-    // Look up the conclusion value for this commit.
+    // Look up the summary value for this commit.
     let value_row: Option<(f64,)> = sqlx::query_as(
-        "SELECT value FROM conclusion_values \
+        "SELECT value FROM summary_values \
          WHERE project_id = $1 AND experiment_name = $2 AND commit_id = $3 AND name = $4",
     )
     .bind(project_id)

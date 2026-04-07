@@ -21,14 +21,14 @@ tool = "llvm-lines"
 package = "burrow"
 
 # Conclusions derived from measurements for regression detection.
-[[conclusions]]
+[[summaries]]
 name = "total-llvm-lines"
 measurement = "llvm-lines"
 aggregation = "sum"
 filter = { unit = "lines" }
 bisect = true
 
-[[conclusions]]
+[[summaries]]
 name = "total-llvm-copies"
 measurement = "llvm-lines"
 aggregation = "sum"
