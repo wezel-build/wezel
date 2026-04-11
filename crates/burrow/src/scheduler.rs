@@ -1,34 +1,25 @@
-use sqlx::PgPool;
 use std::time::Duration;
 
-/// Minimum tick interval — we poll at this rate and compare against each repo's
-/// `enqueue_interval_secs` to decide whether to enqueue.
+use crate::AppState;
+
 const TICK_INTERVAL: Duration = Duration::from_secs(60);
 
-/// Spawns the periodic-enqueue background task.
-///
-/// For each repo, checks if `enqueue_interval_secs` has elapsed since the last
-/// enqueue for each (project, branch, experiment) triple.  When it has, enqueues
-/// the branch HEAD commit — deduplicating against existing pending/running jobs.
-pub fn spawn(pool: PgPool) {
+pub fn spawn(state: AppState) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(TICK_INTERVAL);
         loop {
             interval.tick().await;
-            if let Err(e) = tick(&pool).await {
+            if let Err(e) = tick(&state.pool).await {
                 tracing::warn!("scheduler tick failed: {e:?}");
             }
-            if let Err(e) = crate::routes::tools::refresh_tool_release().await {
+            if let Err(e) = crate::routes::tools::refresh_tool_release(&state).await {
                 tracing::debug!("tool release refresh: {e}");
             }
         }
     });
 }
 
-/// One tick: iterate repos → branches → projects → experiments and enqueue.
-async fn tick(pool: &PgPool) -> sqlx::Result<()> {
-    // Fetch repos whose interval has elapsed since their most-recent enqueue
-    // (or that have never had anything enqueued).
+async fn tick(pool: &sqlx::PgPool) -> sqlx::Result<()> {
     let repos: Vec<(i64, i32)> = sqlx::query_as(
         "SELECT r.id, r.enqueue_interval_secs
          FROM repos r
@@ -53,9 +44,7 @@ async fn tick(pool: &PgPool) -> sqlx::Result<()> {
     Ok(())
 }
 
-/// For a single repo, enqueue branch-head jobs for every (project, branch, experiment).
-async fn enqueue_repo(pool: &PgPool, repo_id: i64) -> sqlx::Result<()> {
-    // Get all branches for this repo.
+async fn enqueue_repo(pool: &sqlx::PgPool, repo_id: i64) -> sqlx::Result<()> {
     let branches: Vec<(String, String)> =
         sqlx::query_as("SELECT name, head_sha FROM branches WHERE repo_id = $1")
             .bind(repo_id)
@@ -66,14 +55,12 @@ async fn enqueue_repo(pool: &PgPool, repo_id: i64) -> sqlx::Result<()> {
         return Ok(());
     }
 
-    // Get all projects for this repo.
     let projects: Vec<(i64,)> = sqlx::query_as("SELECT id FROM projects WHERE repo_id = $1")
         .bind(repo_id)
         .fetch_all(pool)
         .await?;
 
     for (project_id,) in &projects {
-        // Discover known experiments for this project.
         let experiments: Vec<(String,)> = sqlx::query_as(
             "SELECT DISTINCT experiment_name FROM (
                  SELECT experiment_name FROM forager_queue WHERE project_id = $1
@@ -99,10 +86,8 @@ async fn enqueue_repo(pool: &PgPool, repo_id: i64) -> sqlx::Result<()> {
     Ok(())
 }
 
-/// Insert a queue entry unless a pending/running job already exists for this
-/// (project, sha, experiment) triple.
 async fn enqueue_if_needed(
-    pool: &PgPool,
+    pool: &sqlx::PgPool,
     project_id: i64,
     commit_sha: &str,
     experiment_name: &str,

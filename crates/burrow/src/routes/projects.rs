@@ -11,7 +11,7 @@ use axum::response::{IntoResponse, Response};
 
 use crate::github::{github_api, github_owner_repo};
 use crate::models::*;
-use crate::{ApiResult, ise};
+use crate::{AppState, ApiResult, ise};
 
 pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>) -> Response {
     let Some(name) = body["name"].as_str() else {
@@ -23,7 +23,6 @@ pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>)
     let upstream = crate::github::normalize_upstream(upstream_raw);
     let upstream = upstream.as_str();
 
-    // Find or create repo.
     let repo_id: i64 = match sqlx::query_as::<_, (i64,)>("SELECT id FROM repos WHERE upstream = $1")
         .bind(upstream)
         .fetch_optional(&pool)
@@ -180,34 +179,35 @@ pub struct ExperimentPrBody {
 
 pub async fn post_experiment_pr(
     Path(project_id): Path<i64>,
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Json(body): Json<ExperimentPrBody>,
 ) -> ApiResult<Json<ExperimentPrResponse>> {
     let project = sqlx::query_as::<_, Project>(
         "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
     )
     .bind(project_id)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(ise)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    let (owner, repo) = github_owner_repo(&project.upstream).ok_or(StatusCode::BAD_REQUEST)?;
+    let github_host = state.github_host();
+    let api_base = state.api_base();
+    let (owner, repo) =
+        github_owner_repo(&project.upstream, &github_host).ok_or(StatusCode::BAD_REQUEST)?;
 
-    let token = std::env::var("GITHUB_TOKEN").map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    let token = token.trim();
-    if token.is_empty() {
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
-    }
+    let token = state
+        .github_token(&owner)
+        .await?
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
 
     let client = Client::new();
 
-    // Get repo default branch.
     let repo_info: Value = github_api(
         &client,
         reqwest::Method::GET,
-        &format!("https://api.github.com/repos/{owner}/{repo}"),
-        token,
+        &format!("{api_base}/repos/{owner}/{repo}"),
+        &token,
         None,
     )
     .await?;
@@ -216,12 +216,11 @@ pub async fn post_experiment_pr(
         .unwrap_or("main")
         .to_string();
 
-    // Get branch SHA.
     let ref_info: Value = github_api(
         &client,
         reqwest::Method::GET,
-        &format!("https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{default_branch}"),
-        token,
+        &format!("{api_base}/repos/{owner}/{repo}/git/ref/heads/{default_branch}"),
+        &token,
         None,
     )
     .await?;
@@ -230,14 +229,13 @@ pub async fn post_experiment_pr(
         .ok_or(StatusCode::BAD_GATEWAY)?
         .to_string();
 
-    // Create blobs for each file.
     let mut tree_items = Vec::new();
     for (path, content) in &body.files {
         let blob: Value = github_api(
             &client,
             reqwest::Method::POST,
-            &format!("https://api.github.com/repos/{owner}/{repo}/git/blobs"),
-            token,
+            &format!("{api_base}/repos/{owner}/{repo}/git/blobs"),
+            &token,
             Some(serde_json::json!({
                 "content": content,
                 "encoding": "utf-8"
@@ -253,12 +251,11 @@ pub async fn post_experiment_pr(
         }));
     }
 
-    // Create tree.
     let tree: Value = github_api(
         &client,
         reqwest::Method::POST,
-        &format!("https://api.github.com/repos/{owner}/{repo}/git/trees"),
-        token,
+        &format!("{api_base}/repos/{owner}/{repo}/git/trees"),
+        &token,
         Some(serde_json::json!({
             "base_tree": base_sha,
             "tree": tree_items
@@ -267,12 +264,11 @@ pub async fn post_experiment_pr(
     .await?;
     let tree_sha = tree["sha"].as_str().ok_or(StatusCode::BAD_GATEWAY)?;
 
-    // Create commit.
     let commit: Value = github_api(
         &client,
         reqwest::Method::POST,
-        &format!("https://api.github.com/repos/{owner}/{repo}/git/commits"),
-        token,
+        &format!("{api_base}/repos/{owner}/{repo}/git/commits"),
+        &token,
         Some(serde_json::json!({
             "message": format!("wezel: add {} experiment", body.experiment_name),
             "tree": tree_sha,
@@ -282,7 +278,6 @@ pub async fn post_experiment_pr(
     .await?;
     let commit_sha = commit["sha"].as_str().ok_or(StatusCode::BAD_GATEWAY)?;
 
-    // Create branch.
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -291,8 +286,8 @@ pub async fn post_experiment_pr(
     let _: Value = github_api(
         &client,
         reqwest::Method::POST,
-        &format!("https://api.github.com/repos/{owner}/{repo}/git/refs"),
-        token,
+        &format!("{api_base}/repos/{owner}/{repo}/git/refs"),
+        &token,
         Some(serde_json::json!({
             "ref": format!("refs/heads/{branch_name}"),
             "sha": commit_sha
@@ -300,12 +295,11 @@ pub async fn post_experiment_pr(
     )
     .await?;
 
-    // Create PR.
     let pr: Value = github_api(
         &client,
         reqwest::Method::POST,
-        &format!("https://api.github.com/repos/{owner}/{repo}/pulls"),
-        token,
+        &format!("{api_base}/repos/{owner}/{repo}/pulls"),
+        &token,
         Some(serde_json::json!({
             "title": format!("wezel: add {} experiment", body.experiment_name),
             "head": branch_name,

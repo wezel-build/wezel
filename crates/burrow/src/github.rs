@@ -35,10 +35,11 @@ pub fn normalize_upstream(url: &str) -> String {
     s.trim_end_matches('/').trim_end_matches(".git").to_string()
 }
 
-pub fn github_owner_repo(upstream: &str) -> Option<(String, String)> {
+/// Extract `(owner, repo)` from an upstream URL, matching against the given
+/// GitHub host (e.g. `"github.com"` or a GHES hostname).
+pub fn github_owner_repo(upstream: &str, github_host: &str) -> Option<(String, String)> {
     let trimmed = upstream.trim().trim_end_matches('/');
 
-    // Normalize common schemes.
     let no_scheme = trimmed
         .strip_prefix("https://")
         .or_else(|| trimmed.strip_prefix("http://"))
@@ -46,14 +47,13 @@ pub fn github_owner_repo(upstream: &str) -> Option<(String, String)> {
         .or_else(|| trimmed.strip_prefix("git://"))
         .unwrap_or(trimmed);
 
-    // Support git@github.com:org/repo(.git) style.
     let normalized = if let Some(rest) = no_scheme.strip_prefix("git@") {
         rest.replacen(':', "/", 1)
     } else {
         no_scheme.to_string()
     };
 
-    let host_rest = normalized.strip_prefix("github.com/")?;
+    let host_rest = normalized.strip_prefix(&format!("{github_host}/"))?;
     let mut parts = host_rest.split('/');
 
     let owner = parts.next()?.trim();
@@ -77,18 +77,17 @@ pub fn github_cache_key(owner: &str, repo: &str, sha: &str) -> String {
 
 pub async fn fetch_github_commit(
     client: &Client,
+    api_base: &str,
     owner: &str,
     repo: &str,
     sha: &str,
+    token: Option<&str>,
 ) -> ApiResult<GithubCommitJson> {
-    let url = format!("https://api.github.com/repos/{owner}/{repo}/commits/{sha}");
+    let url = format!("{api_base}/repos/{owner}/{repo}/commits/{sha}");
     let mut request = client.get(url).header("User-Agent", "wezel-burrow");
 
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        let token = token.trim();
-        if !token.is_empty() {
-            request = request.bearer_auth(token);
-        }
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
     }
 
     let response = request.send().await.map_err(|e| {
@@ -166,9 +165,11 @@ pub async fn fetch_github_commit(
 
 pub async fn get_or_fetch_github_commit(
     client: &Client,
+    api_base: &str,
     owner: &str,
     repo: &str,
     sha: &str,
+    token: Option<&str>,
 ) -> ApiResult<GithubCommitJson> {
     let key = github_cache_key(owner, repo, sha);
 
@@ -181,7 +182,7 @@ pub async fn get_or_fetch_github_commit(
         return Ok(cached);
     }
 
-    let commit = fetch_github_commit(client, owner, repo, sha).await?;
+    let commit = fetch_github_commit(client, api_base, owner, repo, sha, token).await?;
     github_commit_cache()
         .lock()
         .map_err(ise)?

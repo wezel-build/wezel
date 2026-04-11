@@ -9,7 +9,7 @@ use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::models;
-use crate::{ApiResult, cache_dir, ise};
+use crate::{AppState, ApiResult, cache_dir, ise};
 
 pub fn pheromone_json_from_row(row: &models::PheromoneRow) -> models::PheromoneJson {
     let schema: Value = serde_json::from_str(&row.schema_json).unwrap_or(Value::Null);
@@ -137,7 +137,7 @@ async fn fetch_and_store_from_local(
     Ok(pheromone_json_from_row(&row))
 }
 
-pub async fn load_dev_pheromones(pool: &PgPool, dev_dir: &std::path::Path) {
+pub async fn load_dev_pheromones(state: &AppState, dev_dir: &std::path::Path) {
     let Ok(entries) = std::fs::read_dir(dev_dir) else {
         tracing::warn!(
             "WEZEL_PHEROMONE_DEV_DIR not readable: {}",
@@ -155,43 +155,59 @@ pub async fn load_dev_pheromones(pool: &PgPool, dev_dir: &std::path::Path) {
         }
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        // Look up existing DB row to get stored github_repo; fall back to "dev/{name}".
         let github_repo =
             sqlx::query_scalar::<_, String>("SELECT github_repo FROM pheromones WHERE name = $1")
                 .bind(name.as_ref())
-                .fetch_optional(pool)
+                .fetch_optional(&state.pool)
                 .await
                 .ok()
                 .flatten()
                 .unwrap_or_else(|| format!("dev/{name}"));
 
-        if let Err(e) = fetch_and_store_pheromone(pool, &github_repo).await {
+        if let Err(e) = fetch_and_store_pheromone(state, &github_repo).await {
             tracing::warn!("failed to load dev pheromone {name}: {e:?}");
         }
     }
 }
 
+/// Resolve an optional GitHub token for the given `owner/repo` style github_repo string.
+async fn resolve_pheromone_token(state: &AppState, github_repo: &str) -> Option<String> {
+    let owner = github_repo.split('/').next()?;
+    state.github_token(owner).await.ok().flatten()
+}
+
+fn github_request(
+    client: &Client,
+    url: &str,
+    token: Option<&str>,
+) -> reqwest::RequestBuilder {
+    let mut req = client.get(url).header("User-Agent", "wezel-burrow");
+    if let Some(token) = token {
+        req = req.bearer_auth(token);
+    }
+    req
+}
+
 pub async fn fetch_and_store_pheromone(
-    pool: &PgPool,
+    state: &AppState,
     github_repo: &str,
 ) -> ApiResult<models::PheromoneJson> {
     let name = github_repo.split('/').next_back().unwrap_or(github_repo);
     if let Some(dev_dir) = get_dev_dir()
         && dev_dir.join(name).join("schema.json").exists()
     {
-        return fetch_and_store_from_local(pool, &dev_dir, name, github_repo).await;
+        return fetch_and_store_from_local(&state.pool, &dev_dir, name, github_repo).await;
     }
 
+    let token = resolve_pheromone_token(state, github_repo).await;
+    let api_base = state.api_base();
+
     let client = Client::new();
-    let url = format!("https://api.github.com/repos/{github_repo}/releases/latest");
-    let mut req = client.get(&url).header("User-Agent", "wezel-burrow");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        let token = token.trim().to_string();
-        if !token.is_empty() {
-            req = req.bearer_auth(token);
-        }
-    }
-    let resp = req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let url = format!("{api_base}/repos/{github_repo}/releases/latest");
+    let resp = github_request(&client, &url, token.as_deref())
+        .send()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
     if !resp.status().is_success() {
         return Err(StatusCode::BAD_GATEWAY);
     }
@@ -209,14 +225,7 @@ pub async fn fetch_and_store_pheromone(
         .ok_or(StatusCode::NOT_FOUND)?
         .to_string();
 
-    let mut schema_req = client.get(&schema_url).header("User-Agent", "wezel-burrow");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        let token = token.trim().to_string();
-        if !token.is_empty() {
-            schema_req = schema_req.bearer_auth(token);
-        }
-    }
-    let schema_resp = schema_req
+    let schema_resp = github_request(&client, &schema_url, token.as_deref())
         .send()
         .await
         .map_err(|_| StatusCode::BAD_GATEWAY)?;
@@ -237,21 +246,16 @@ pub async fn fetch_and_store_pheromone(
         .to_string();
     let schema_str = serde_json::to_string(&schema).map_err(ise)?;
 
-    // Optionally fetch viz.json from the same release.
     let viz_str: Option<String> = if let Some(viz_url) = assets
         .iter()
         .find(|a| a.get("name").and_then(|v| v.as_str()) == Some("viz.json"))
         .and_then(|a| a.get("browser_download_url"))
         .and_then(|v| v.as_str())
     {
-        let mut req = client.get(viz_url).header("User-Agent", "wezel-burrow");
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            let token = token.trim().to_string();
-            if !token.is_empty() {
-                req = req.bearer_auth(token);
-            }
-        }
-        if let Ok(resp) = req.send().await {
+        if let Ok(resp) = github_request(&client, viz_url, token.as_deref())
+            .send()
+            .await
+        {
             if let Ok(val) = resp.json::<Value>().await {
                 serde_json::to_string(&val).ok()
             } else {
@@ -275,7 +279,7 @@ pub async fn fetch_and_store_pheromone(
     .bind(&version)
     .bind(&schema_str)
     .bind(&viz_str)
-    .fetch_one(pool)
+    .fetch_one(&state.pool)
     .await
     .map_err(ise)?;
 
@@ -287,7 +291,7 @@ pub async fn fetch_and_store_pheromone(
     .bind(row.id)
     .bind(&version)
     .bind(&schema_str)
-    .execute(pool)
+    .execute(&state.pool)
     .await;
 
     Ok(pheromone_json_from_row(&row))
@@ -320,40 +324,40 @@ pub async fn get_admin_pheromones(
 }
 
 pub async fn post_admin_pheromone(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Json(body): Json<AdminPheromoneBody>,
 ) -> ApiResult<(StatusCode, Json<models::PheromoneJson>)> {
-    let pheromone = fetch_and_store_pheromone(&pool, &body.github_repo).await?;
+    let pheromone = fetch_and_store_pheromone(&state, &body.github_repo).await?;
     Ok((StatusCode::CREATED, Json(pheromone)))
 }
 
 pub async fn post_admin_pheromone_fetch(
     Path(name): Path<String>,
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> ApiResult<Json<models::PheromoneJson>> {
     let row = sqlx::query_as::<_, models::PheromoneRow>(
         "SELECT id, name, github_repo, version, schema_json, fetched_at::TEXT as fetched_at
          FROM pheromones WHERE name = $1",
     )
     .bind(&name)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(ise)?
     .ok_or(StatusCode::NOT_FOUND)?;
-    let pheromone = fetch_and_store_pheromone(&pool, &row.github_repo).await?;
+    let pheromone = fetch_and_store_pheromone(&state, &row.github_repo).await?;
     Ok(Json(pheromone))
 }
 
 pub async fn get_pheromone_binary(
     Path((name, target)): Path<(String, String)>,
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> Result<Response, StatusCode> {
     let row = sqlx::query_as::<_, models::PheromoneRow>(
         "SELECT id, name, github_repo, version, schema_json, viz_json, fetched_at::TEXT as fetched_at
          FROM pheromones WHERE name = $1",
     )
     .bind(&name)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(ise)?
     .ok_or(StatusCode::NOT_FOUND)?;
@@ -372,28 +376,23 @@ pub async fn get_pheromone_binary(
         }
     }
 
-    // Check cache; download from GitHub if missing.
     let cache_path = cache_dir()
         .join(&name)
         .join(&row.version)
         .join(&tarball_name);
 
     if !cache_path.exists() {
+        let github_host = state.github_host();
         let download_url = format!(
-            "https://github.com/{}/releases/download/v{}/{}",
+            "https://{github_host}/{}/releases/download/v{}/{}",
             row.github_repo, row.version, tarball_name
         );
+        let token = resolve_pheromone_token(&state, &row.github_repo).await;
         let client = Client::new();
-        let mut req = client
-            .get(&download_url)
-            .header("User-Agent", "wezel-burrow");
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            let token = token.trim().to_string();
-            if !token.is_empty() {
-                req = req.bearer_auth(token);
-            }
-        }
-        let resp = req.send().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+        let resp = github_request(&client, &download_url, token.as_deref())
+            .send()
+            .await
+            .map_err(|_| StatusCode::BAD_GATEWAY)?;
         if !resp.status().is_success() {
             return Err(StatusCode::BAD_GATEWAY);
         }

@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, RwLock};
 
 use axum::Json;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use serde::Serialize;
 
-use crate::{ApiResult, cache_dir, ise};
+use crate::{AppState, ApiResult, cache_dir, ise};
 
 // ── In-memory release state ──────────────────────────────────────────────────
 
@@ -17,22 +17,16 @@ struct ReleaseAsset {
     download_url: String,
 }
 
-/// A single tool derived from the dist-manifest.json.
 #[derive(Clone)]
 struct Tool {
-    /// Binary name (e.g. "forager-exec").
     name: String,
-    /// Version string.
     version: String,
-    /// target → archive asset.
     assets: HashMap<String, ReleaseAsset>,
 }
 
 #[derive(Clone)]
 pub struct ToolRelease {
-    /// Internal: the git tag.
     tag: String,
-    /// binary name → Tool.
     tools: HashMap<String, Tool>,
 }
 
@@ -56,28 +50,31 @@ fn tool_repo() -> String {
     std::env::var("WEZEL_TOOL_REPO").unwrap_or_else(|_| "wezel-build/wezel".to_string())
 }
 
-fn github_request(client: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {
+fn github_request(
+    client: &reqwest::Client,
+    url: &str,
+    token: Option<&str>,
+) -> reqwest::RequestBuilder {
     let mut req = client.get(url).header("User-Agent", "wezel-burrow");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        let token = token.trim().to_string();
-        if !token.is_empty() {
-            req = req.bearer_auth(token);
-        }
+    if let Some(token) = token {
+        req = req.bearer_auth(token);
     }
     req
 }
 
 // ── GitHub release fetching ──────────────────────────────────────────────────
 
-/// Fetch the latest nightly release from GitHub and update in-memory state.
-/// Short-circuits if the tag hasn't changed.
-pub async fn refresh_tool_release() -> Result<(), StatusCode> {
-    let client = reqwest::Client::new();
+pub async fn refresh_tool_release(state: &AppState) -> Result<(), StatusCode> {
+    let client = &state.http;
     let repo = tool_repo();
+    let api_base = state.api_base();
 
-    // Find the latest nightly release.
-    let releases_url = format!("https://api.github.com/repos/{repo}/releases");
-    let resp = github_request(&client, &releases_url)
+    // Resolve token for the tool repo owner.
+    let owner = repo.split('/').next().unwrap_or(&repo);
+    let token = state.github_token(owner).await.ok().flatten();
+
+    let releases_url = format!("{api_base}/repos/{repo}/releases");
+    let resp = github_request(client, &releases_url, token.as_deref())
         .query(&[("per_page", "10")])
         .send()
         .await
@@ -115,7 +112,6 @@ pub async fn refresh_tool_release() -> Result<(), StatusCode> {
         return Ok(());
     }
 
-    // Build a lookup of GitHub release assets: filename → download URL.
     let gh_assets = release["assets"]
         .as_array()
         .ok_or(StatusCode::BAD_GATEWAY)?;
@@ -128,13 +124,12 @@ pub async fn refresh_tool_release() -> Result<(), StatusCode> {
         })
         .collect();
 
-    // Fetch dist-manifest.json from the release.
     let manifest_url = gh_asset_map.get("dist-manifest.json").ok_or_else(|| {
         tracing::warn!("nightly release {tag} has no dist-manifest.json");
         StatusCode::NOT_FOUND
     })?;
 
-    let manifest_resp = github_request(&client, manifest_url)
+    let manifest_resp = github_request(client, manifest_url, token.as_deref())
         .send()
         .await
         .map_err(|e| {
@@ -146,13 +141,11 @@ pub async fn refresh_tool_release() -> Result<(), StatusCode> {
         StatusCode::BAD_GATEWAY
     })?;
 
-    // Parse the manifest: artifacts map has archive entries with executable assets.
     let artifacts = manifest
         .get("artifacts")
         .and_then(|v| v.as_object())
         .ok_or(StatusCode::BAD_GATEWAY)?;
 
-    // Also parse releases for package → version mapping.
     let manifest_releases = manifest
         .get("releases")
         .and_then(|v| v.as_array())
@@ -184,7 +177,6 @@ pub async fn refresh_tool_release() -> Result<(), StatusCode> {
             })
             .unwrap_or_default();
 
-        // Find the executable binary name inside the archive.
         let binary_name = artifact
             .get("assets")
             .and_then(|v| v.as_array())
@@ -206,7 +198,6 @@ pub async fn refresh_tool_release() -> Result<(), StatusCode> {
             continue;
         };
 
-        // Derive package name from archive: "{package}-{version}-{target}.tar.xz"
         let package = archive_name
             .split('-')
             .next()
@@ -261,17 +252,17 @@ pub struct ToolsResponse {
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
-async fn ensure_release() -> Result<Arc<ToolRelease>, StatusCode> {
+async fn ensure_release(state: &AppState) -> Result<Arc<ToolRelease>, StatusCode> {
     if let Some(r) = get_release() {
         return Ok(r);
     }
-    refresh_tool_release().await?;
+    refresh_tool_release(state).await?;
     get_release().ok_or(StatusCode::SERVICE_UNAVAILABLE)
 }
 
 /// GET /api/tools
-pub async fn get_tools() -> ApiResult<Json<ToolsResponse>> {
-    let release = ensure_release().await?;
+pub async fn get_tools(State(state): State<AppState>) -> ApiResult<Json<ToolsResponse>> {
+    let release = ensure_release(&state).await?;
 
     let mut tools: Vec<ToolJson> = release
         .tools
@@ -294,21 +285,24 @@ pub async fn get_tools() -> ApiResult<Json<ToolsResponse>> {
 /// GET /api/tools/{name}/binary/{target}
 pub async fn get_tool_binary(
     Path((name, target)): Path<(String, String)>,
+    State(state): State<AppState>,
 ) -> Result<Response, StatusCode> {
-    let release = ensure_release().await?;
+    let release = ensure_release(&state).await?;
 
     let tool = release.tools.get(&name).ok_or(StatusCode::NOT_FOUND)?;
     let asset = tool.assets.get(&target).ok_or(StatusCode::NOT_FOUND)?;
 
-    // Cache: {cache_dir}/tools/{tag}/{filename}
     let cache_path = cache_dir()
         .join("tools")
         .join(&release.tag)
         .join(&asset.filename);
 
     if !cache_path.exists() {
-        let client = reqwest::Client::new();
-        let resp = github_request(&client, &asset.download_url)
+        let repo = tool_repo();
+        let owner = repo.split('/').next().unwrap_or(&repo);
+        let token = state.github_token(owner).await.ok().flatten();
+
+        let resp = github_request(&state.http, &asset.download_url, token.as_deref())
             .send()
             .await
             .map_err(|e| {

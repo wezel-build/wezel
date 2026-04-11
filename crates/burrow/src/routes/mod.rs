@@ -6,5 +6,6 @@ pub mod observations;
 pub mod pheromones;
 pub mod projects;
 pub mod repos;
+pub mod setup;
 pub mod tools;
 pub mod webhooks;

@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import Shell from "./Shell";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 import LoginPage from "./routes/LoginPage";
+import SetupPage from "./routes/SetupPage";
 
 const CommitPage = lazy(() => import("./routes/CommitPage"));
 const NewProjectPage = lazy(() => import("./routes/NewProjectPage"));
@@ -98,8 +99,9 @@ const router = createBrowserRouter([
 ]);
 
 function AuthGate() {
-  const { user, loading, forbidden, authRequired } = useAuth();
+  const { user, loading, forbidden, authRequired, setupRequired } = useAuth();
   if (loading) return null;
+  if (setupRequired) return <SetupPage />;
   if (!user && authRequired) return <LoginPage forbidden={forbidden} />;
   return (
     <ProjectProvider>

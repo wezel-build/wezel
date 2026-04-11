@@ -30,3 +30,4 @@ hmac = { workspace = true }
 sha2 = { workspace = true }
 uuid = { workspace = true }
 wezel_types = { workspace = true }
+jsonwebtoken = { workspace = true }
