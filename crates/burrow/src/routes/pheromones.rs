@@ -9,7 +9,7 @@ use serde_json::Value;
 use sqlx::PgPool;
 
 use crate::models;
-use crate::{AppState, ApiResult, cache_dir, ise};
+use crate::{ApiResult, AppState, cache_dir, ise};
 
 pub fn pheromone_json_from_row(row: &models::PheromoneRow) -> models::PheromoneJson {
     let schema: Value = serde_json::from_str(&row.schema_json).unwrap_or(Value::Null);
@@ -176,11 +176,7 @@ async fn resolve_pheromone_token(state: &AppState, github_repo: &str) -> Option<
     state.github_token(owner).await.ok().flatten()
 }
 
-fn github_request(
-    client: &Client,
-    url: &str,
-    token: Option<&str>,
-) -> reqwest::RequestBuilder {
+fn github_request(client: &Client, url: &str, token: Option<&str>) -> reqwest::RequestBuilder {
     let mut req = client.get(url).header("User-Agent", "wezel-burrow");
     if let Some(token) = token {
         req = req.bearer_auth(token);

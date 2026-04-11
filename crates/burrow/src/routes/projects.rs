@@ -11,7 +11,7 @@ use axum::response::{IntoResponse, Response};
 
 use crate::github::{github_api, github_owner_repo};
 use crate::models::*;
-use crate::{AppState, ApiResult, ise};
+use crate::{ApiResult, AppState, ise};
 
 pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>) -> Response {
     let Some(name) = body["name"].as_str() else {

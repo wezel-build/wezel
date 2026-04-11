@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::github::{github_api, github_owner_repo};
 use crate::github_app;
 use crate::models::*;
-use crate::{AppState, ApiResult, ise};
+use crate::{ApiResult, AppState, ise};
 
 pub async fn get_repos(State(pool): State<PgPool>) -> ApiResult<Json<Vec<RepoJson>>> {
     let rows = sqlx::query_as::<_, RepoRow>(
@@ -39,9 +39,7 @@ pub async fn get_repos(State(pool): State<PgPool>) -> ApiResult<Json<Vec<RepoJso
 }
 
 /// GET /api/github/repos — list repos accessible via GitHub App installations.
-pub async fn get_github_repos(
-    State(state): State<AppState>,
-) -> ApiResult<Json<Vec<Value>>> {
+pub async fn get_github_repos(State(state): State<AppState>) -> ApiResult<Json<Vec<Value>>> {
     let config = {
         let guard = state.github_app.read().map_err(ise)?;
         guard.clone()
@@ -68,9 +66,7 @@ pub async fn get_github_repos(
         // Paginate through installation repos.
         let mut page = 1u32;
         loop {
-            let url = format!(
-                "{api_base}/installation/repositories?per_page=100&page={page}"
-            );
+            let url = format!("{api_base}/installation/repositories?per_page=100&page={page}");
             let resp: Value = state
                 .http
                 .get(&url)
@@ -144,7 +140,16 @@ pub async fn setup_webhook(
     let auto_ok = if let Some((owner, repo)) = github_owner_repo(&row.upstream, &github_host) {
         match state.github_token(&owner).await {
             Ok(Some(token)) => {
-                match register_github_webhook(&token, &state.api_base(), &owner, &repo, &webhook_url, &secret).await {
+                match register_github_webhook(
+                    &token,
+                    &state.api_base(),
+                    &owner,
+                    &repo,
+                    &webhook_url,
+                    &secret,
+                )
+                .await
+                {
                     Ok(()) => true,
                     Err(e) => {
                         tracing::warn!(owner, repo, ?e, "webhook auto-registration failed");

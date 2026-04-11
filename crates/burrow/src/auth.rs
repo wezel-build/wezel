@@ -23,9 +23,7 @@ pub struct AuthUser {
 
 pub async fn login(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
     let config_guard = state.github_app.read().map_err(ise)?;
-    let config = config_guard
-        .as_ref()
-        .ok_or(StatusCode::NOT_IMPLEMENTED)?;
+    let config = config_guard.as_ref().ok_or(StatusCode::NOT_IMPLEMENTED)?;
 
     let csrf_state = Uuid::new_v4().to_string();
     let web_base = github_app::web_base_url(&config.github_host);
@@ -147,10 +145,7 @@ pub async fn me(
 
 pub async fn config(State(state): State<AppState>) -> Json<serde_json::Value> {
     let config = state.github_app.read().ok();
-    let configured = config
-        .as_ref()
-        .map(|c| c.is_some())
-        .unwrap_or(false);
+    let configured = config.as_ref().map(|c| c.is_some()).unwrap_or(false);
 
     if configured {
         let c = config.unwrap();
