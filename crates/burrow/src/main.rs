@@ -260,10 +260,7 @@ async fn main() {
         // Setup routes.
         .route("/api/setup/status", get(get_setup_status))
         .route("/api/setup/github-app/manifest", post(post_manifest))
-        .route(
-            "/api/setup/github-app/callback",
-            get(get_app_callback),
-        )
+        .route("/api/setup/github-app/callback", get(get_app_callback))
         .route(
             "/api/setup/github-app/install-callback",
             get(get_install_callback),

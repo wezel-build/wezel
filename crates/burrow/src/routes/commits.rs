@@ -9,7 +9,7 @@ use sqlx::PgPool;
 
 use crate::github::{get_or_fetch_github_commit, github_owner_repo};
 use crate::models::*;
-use crate::{AppState, ApiResult, ise};
+use crate::{ApiResult, AppState, ise};
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 

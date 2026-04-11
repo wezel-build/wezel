@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::github_app::{self, GithubAppConfig};
-use crate::{AppState, ApiResult, ise};
+use crate::{ApiResult, AppState, ise};
 
 /// GET /api/setup/status
 pub async fn get_setup_status(State(state): State<AppState>) -> Json<Value> {
@@ -215,7 +215,10 @@ pub async fn get_install_callback(
             );
             // Save with installation_id so token resolution can still work —
             // the account_login will be wrong but the installation is tracked.
-            (format!("installation-{installation_id}"), "Organization".to_string())
+            (
+                format!("installation-{installation_id}"),
+                "Organization".to_string(),
+            )
         };
 
         github_app::upsert_installation(

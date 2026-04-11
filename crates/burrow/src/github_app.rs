@@ -113,9 +113,7 @@ pub async fn get_installation_token(
         .as_str()
         .ok_or(StatusCode::BAD_GATEWAY)?
         .to_string();
-    let expires_at = resp["expires_at"]
-        .as_str()
-        .ok_or(StatusCode::BAD_GATEWAY)?;
+    let expires_at = resp["expires_at"].as_str().ok_or(StatusCode::BAD_GATEWAY)?;
 
     sqlx::query(
         "INSERT INTO github_installation_tokens (installation_id, token, expires_at) \

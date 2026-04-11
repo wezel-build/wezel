@@ -6,7 +6,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
 use crate::github_app;
-use crate::{AppState, ApiResult, ise};
+use crate::{ApiResult, AppState, ise};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -256,10 +256,7 @@ pub async fn post_github_webhook(
     Ok(StatusCode::OK)
 }
 
-async fn handle_installation_event(
-    state: &AppState,
-    body: &[u8],
-) -> ApiResult<StatusCode> {
+async fn handle_installation_event(state: &AppState, body: &[u8]) -> ApiResult<StatusCode> {
     let event: InstallationEvent =
         serde_json::from_slice(body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
