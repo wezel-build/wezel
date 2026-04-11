@@ -1,14 +1,11 @@
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
 };
-use reqwest::Client;
 use serde_json::Value;
 use sqlx::PgPool;
-use uuid::Uuid;
 
-use crate::github::{github_api, github_owner_repo};
 use crate::github_app;
 use crate::models::*;
 use crate::{ApiResult, AppState, ise};
@@ -112,148 +109,4 @@ pub async fn get_github_repos(State(state): State<AppState>) -> ApiResult<Json<V
     }
 
     Ok(Json(all_repos))
-}
-
-pub async fn setup_webhook(
-    State(state): State<AppState>,
-    Path(repo_id): Path<i64>,
-) -> ApiResult<Json<WebhookSetupJson>> {
-    let secret = format!(
-        "whsec_{}{}",
-        Uuid::new_v4().simple(),
-        Uuid::new_v4().simple()
-    );
-
-    let row = sqlx::query_as::<_, Repo>(
-        "UPDATE repos SET webhook_secret = $1 WHERE id = $2 \
-         RETURNING id, upstream",
-    )
-    .bind(&secret)
-    .bind(repo_id)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(ise)?
-    .ok_or(StatusCode::NOT_FOUND)?;
-
-    let webhook_url = burrow_webhook_url();
-    let github_host = state.github_host();
-    let auto_ok = if let Some((owner, repo)) = github_owner_repo(&row.upstream, &github_host) {
-        match state.github_token(&owner).await {
-            Ok(Some(token)) => {
-                match register_github_webhook(
-                    &token,
-                    &state.api_base(),
-                    &owner,
-                    &repo,
-                    &webhook_url,
-                    &secret,
-                )
-                .await
-                {
-                    Ok(()) => true,
-                    Err(e) => {
-                        tracing::warn!(owner, repo, ?e, "webhook auto-registration failed");
-                        false
-                    }
-                }
-            }
-            Ok(None) => {
-                tracing::warn!(owner, repo, "no github app installation found for owner");
-                false
-            }
-            Err(e) => {
-                tracing::warn!(owner, repo, ?e, "failed to resolve github token");
-                false
-            }
-        }
-    } else {
-        tracing::warn!(upstream = %row.upstream, github_host, "could not extract owner/repo from upstream");
-        false
-    };
-
-    if auto_ok {
-        sqlx::query("UPDATE repos SET webhook_registered = TRUE WHERE id = $1")
-            .bind(repo_id)
-            .execute(&state.pool)
-            .await
-            .map_err(ise)?;
-    }
-
-    Ok(Json(WebhookSetupJson {
-        id: row.id,
-        upstream: row.upstream,
-        webhook_secret: secret,
-        webhook_url,
-        registered: auto_ok,
-    }))
-}
-
-fn burrow_webhook_url() -> String {
-    std::env::var("BURROW_PUBLIC_URL")
-        .or_else(|_| std::env::var("FRONTEND_URL"))
-        .unwrap_or_else(|_| "http://localhost:3001".to_string())
-        .trim_end_matches('/')
-        .to_string()
-        + "/api/webhooks/github"
-}
-
-async fn register_github_webhook(
-    token: &str,
-    api_base: &str,
-    owner: &str,
-    repo: &str,
-    webhook_url: &str,
-    secret: &str,
-) -> ApiResult<()> {
-    let client = Client::new();
-
-    let hooks: Vec<Value> = github_api(
-        &client,
-        reqwest::Method::GET,
-        &format!("{api_base}/repos/{owner}/{repo}/hooks"),
-        token,
-        None,
-    )
-    .await?;
-
-    for hook in &hooks {
-        let url = hook
-            .pointer("/config/url")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if url.contains("/api/webhooks/github")
-            && let Some(id) = hook.get("id").and_then(|v| v.as_u64())
-        {
-            let del_client = Client::new();
-            let _ = del_client
-                .delete(format!("{api_base}/repos/{owner}/{repo}/hooks/{id}"))
-                .header("User-Agent", "wezel-burrow")
-                .header("Accept", "application/vnd.github+json")
-                .bearer_auth(token)
-                .send()
-                .await;
-        }
-    }
-
-    let _: Value = github_api(
-        &client,
-        reqwest::Method::POST,
-        &format!("{api_base}/repos/{owner}/{repo}/hooks"),
-        token,
-        Some(serde_json::json!({
-            "name": "web",
-            "active": true,
-            "events": ["push"],
-            "config": {
-                "url": webhook_url,
-                "content_type": "json",
-                "secret": secret,
-                "insecure_ssl": "0"
-            }
-        })),
-    )
-    .await?;
-
-    tracing::info!(owner, repo, "registered github webhook");
-    Ok(())
 }

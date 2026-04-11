@@ -143,12 +143,11 @@ pub async fn post_github_webhook(
     let (repo_id, webhook_secret) = repo.ok_or(StatusCode::NOT_FOUND)?;
 
     // Validate signature: accept app-level secret OR per-repo secret.
-    if !app_secret_ok {
-        if let Some(secret) = &webhook_secret {
-            if !verify_signature(secret, &body, sig_header) {
-                return Err(StatusCode::UNAUTHORIZED);
-            }
-        }
+    if !app_secret_ok
+        && let Some(secret) = &webhook_secret
+        && !verify_signature(secret, &body, sig_header)
+    {
+        return Err(StatusCode::UNAUTHORIZED);
     }
 
     let branch = payload
