@@ -1,6 +1,7 @@
 mod auth;
 mod db;
 mod github;
+pub mod github_app;
 mod models;
 pub mod regression;
 mod routes;
@@ -8,7 +9,7 @@ mod scheduler;
 
 use axum::{
     Json, Router,
-    extract::{Request, State},
+    extract::{FromRef, Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::Response,
@@ -29,6 +30,7 @@ use routes::observations::*;
 use routes::pheromones::*;
 use routes::projects::*;
 use routes::repos::*;
+use routes::setup::*;
 use routes::tools::*;
 use routes::webhooks::*;
 
@@ -56,19 +58,63 @@ pub fn ise<E: std::fmt::Debug>(e: E) -> StatusCode {
     StatusCode::INTERNAL_SERVER_ERROR
 }
 
+// ── AppState ───────────────────────────────────────────────────────────────
+
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: PgPool,
+    pub http: reqwest::Client,
+    pub github_app: github_app::AppConfig,
+}
+
+impl FromRef<AppState> for PgPool {
+    fn from_ref(state: &AppState) -> Self {
+        state.pool.clone()
+    }
+}
+
+impl AppState {
+    pub fn github_host(&self) -> String {
+        self.github_app
+            .read()
+            .ok()
+            .and_then(|c| c.as_ref().map(|c| c.github_host.clone()))
+            .unwrap_or_else(|| "github.com".to_string())
+    }
+
+    pub fn api_base(&self) -> String {
+        github_app::api_base_url(&self.github_host())
+    }
+
+    /// Resolve a GitHub token for the given repo owner, or None if no
+    /// installation covers this owner.
+    pub async fn github_token(&self, owner: &str) -> ApiResult<Option<String>> {
+        let config = {
+            let guard = self.github_app.read().map_err(ise)?;
+            guard.clone()
+        };
+        let Some(config) = config.as_ref() else {
+            return Ok(None);
+        };
+        github_app::resolve_token(&self.pool, &self.http, config, owner).await
+    }
+}
+
+// ── Middleware ──────────────────────────────────────────────────────────────
+
 async fn get_health() -> Json<serde_json::Value> {
     Json(serde_json::json!({"status": "ok"}))
 }
 
 async fn require_auth(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     jar: CookieJar,
     mut req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let auth_required =
-        std::env::var("GITHUB_CLIENT_ID").is_ok() || std::env::var("GITHUB_ORG").is_ok();
-    if !auth_required {
+    let app_configured = state.github_app.read().map_err(ise)?.is_some();
+    if !app_configured {
+        // Setup not done yet — skip auth.
         return Ok(next.run(req).await);
     }
 
@@ -77,7 +123,7 @@ async fn require_auth(
         .map(|c| c.value().to_string())
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let login = db::get_session(&pool, &session_id)
+    let login = db::get_session(&state.pool, &session_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::UNAUTHORIZED)?;
@@ -101,14 +147,27 @@ async fn main() {
 
     regression::set_detector(std::sync::Arc::new(regression::ThresholdDetector::default()));
 
-    if let Some(dev_dir) = get_dev_dir() {
-        load_dev_pheromones(&pool, &dev_dir).await;
+    // Load GitHub App config from DB.
+    let github_app = github_app::new_app_config();
+    if let Ok(Some(config)) = github_app::load_config(&pool).await {
+        tracing::info!("github app configured: {}", config.app_slug);
+        *github_app.write().unwrap() = Some(config);
     }
 
-    scheduler::spawn(pool.clone());
+    let state = AppState {
+        pool: pool.clone(),
+        http: reqwest::Client::new(),
+        github_app,
+    };
 
-    // Protected API routes (all except /api/events and forager/auth routes).
-    let protected_api = Router::new()
+    if let Some(dev_dir) = get_dev_dir() {
+        load_dev_pheromones(&state, &dev_dir).await;
+    }
+
+    scheduler::spawn(state.clone());
+
+    // Protected API routes.
+    let protected_api: Router<AppState> = Router::new()
         .route("/api/project", get(get_projects).post(create_project))
         .route("/api/project/{project_id}", patch(rename_project))
         .route(
@@ -173,7 +232,7 @@ async fn main() {
             post(post_admin_pheromone_fetch),
         )
         .route("/api/repo", get(get_repos))
-        .route("/api/repo/{repo_id}/webhook", post(setup_webhook))
+        .route("/api/github/repos", get(get_github_repos))
         .route("/api/overview", get(get_overview))
         .route("/api/observation", get(get_observations))
         .route("/api/observation/{id}", get(get_observation))
@@ -181,11 +240,11 @@ async fn main() {
         .route("/api/commit", get(get_commits))
         .route("/api/commit/{sha}", get(get_commit))
         .route("/api/user", get(get_users))
-        .route_layer(middleware::from_fn_with_state(pool.clone(), require_auth));
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
-    let app = Router::new()
+    let app = Router::<AppState>::new()
         .merge(protected_api)
-        // Unauthenticated: ingest, forager, and auth routes.
+        // Unauthenticated: ingest, forager, setup, and auth routes.
         .route("/api/events", post(ingest_events))
         .route("/api/forager/run", post(post_forager_run))
         .route("/api/forager/jobs", post(post_forager_jobs))
@@ -198,6 +257,18 @@ async fn main() {
         )
         .route("/api/tools", get(get_tools))
         .route("/api/tools/{name}/binary/{target}", get(get_tool_binary))
+        // Setup routes.
+        .route("/api/setup/status", get(get_setup_status))
+        .route("/api/setup/github-app/manifest", post(post_manifest))
+        .route(
+            "/api/setup/github-app/callback",
+            get(get_app_callback),
+        )
+        .route(
+            "/api/setup/github-app/install-callback",
+            get(get_install_callback),
+        )
+        // Auth routes.
         .route("/auth/github", get(auth::login))
         .route("/auth/github/callback", get(auth::callback))
         .route("/auth/me", get(auth::me))
@@ -207,7 +278,7 @@ async fn main() {
         .route("/health", get(get_health))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
-        .with_state(pool);
+        .with_state(state);
 
     let addr = format!("0.0.0.0:{}", cli.port);
     tracing::info!("burrow listening on http://{addr}");

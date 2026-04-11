@@ -11,13 +11,16 @@ WORKDIR /app
 
 # Copy workspace manifests first for layer-cached dependency compilation
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
-COPY crates/burrow/Cargo.toml       crates/burrow/Cargo.toml
-COPY crates/wezel_types/Cargo.toml  crates/wezel_types/Cargo.toml
-COPY crates/wezel_cli/Cargo.toml    crates/wezel_cli/Cargo.toml
-COPY crates/pheromone_cargo/Cargo.toml crates/pheromone_cargo/Cargo.toml
+COPY crates/burrow/Cargo.toml            crates/burrow/Cargo.toml
+COPY crates/wezel_types/Cargo.toml       crates/wezel_types/Cargo.toml
+COPY crates/wezel_cli/Cargo.toml         crates/wezel_cli/Cargo.toml
+COPY crates/pheromone_cargo/Cargo.toml   crates/pheromone_cargo/Cargo.toml
+COPY crates/wezel_bench/Cargo.toml       crates/wezel_bench/Cargo.toml
+COPY crates/forager_exec/Cargo.toml      crates/forager_exec/Cargo.toml
+COPY crates/forager_llvm_lines/Cargo.toml crates/forager_llvm_lines/Cargo.toml
 
 # Stub out every crate's src so Cargo can resolve and cache deps
-RUN for dir in crates/burrow crates/wezel_types crates/wezel_cli crates/pheromone_cargo; do \
+RUN for dir in crates/burrow crates/wezel_types crates/wezel_cli crates/pheromone_cargo crates/wezel_bench crates/forager_exec crates/forager_llvm_lines; do \
       mkdir -p "$dir/src" && echo "fn main(){}" > "$dir/src/main.rs" && touch "$dir/src/lib.rs"; \
     done
 
@@ -25,8 +28,8 @@ RUN cargo build --release -p burrow
 
 # Now copy real source and rebuild only what changed
 COPY crates/ crates/
-# Touch to invalidate the cached stubs
-RUN touch crates/burrow/src/main.rs
+# Touch all sources to ensure they're newer than the cached stub artifacts
+RUN find crates -name "*.rs" -exec touch {} +
 RUN cargo build --release -p burrow
 
 # ── Runtime stage ──────────────────────────────────────────────────────────────

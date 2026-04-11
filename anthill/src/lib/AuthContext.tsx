@@ -13,6 +13,9 @@ interface AuthState {
   loading: boolean;
   forbidden: boolean;
   authRequired: boolean;
+  setupRequired: boolean;
+  appSlug: string | null;
+  githubHost: string | null;
   logout: () => Promise<void>;
 }
 
@@ -21,6 +24,9 @@ const AuthContext = createContext<AuthState>({
   loading: true,
   forbidden: false,
   authRequired: true,
+  setupRequired: false,
+  appSlug: null,
+  githubHost: null,
   logout: async () => {},
 });
 
@@ -36,14 +42,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   });
   const [authRequired, setAuthRequired] = useState(true);
+  const [setupRequired, setSetupRequired] = useState(false);
+  const [appSlug, setAppSlug] = useState<string | null>(null);
+  const [githubHost, setGithubHost] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       authApi.me().catch(() => null),
-      authApi.config().catch(() => ({ auth_required: true })),
+      authApi
+        .config()
+        .catch(() => ({ auth_required: true, setup_required: false })),
     ]).then(([user, cfg]) => {
       setUser(user);
       setAuthRequired(cfg.auth_required);
+      setSetupRequired(cfg.setup_required ?? false);
+      setAppSlug((cfg as { app_slug?: string }).app_slug ?? null);
+      setGithubHost((cfg as { github_host?: string }).github_host ?? null);
       setLoading(false);
     });
   }, []);
@@ -55,7 +69,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, forbidden, authRequired, logout }}
+      value={{
+        user,
+        loading,
+        forbidden,
+        authRequired,
+        setupRequired,
+        appSlug,
+        githubHost,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>

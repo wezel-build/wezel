@@ -5,16 +5,15 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use reqwest::Client;
 use sqlx::PgPool;
 
 use crate::github::{get_or_fetch_github_commit, github_owner_repo};
 use crate::models::*;
-use crate::{ApiResult, ise};
+use crate::{AppState, ApiResult, ise};
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
-/// Load tags for a batch of measurement IDs, returning a map of measurement_id → tags.
+/// Load tags for a batch of measurement IDs, returning a map of measurement_id -> tags.
 pub async fn load_tags(
     pool: &PgPool,
     m_ids: &[i64],
@@ -141,7 +140,6 @@ pub async fn get_project_commits(
     Path((project_id,)): Path<(i64,)>,
     State(pool): State<PgPool>,
 ) -> ApiResult<Json<Vec<CommitJson>>> {
-    // Get commits that have measurements for this project.
     let commits = sqlx::query_as::<_, Commit>(
         "SELECT DISTINCT c.id, c.repo_id, c.sha, c.short_sha, c.parent_sha, \
                 c.author, c.message, c.timestamp \
@@ -234,7 +232,6 @@ pub async fn get_project_commit(
     Path((project_id, sha)): Path<(i64, String)>,
     State(pool): State<PgPool>,
 ) -> ApiResult<Json<CommitJson>> {
-    // Find commit by SHA, but only if it has measurements for this project.
     let row: Option<(i64,)> = sqlx::query_as(
         "SELECT DISTINCT c.id FROM commits c \
          JOIN projects p ON p.repo_id = c.repo_id \
@@ -256,20 +253,31 @@ pub async fn get_project_commit(
 
 pub async fn get_project_github_commit(
     Path((project_id, sha)): Path<(i64, String)>,
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> ApiResult<Json<GithubCommitJson>> {
     let project = sqlx::query_as::<_, Project>(
         "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
     )
     .bind(project_id)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(ise)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    let (owner, repo) = github_owner_repo(&project.upstream).ok_or(StatusCode::BAD_REQUEST)?;
-    let client = Client::new();
-    let commit = get_or_fetch_github_commit(&client, &owner, &repo, &sha).await?;
+    let github_host = state.github_host();
+    let api_base = state.api_base();
+    let (owner, repo) =
+        github_owner_repo(&project.upstream, &github_host).ok_or(StatusCode::BAD_REQUEST)?;
+    let token = state.github_token(&owner).await?;
+    let commit = get_or_fetch_github_commit(
+        &state.http,
+        &api_base,
+        &owner,
+        &repo,
+        &sha,
+        token.as_deref(),
+    )
+    .await?;
     Ok(Json(commit))
 }
 
@@ -280,7 +288,7 @@ pub struct ScheduleCommitBody {
 
 pub async fn schedule_project_commit(
     Path((project_id,)): Path<(i64,)>,
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Json(body): Json<ScheduleCommitBody>,
 ) -> ApiResult<(StatusCode, Json<CommitJson>)> {
     let Some(sha_raw) = body.sha else {
@@ -295,7 +303,7 @@ pub async fn schedule_project_commit(
         "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
     )
     .bind(project_id)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(ise)?
     .ok_or(StatusCode::NOT_FOUND)?;
@@ -306,17 +314,22 @@ pub async fn schedule_project_commit(
     .bind(project.repo_id)
     .bind(sha)
     .bind(sha)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(ise)?;
 
     if let Some((id,)) = existing {
-        return Ok((StatusCode::OK, Json(commit_to_json(&pool, id).await?)));
+        return Ok((StatusCode::OK, Json(commit_to_json(&state.pool, id).await?)));
     }
 
-    let (owner, repo) = github_owner_repo(&project.upstream).ok_or(StatusCode::BAD_REQUEST)?;
-    let client = Client::new();
-    let gh = get_or_fetch_github_commit(&client, &owner, &repo, sha).await?;
+    let github_host = state.github_host();
+    let api_base = state.api_base();
+    let (owner, repo) =
+        github_owner_repo(&project.upstream, &github_host).ok_or(StatusCode::BAD_REQUEST)?;
+    let token = state.github_token(&owner).await?;
+    let gh =
+        get_or_fetch_github_commit(&state.http, &api_base, &owner, &repo, sha, token.as_deref())
+            .await?;
 
     let commit_row: (i64,) = sqlx::query_as(
         "INSERT INTO commits (repo_id, sha, short_sha, author, message, timestamp) \
@@ -328,12 +341,12 @@ pub async fn schedule_project_commit(
     .bind(&gh.author)
     .bind(&gh.message)
     .bind(&gh.timestamp)
-    .fetch_one(&pool)
+    .fetch_one(&state.pool)
     .await
     .map_err(ise)?;
 
     Ok((
         StatusCode::CREATED,
-        Json(commit_to_json(&pool, commit_row.0).await?),
+        Json(commit_to_json(&state.pool, commit_row.0).await?),
     ))
 }

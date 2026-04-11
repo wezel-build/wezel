@@ -9,8 +9,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::github::{github_api, github_owner_repo};
+use crate::github_app;
 use crate::models::*;
-use crate::{ApiResult, ise};
+use crate::{AppState, ApiResult, ise};
 
 pub async fn get_repos(State(pool): State<PgPool>) -> ApiResult<Json<Vec<RepoJson>>> {
     let rows = sqlx::query_as::<_, RepoRow>(
@@ -37,11 +38,90 @@ pub async fn get_repos(State(pool): State<PgPool>) -> ApiResult<Json<Vec<RepoJso
     ))
 }
 
+/// GET /api/github/repos — list repos accessible via GitHub App installations.
+pub async fn get_github_repos(
+    State(state): State<AppState>,
+) -> ApiResult<Json<Vec<Value>>> {
+    let config = {
+        let guard = state.github_app.read().map_err(ise)?;
+        guard.clone()
+    };
+    let Some(config) = config.as_ref() else {
+        return Ok(Json(vec![]));
+    };
+
+    let installations: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT installation_id, account_login FROM github_app_installations WHERE suspended_at IS NULL",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(ise)?;
+
+    let api_base = github_app::api_base_url(&config.github_host);
+    let mut all_repos = Vec::new();
+
+    for (installation_id, _account) in &installations {
+        let token =
+            github_app::get_installation_token(&state.pool, &state.http, config, *installation_id)
+                .await?;
+
+        // Paginate through installation repos.
+        let mut page = 1u32;
+        loop {
+            let url = format!(
+                "{api_base}/installation/repositories?per_page=100&page={page}"
+            );
+            let resp: Value = state
+                .http
+                .get(&url)
+                .header("User-Agent", "wezel-burrow")
+                .header("Accept", "application/vnd.github+json")
+                .bearer_auth(&token)
+                .send()
+                .await
+                .map_err(|e| {
+                    tracing::error!("failed to list installation repos: {e}");
+                    StatusCode::BAD_GATEWAY
+                })?
+                .json()
+                .await
+                .map_err(|e| {
+                    tracing::error!("failed to parse installation repos: {e}");
+                    StatusCode::BAD_GATEWAY
+                })?;
+
+            let repos = resp["repositories"].as_array();
+            let Some(repos) = repos else { break };
+            if repos.is_empty() {
+                break;
+            }
+
+            for repo in repos {
+                let full_name = repo["full_name"].as_str().unwrap_or("").to_string();
+                let html_url = repo["html_url"].as_str().unwrap_or("").to_string();
+                let private = repo["private"].as_bool().unwrap_or(false);
+                all_repos.push(serde_json::json!({
+                    "full_name": full_name,
+                    "html_url": html_url,
+                    "private": private,
+                }));
+            }
+
+            let total = resp["total_count"].as_u64().unwrap_or(0);
+            if all_repos.len() as u64 >= total {
+                break;
+            }
+            page += 1;
+        }
+    }
+
+    Ok(Json(all_repos))
+}
+
 pub async fn setup_webhook(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(repo_id): Path<i64>,
 ) -> ApiResult<Json<WebhookSetupJson>> {
-    // Generate secret.
     let secret = format!(
         "whsec_{}{}",
         Uuid::new_v4().simple(),
@@ -54,30 +134,42 @@ pub async fn setup_webhook(
     )
     .bind(&secret)
     .bind(repo_id)
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(ise)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Try to register on GitHub automatically.
     let webhook_url = burrow_webhook_url();
-    let auto_ok = if let Some(token) = github_token() {
-        if let Some((owner, repo)) = github_owner_repo(&row.upstream) {
-            register_github_webhook(&token, &owner, &repo, &webhook_url, &secret)
-                .await
-                .is_ok()
-        } else {
-            false
+    let github_host = state.github_host();
+    let auto_ok = if let Some((owner, repo)) = github_owner_repo(&row.upstream, &github_host) {
+        match state.github_token(&owner).await {
+            Ok(Some(token)) => {
+                match register_github_webhook(&token, &state.api_base(), &owner, &repo, &webhook_url, &secret).await {
+                    Ok(()) => true,
+                    Err(e) => {
+                        tracing::warn!(owner, repo, ?e, "webhook auto-registration failed");
+                        false
+                    }
+                }
+            }
+            Ok(None) => {
+                tracing::warn!(owner, repo, "no github app installation found for owner");
+                false
+            }
+            Err(e) => {
+                tracing::warn!(owner, repo, ?e, "failed to resolve github token");
+                false
+            }
         }
     } else {
+        tracing::warn!(upstream = %row.upstream, github_host, "could not extract owner/repo from upstream");
         false
     };
 
-    // Only mark as registered if GitHub confirmed.
     if auto_ok {
         sqlx::query("UPDATE repos SET webhook_registered = TRUE WHERE id = $1")
             .bind(repo_id)
-            .execute(&pool)
+            .execute(&state.pool)
             .await
             .map_err(ise)?;
     }
@@ -91,15 +183,9 @@ pub async fn setup_webhook(
     }))
 }
 
-fn github_token() -> Option<String> {
-    std::env::var("GITHUB_TOKEN")
-        .ok()
-        .filter(|t| !t.trim().is_empty())
-        .map(|t| t.trim().to_string())
-}
-
 fn burrow_webhook_url() -> String {
     std::env::var("BURROW_PUBLIC_URL")
+        .or_else(|_| std::env::var("FRONTEND_URL"))
         .unwrap_or_else(|_| "http://localhost:3001".to_string())
         .trim_end_matches('/')
         .to_string()
@@ -108,6 +194,7 @@ fn burrow_webhook_url() -> String {
 
 async fn register_github_webhook(
     token: &str,
+    api_base: &str,
     owner: &str,
     repo: &str,
     webhook_url: &str,
@@ -115,11 +202,10 @@ async fn register_github_webhook(
 ) -> ApiResult<()> {
     let client = Client::new();
 
-    // Check for existing wezel webhook and delete it.
     let hooks: Vec<Value> = github_api(
         &client,
         reqwest::Method::GET,
-        &format!("https://api.github.com/repos/{owner}/{repo}/hooks"),
+        &format!("{api_base}/repos/{owner}/{repo}/hooks"),
         token,
         None,
     )
@@ -135,9 +221,7 @@ async fn register_github_webhook(
         {
             let del_client = Client::new();
             let _ = del_client
-                .delete(format!(
-                    "https://api.github.com/repos/{owner}/{repo}/hooks/{id}"
-                ))
+                .delete(format!("{api_base}/repos/{owner}/{repo}/hooks/{id}"))
                 .header("User-Agent", "wezel-burrow")
                 .header("Accept", "application/vnd.github+json")
                 .bearer_auth(token)
@@ -146,11 +230,10 @@ async fn register_github_webhook(
         }
     }
 
-    // Create new webhook.
     let _: Value = github_api(
         &client,
         reqwest::Method::POST,
-        &format!("https://api.github.com/repos/{owner}/{repo}/hooks"),
+        &format!("{api_base}/repos/{owner}/{repo}/hooks"),
         token,
         Some(serde_json::json!({
             "name": "web",

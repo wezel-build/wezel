@@ -7,7 +7,6 @@ import type {
   CompareResponse,
   Bisection,
   Repo,
-  WebhookSetup,
 } from "./data";
 
 export interface GithubCommit {
@@ -65,16 +64,37 @@ export interface AuthUser {
   login: string;
 }
 
+export interface AuthConfig {
+  auth_required: boolean;
+  setup_required: boolean;
+  github_host?: string;
+  app_slug?: string;
+}
+
 export const authApi = {
   me: (): Promise<AuthUser> => get<AuthUser>(`${BASE}/auth/me`),
-  config: (): Promise<{ auth_required: boolean }> =>
-    get<{ auth_required: boolean }>(`${BASE}/auth/config`),
+  config: (): Promise<AuthConfig> =>
+    get<AuthConfig>(`${BASE}/auth/config`),
   logout: (): Promise<void> =>
     fetch(`${BASE}/auth/logout`, {
       method: "POST",
       credentials: "include",
     }).then(() => undefined),
   loginUrl: `${BASE}/auth/github`,
+};
+
+export interface ManifestResponse {
+  manifest: unknown;
+  post_url: string;
+  github_host: string;
+}
+
+export const setupApi = {
+  getManifest: (githubHost: string, publicUrl: string): Promise<ManifestResponse> =>
+    post<ManifestResponse>(`${BASE}/api/setup/github-app/manifest`, {
+      github_host: githubHost,
+      public_url: publicUrl,
+    }),
 };
 
 export interface ForagerJobStatus {
@@ -126,10 +146,15 @@ export interface ExperimentPrResponse {
   prUrl: string;
 }
 
+export interface GithubRepoEntry {
+  full_name: string;
+  html_url: string;
+  private: boolean;
+}
+
 export const api = {
   repos: () => get<Repo[]>("/api/repo"),
-  setupWebhook: (repoId: number) =>
-    post<WebhookSetup>(`/api/repo/${repoId}/webhook`, {}),
+  githubRepos: () => get<GithubRepoEntry[]>("/api/github/repos"),
   projects: () => get<Project[]>("/api/project"),
   createProject: (name: string, upstream: string) =>
     post<Project>("/api/project", { name, upstream }),

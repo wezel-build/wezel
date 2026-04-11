@@ -4,9 +4,9 @@ use axum::{
 };
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
-use sqlx::PgPool;
 
-use crate::{ApiResult, ise};
+use crate::github_app;
+use crate::{AppState, ApiResult, ise};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -44,6 +44,27 @@ struct PushAuthor {
     name: Option<String>,
 }
 
+// ── Installation event payloads ────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct InstallationEvent {
+    action: String,
+    installation: InstallationPayload,
+}
+
+#[derive(serde::Deserialize)]
+struct InstallationPayload {
+    id: i64,
+    account: InstallationAccount,
+}
+
+#[derive(serde::Deserialize)]
+struct InstallationAccount {
+    login: String,
+    #[serde(rename = "type")]
+    account_type: String,
+}
+
 // ── Signature verification ──────────────────────────────────────────────────
 
 fn verify_signature(secret: &str, payload: &[u8], header: &str) -> bool {
@@ -60,10 +81,7 @@ fn verify_signature(secret: &str, payload: &[u8], header: &str) -> bool {
     mac.verify_slice(&expected).is_ok()
 }
 
-// ── Normalize repo URL to match repos.upstream ──────────────────────────────
-
 fn normalize_repo_url(push_repo: &PushRepo) -> Option<String> {
-    // Try html_url first (most stable), then clone_url, then ssh_url.
     push_repo
         .html_url
         .as_deref()
@@ -74,30 +92,40 @@ fn normalize_repo_url(push_repo: &PushRepo) -> Option<String> {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-/// `POST /api/webhooks/github`
-///
-/// Receives a GitHub push webhook. Validates the signature against the
-/// matching repo's `webhook_secret`, then:
-/// 1. Creates commit rows for each commit in the push (with parent linkage).
-/// 2. Upserts the branch head in the `branches` table.
 pub async fn post_github_webhook(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> ApiResult<StatusCode> {
-    // Only handle push events.
     let event_type = headers
         .get("x-github-event")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
+
+    // Verify signature: try app-level secret first, then per-repo secrets.
+    let sig_header = headers
+        .get("x-hub-signature-256")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let app_secret_ok = {
+        let config = state.github_app.read().map_err(ise)?;
+        config
+            .as_ref()
+            .is_some_and(|c| verify_signature(&c.webhook_secret, &body, sig_header))
+    };
+
+    // Handle installation events (only valid with app-level secret).
+    if event_type == "installation" && app_secret_ok {
+        return handle_installation_event(&state, &body).await;
+    }
+
     if event_type != "push" {
-        // Acknowledge non-push events (ping, etc.) without processing.
         return Ok(StatusCode::OK);
     }
 
     let payload: PushEvent = serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // Resolve repo row from the push payload URL.
     let repo_url = normalize_repo_url(&payload.repository).ok_or(StatusCode::BAD_REQUEST)?;
 
     let repo: Option<(i64, Option<String>)> = sqlx::query_as(
@@ -108,37 +136,30 @@ pub async fn post_github_webhook(
     .bind(&repo_url)
     .bind(format!("{repo_url}.git"))
     .bind(format!("{repo_url}/"))
-    .fetch_optional(&pool)
+    .fetch_optional(&state.pool)
     .await
     .map_err(ise)?;
 
     let (repo_id, webhook_secret) = repo.ok_or(StatusCode::NOT_FOUND)?;
 
-    // Validate signature if the repo has a webhook secret configured.
-    if let Some(secret) = &webhook_secret {
-        let sig_header = headers
-            .get("x-hub-signature-256")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        if !verify_signature(secret, &body, sig_header) {
-            return Err(StatusCode::UNAUTHORIZED);
+    // Validate signature: accept app-level secret OR per-repo secret.
+    if !app_secret_ok {
+        if let Some(secret) = &webhook_secret {
+            if !verify_signature(secret, &body, sig_header) {
+                return Err(StatusCode::UNAUTHORIZED);
+            }
         }
     }
 
-    // Extract branch name from ref (e.g. "refs/heads/main" → "main").
     let branch = payload
         .git_ref
         .strip_prefix("refs/heads/")
-        .ok_or(StatusCode::OK)?; // tag pushes etc — just acknowledge
+        .ok_or(StatusCode::OK)?;
 
-    // Insert commits from the push payload.
-    // GitHub sends commits in chronological order; each has its parent in the
-    // array or as `before` for the first one.
     for (i, commit) in payload.commits.iter().enumerate() {
         let parent_sha = if i == 0 {
-            // First commit's parent is `before` (the previous HEAD).
             if payload.before.starts_with("0000000") {
-                None // new branch, no parent
+                None
             } else {
                 Some(payload.before.as_str())
             }
@@ -174,13 +195,11 @@ pub async fn post_github_webhook(
         .bind(author)
         .bind(message)
         .bind(timestamp)
-        .execute(&pool)
+        .execute(&state.pool)
         .await
         .map_err(ise)?;
     }
 
-    // If the commits array is empty (force-push with no new commits), still
-    // ensure the `after` commit exists.
     if payload.commits.is_empty() && !payload.after.starts_with("0000000") {
         let short_sha: String = payload.after.chars().take(7).collect();
         let parent_sha = if payload.before.starts_with("0000000") {
@@ -198,12 +217,11 @@ pub async fn post_github_webhook(
         .bind(&payload.after)
         .bind(&short_sha)
         .bind(parent_sha)
-        .execute(&pool)
+        .execute(&state.pool)
         .await
         .map_err(ise)?;
     }
 
-    // Upsert branch head (skip for branch deletions where after is all zeros).
     if !payload.after.starts_with("0000000") {
         sqlx::query(
             "INSERT INTO branches (repo_id, name, head_sha, updated_at) \
@@ -215,15 +233,14 @@ pub async fn post_github_webhook(
         .bind(repo_id)
         .bind(branch)
         .bind(&payload.after)
-        .execute(&pool)
+        .execute(&state.pool)
         .await
         .map_err(ise)?;
     } else {
-        // Branch deletion — remove the branch row.
         sqlx::query("DELETE FROM branches WHERE repo_id = $1 AND name = $2")
             .bind(repo_id)
             .bind(branch)
-            .execute(&pool)
+            .execute(&state.pool)
             .await
             .map_err(ise)?;
     }
@@ -235,6 +252,50 @@ pub async fn post_github_webhook(
         commits = payload.commits.len(),
         "processed github push webhook"
     );
+
+    Ok(StatusCode::OK)
+}
+
+async fn handle_installation_event(
+    state: &AppState,
+    body: &[u8],
+) -> ApiResult<StatusCode> {
+    let event: InstallationEvent =
+        serde_json::from_slice(body).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let id = event.installation.id;
+    let login = &event.installation.account.login;
+    let acct_type = &event.installation.account.account_type;
+
+    match event.action.as_str() {
+        "created" => {
+            github_app::upsert_installation(&state.pool, id, login, acct_type)
+                .await
+                .map_err(ise)?;
+            tracing::info!(id, login, "installation created via webhook");
+        }
+        "deleted" => {
+            github_app::delete_installation(&state.pool, id)
+                .await
+                .map_err(ise)?;
+            tracing::info!(id, login, "installation deleted via webhook");
+        }
+        "suspend" => {
+            github_app::suspend_installation(&state.pool, id)
+                .await
+                .map_err(ise)?;
+            tracing::info!(id, login, "installation suspended via webhook");
+        }
+        "unsuspend" => {
+            github_app::upsert_installation(&state.pool, id, login, acct_type)
+                .await
+                .map_err(ise)?;
+            tracing::info!(id, login, "installation unsuspended via webhook");
+        }
+        _ => {
+            tracing::debug!(id, action = %event.action, "unhandled installation action");
+        }
+    }
 
     Ok(StatusCode::OK)
 }

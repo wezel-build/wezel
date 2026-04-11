@@ -179,6 +179,32 @@ async fn migrate(pool: &PgPool) -> sqlx::Result<()> {
             computed_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
             UNIQUE (project_id, experiment_name, commit_id, name)
         );
+        CREATE TABLE IF NOT EXISTS github_app_config (
+            id              BIGSERIAL PRIMARY KEY,
+            app_id          BIGINT NOT NULL,
+            app_slug        TEXT NOT NULL,
+            client_id       TEXT NOT NULL,
+            client_secret   TEXT NOT NULL,
+            pem             TEXT NOT NULL,
+            webhook_secret  TEXT NOT NULL,
+            github_host     TEXT NOT NULL DEFAULT 'github.com',
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE TABLE IF NOT EXISTS github_app_installations (
+            id                  BIGSERIAL PRIMARY KEY,
+            installation_id     BIGINT NOT NULL UNIQUE,
+            account_login       TEXT NOT NULL,
+            account_type        TEXT NOT NULL DEFAULT 'Organization',
+            suspended_at        TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE TABLE IF NOT EXISTS github_installation_tokens (
+            installation_id  BIGINT NOT NULL REFERENCES github_app_installations(installation_id),
+            token            TEXT NOT NULL,
+            expires_at       TIMESTAMPTZ NOT NULL,
+            PRIMARY KEY (installation_id)
+        );
         ",
     )
     .execute(pool)
