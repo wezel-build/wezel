@@ -73,8 +73,7 @@ export interface AuthConfig {
 
 export const authApi = {
   me: (): Promise<AuthUser> => get<AuthUser>(`${BASE}/auth/me`),
-  config: (): Promise<AuthConfig> =>
-    get<AuthConfig>(`${BASE}/auth/config`),
+  config: (): Promise<AuthConfig> => get<AuthConfig>(`${BASE}/auth/config`),
   logout: (): Promise<void> =>
     fetch(`${BASE}/auth/logout`, {
       method: "POST",
@@ -90,7 +89,10 @@ export interface ManifestResponse {
 }
 
 export const setupApi = {
-  getManifest: (githubHost: string, publicUrl: string): Promise<ManifestResponse> =>
+  getManifest: (
+    githubHost: string,
+    publicUrl: string,
+  ): Promise<ManifestResponse> =>
     post<ManifestResponse>(`${BASE}/api/setup/github-app/manifest`, {
       github_host: githubHost,
       public_url: publicUrl,
