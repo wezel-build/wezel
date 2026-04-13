@@ -88,8 +88,7 @@ fn load(project_config_path: &Path) -> Option<Config> {
     let name = project_toml.name.clone();
 
     // Merge the remaining (mergeable) fields via figment.
-    let mut figment = Figment::new()
-        .merge(Serialized::default("username", whoami::username()));
+    let mut figment = Figment::new().merge(Serialized::default("username", whoami::username()));
 
     let global_path = global_config_path();
     if global_path.is_file() {

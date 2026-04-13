@@ -36,8 +36,8 @@ impl Config {
         }
         let raw = std::fs::read_to_string(&config_path)
             .with_context(|| format!("reading {}", config_path.display()))?;
-        let resolved: ProjectConfig = toml::from_str(&raw)
-            .with_context(|| format!("parsing {}", config_path.display()))?;
+        let resolved: ProjectConfig =
+            toml::from_str(&raw).with_context(|| format!("parsing {}", config_path.display()))?;
         let server_url = resolved
             .server_url
             .filter(|s| !s.is_empty())

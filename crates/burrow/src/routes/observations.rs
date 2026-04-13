@@ -330,18 +330,16 @@ pub async fn ingest_events(
                 .map_err(ise)?
             {
                 Some((id,)) => id,
-                None => {
-                    sqlx::query_as::<_, IdRow>(
-                        "INSERT INTO projects (uuid, name, upstream) VALUES ($1, $2, $3) RETURNING id",
-                    )
-                    .bind(project_uuid)
-                    .bind(name)
-                    .bind(upstream)
-                    .fetch_one(&pool)
-                    .await
-                    .map_err(ise)?
-                    .id
-                }
+                None => sqlx::query_as::<_, IdRow>(
+                    "INSERT INTO projects (uuid, name, upstream) VALUES ($1, $2, $3) RETURNING id",
+                )
+                .bind(project_uuid)
+                .bind(name)
+                .bind(upstream)
+                .fetch_one(&pool)
+                .await
+                .map_err(ise)?
+                .id,
             }
         } else {
             match sqlx::query_as::<_, (i64,)>("SELECT id FROM projects WHERE upstream = $1")
@@ -351,18 +349,16 @@ pub async fn ingest_events(
                 .map_err(ise)?
             {
                 Some((id,)) => id,
-                None => {
-                    sqlx::query_as::<_, IdRow>(
-                        "INSERT INTO projects (uuid, name, upstream) VALUES ($1, $2, $3) RETURNING id",
-                    )
-                    .bind(uuid::Uuid::new_v4().to_string())
-                    .bind(name)
-                    .bind(upstream)
-                    .fetch_one(&pool)
-                    .await
-                    .map_err(ise)?
-                    .id
-                }
+                None => sqlx::query_as::<_, IdRow>(
+                    "INSERT INTO projects (uuid, name, upstream) VALUES ($1, $2, $3) RETURNING id",
+                )
+                .bind(uuid::Uuid::new_v4().to_string())
+                .bind(name)
+                .bind(upstream)
+                .fetch_one(&pool)
+                .await
+                .map_err(ise)?
+                .id,
             }
         };
 
