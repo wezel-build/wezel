@@ -13,8 +13,10 @@ pub struct GlobalConfig {
 }
 
 /// Fields valid in `.wezel/config.toml` (project scope).
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectConfig {
+    /// Stable project identity (generated once by `wezel setup`).
+    pub project_id: uuid::Uuid,
     pub server_url: Option<String>,
     pub username: Option<String>,
     /// Override where pheromone binaries are stored (default: `{exe_dir}/pheromones/`).
@@ -29,6 +31,7 @@ pub struct ProjectConfig {
 /// Fully resolved configuration after merging all layers.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
+    pub project_id: uuid::Uuid,
     pub server_url: String,
     pub username: String,
     /// Where pheromone binaries live.
@@ -70,35 +73,33 @@ pub fn discover(start: &Path) -> Option<(PathBuf, Config)> {
 ///   2. `~/.wezel/config.toml`  (global — username only)
 ///   3. project `.wezel/config.toml` (server_url + username)
 ///
-/// Returns `None` if `server_url` ends up missing.
+/// `project_id` is read directly from the project config — it is never
+/// inherited from the global config or defaults.
+///
+/// Returns `None` if `project_id` or `server_url` is missing.
 fn load(project_config_path: &Path) -> Option<Config> {
-    let defaults = ProjectConfig {
-        server_url: None,
-        username: Some(whoami::username()),
-        pheromone_dir: None,
-        queue_dir: None,
-        registries: None,
-    };
+    let project_raw = fs::read_to_string(project_config_path).ok()?;
+    // project_id is not mergeable — read it straight from the project file.
+    let project_toml: ProjectConfig = toml::from_str(&project_raw).ok()?;
+    let project_id = project_toml.project_id;
 
-    let mut figment = Figment::new().merge(Serialized::defaults(defaults));
+    // Merge the remaining (mergeable) fields via figment.
+    let mut figment = Figment::new()
+        .merge(Serialized::default("username", whoami::username()));
 
-    // Layer the global config if it exists.
     let global_path = global_config_path();
     if global_path.is_file() {
         log::debug!("merging global config from {}", global_path.display());
-        // Read as GlobalConfig first so we only pick up valid global keys.
         if let Ok(contents) = fs::read_to_string(&global_path)
             && let Ok(global) = toml::from_str::<GlobalConfig>(&contents)
         {
-            // Only merge username (the only global-scoped key).
             if let Some(ref u) = global.username {
                 figment = figment.merge(Serialized::default("username", u));
             }
         }
     }
 
-    // Layer the project config on top.
-    figment = figment.merge(Toml::file(project_config_path));
+    figment = figment.merge(Toml::string(&project_raw));
 
     let resolved: ProjectConfig = figment.extract().ok()?;
 
@@ -108,6 +109,7 @@ fn load(project_config_path: &Path) -> Option<Config> {
     }
 
     Some(Config {
+        project_id,
         server_url,
         username: resolved
             .username
