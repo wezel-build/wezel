@@ -17,6 +17,8 @@ pub struct GlobalConfig {
 pub struct ProjectConfig {
     /// Stable project identity (generated once by `wezel setup`).
     pub project_id: uuid::Uuid,
+    /// Human-readable project name.
+    pub name: String,
     pub server_url: Option<String>,
     pub username: Option<String>,
     /// Override where pheromone binaries are stored (default: `{exe_dir}/pheromones/`).
@@ -32,6 +34,7 @@ pub struct ProjectConfig {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub project_id: uuid::Uuid,
+    pub name: String,
     pub server_url: String,
     pub username: String,
     /// Where pheromone binaries live.
@@ -82,6 +85,7 @@ fn load(project_config_path: &Path) -> Option<Config> {
     // project_id is not mergeable — read it straight from the project file.
     let project_toml: ProjectConfig = toml::from_str(&project_raw).ok()?;
     let project_id = project_toml.project_id;
+    let name = project_toml.name.clone();
 
     // Merge the remaining (mergeable) fields via figment.
     let mut figment = Figment::new()
@@ -110,6 +114,7 @@ fn load(project_config_path: &Path) -> Option<Config> {
 
     Some(Config {
         project_id,
+        name,
         server_url,
         username: resolved
             .username

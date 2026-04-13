@@ -13,35 +13,73 @@ fn config_path() -> PathBuf {
     dot_wezel().join("config.toml")
 }
 
-pub fn setup_cmd(server_url: Option<&str>) -> anyhow::Result<()> {
-    let path = config_path();
-
-    if path.exists() {
-        anyhow::bail!(
-            ".wezel/config.toml already exists in this directory. \
-             Edit it directly or remove it first."
-        );
-    }
-
+fn create_config(server_url: Option<&str>) -> anyhow::Result<ProjectConfig> {
     let server_url = match server_url {
         Some(url) => url.to_string(),
         None => prompt_server_url()?,
     };
 
-    let config = ProjectConfig {
+    let default_name = std::env::current_dir()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
+
+    let mut prompt = dialoguer::Input::<String>::new().with_prompt("Project name");
+    if let Some(ref d) = default_name {
+        prompt = prompt.default(d.clone());
+    }
+    let name: String = prompt.interact_text()?;
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        anyhow::bail!("project name cannot be empty");
+    }
+
+    Ok(ProjectConfig {
         project_id: uuid::Uuid::new_v4(),
+        name,
         server_url: Some(server_url),
         username: None,
         pheromone_dir: None,
         queue_dir: None,
         registries: None,
+    })
+}
+
+pub fn setup_cmd(server_url: Option<&str>) -> anyhow::Result<()> {
+    let path = config_path();
+
+    let config = if path.exists() {
+        let raw = fs::read_to_string(&path)?;
+        let config: ProjectConfig = toml::from_str(&raw)?;
+        println!("Using existing {}", path.display());
+        config
+    } else {
+        let config = create_config(server_url)?;
+        let contents = toml::to_string_pretty(&config)?;
+        fs::create_dir_all(dot_wezel())?;
+        fs::write(&path, &contents)?;
+        println!("Created {}", path.display());
+        config
     };
 
-    let contents = toml::to_string_pretty(&config)?;
-    fs::create_dir_all(dot_wezel())?;
-    fs::write(&path, &contents)?;
+    // Register the project with the server.
+    let Some(ref server_url) = config.server_url else {
+        anyhow::bail!("server_url not set in config");
+    };
+    let upstream = crate::detect_upstream().unwrap_or_default();
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+    match agent
+        .post(&format!("{server_url}/api/project"))
+        .send_json(serde_json::json!({
+            "uuid": config.project_id.to_string(),
+            "name": config.name,
+            "upstream": upstream,
+        })) {
+        Ok(_) => println!("Registered project with {server_url}"),
+        Err(e) => log::warn!("Failed to register project with server: {e}"),
+    }
 
-    println!("Created {}", path.display());
     Ok(())
 }
 

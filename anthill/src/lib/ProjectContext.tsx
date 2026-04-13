@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import type { Project } from "./data";
 import { api } from "./api";
@@ -35,26 +35,6 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     setCurrentRaw(p);
   };
 
-  const addProject = useCallback(
-    async (name: string, upstream: string): Promise<Project> => {
-      const created = await api.createProject(name, upstream);
-      setProjects((prev) => [...prev, created]);
-      setCurrent(created);
-      return created;
-    },
-    [],
-  );
-
-  const renameProject = useCallback(
-    async (id: number, name: string): Promise<Project> => {
-      const updated = await api.renameProject(id, name);
-      setProjects((prev) => prev.map((p) => (p.id === id ? updated : p)));
-      setCurrentRaw((prev) => (prev?.id === id ? updated : prev));
-      return updated;
-    },
-    [],
-  );
-
   const pApi = useMemo(
     () => (current ? api.forProject(current.id) : nullApi),
     [current],
@@ -74,8 +54,6 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         projects,
         current,
         setCurrent,
-        addProject,
-        renameProject,
         loaded,
         pApi,
       }}

@@ -1,15 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  GitCommit,
-  ChevronDown,
-  Plus,
-  Pencil,
-  Check,
-  X,
-  LogOut,
-  Settings,
-} from "lucide-react";
+import { GitCommit, ChevronDown, LogOut, Settings } from "lucide-react";
 import { ThemeCtx, THEMES, THEME_ORDER, type ThemeKey } from "./lib/theme";
 import { useOverview } from "./lib/hooks";
 import { useProject } from "./lib/useProject";
@@ -50,47 +41,13 @@ export default function Shell() {
     root.style.setProperty("--c-cyan", themeColors.cyan);
   }, [themeColors]);
 
-  const { projects, current, setCurrent, loaded, renameProject } = useProject();
+  const { projects, current, setCurrent, loaded } = useProject();
 
   useEffect(() => {
     document.title = current ? `wezel · ${current.name}` : "wezel";
   }, [current]);
   const [projectOpen, setProjectOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
-  const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
-  const [renameValue, setRenameValue] = useState("");
-  const renameInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editingProjectId !== null) {
-      renameInputRef.current?.focus();
-      renameInputRef.current?.select();
-    }
-  }, [editingProjectId]);
-
-  const startRename = useCallback((p: { id: number; name: string }) => {
-    setEditingProjectId(p.id);
-    setRenameValue(p.name);
-  }, []);
-
-  const commitRename = useCallback(
-    async (id: number) => {
-      const trimmed = renameValue.trim();
-      if (trimmed) {
-        try {
-          await renameProject(id, trimmed);
-        } catch (e) {
-          console.error("renameProject failed:", e);
-        }
-      }
-      setEditingProjectId(null);
-    },
-    [renameValue, renameProject],
-  );
-
-  const cancelRename = useCallback(() => {
-    setEditingProjectId(null);
-  }, []);
 
   useEffect(() => {
     if (
@@ -156,89 +113,31 @@ export default function Shell() {
                   {projectOpen && (
                     <div className="absolute top-[calc(100%+4px)] left-0 bg-surface border border-[var(--c-border)] rounded-md py-[4px] z-[100] min-w-[200px] shadow-[0_4px_12px_rgba(0,0,0,0.3)]">
                       {projects.map((p) => (
-                        <div
+                        <button
                           key={p.id}
-                          className="flex items-center"
+                          onClick={() => {
+                            setCurrent(p);
+                            setProjectOpen(false);
+                            navigate(`/project/${p.id}`);
+                          }}
+                          className="block w-full text-left bg-transparent border-none cursor-pointer py-[6px] pr-[8px] pl-[12px] font-mono text-xs"
                           style={{
+                            color:
+                              p.id === current?.id
+                                ? "var(--c-accent)"
+                                : "var(--c-text)",
                             background:
                               p.id === current?.id
                                 ? "var(--c-surface2)"
                                 : "transparent",
                           }}
                         >
-                          {editingProjectId === p.id ? (
-                            <div className="flex items-center gap-[4px] flex-1 py-[4px] pr-[8px] pl-[12px]">
-                              <input
-                                ref={renameInputRef}
-                                value={renameValue}
-                                onChange={(e) => setRenameValue(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") commitRename(p.id);
-                                  if (e.key === "Escape") cancelRename();
-                                }}
-                                className="flex-1 bg-bg border border-[var(--c-accent)] rounded-[3px] text-fg font-mono text-xs font-semibold px-[5px] py-[2px] outline-none min-w-0"
-                              />
-                              <button
-                                onClick={() => commitRename(p.id)}
-                                title="Save"
-                                className="bg-transparent border-none cursor-pointer text-accent p-[2px] flex"
-                              >
-                                <Check size={12} />
-                              </button>
-                              <button
-                                onClick={cancelRename}
-                                title="Cancel"
-                                className="bg-transparent border-none cursor-pointer text-dim p-[2px] flex"
-                              >
-                                <X size={12} />
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => {
-                                  setCurrent(p);
-                                  setProjectOpen(false);
-                                  navigate(`/project/${p.id}`);
-                                }}
-                                className="block flex-1 text-left bg-transparent border-none cursor-pointer py-[6px] pr-[8px] pl-[12px] font-mono text-xs"
-                                style={{
-                                  color:
-                                    p.id === current?.id
-                                      ? "var(--c-accent)"
-                                      : "var(--c-text)",
-                                }}
-                              >
-                                <div className="font-semibold">{p.name}</div>
-                                <div className="text-[10px] text-dim mt-[1px]">
-                                  {p.upstream}
-                                </div>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  startRename(p);
-                                }}
-                                title="Rename"
-                                className="bg-transparent border-none cursor-pointer text-dim px-[8px] flex self-stretch items-center opacity-60"
-                              >
-                                <Pencil size={11} />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                      <div className="border-t border-[var(--c-border)] py-[4px]">
-                        <button
-                          onClick={() => {
-                            setProjectOpen(false);
-                            navigate("/projects/create");
-                          }}
-                          className="flex items-center gap-[6px] w-full text-left bg-transparent border-none cursor-pointer py-[6px] px-[12px] text-dim font-mono text-[11px]"
-                        >
-                          <Plus size={12} /> New project
+                          <div className="font-semibold">{p.name}</div>
+                          <div className="text-[10px] text-dim mt-[1px]">
+                            {p.upstream}
+                          </div>
                         </button>
-                      </div>
+                      ))}
                     </div>
                   )}
                 </div>
