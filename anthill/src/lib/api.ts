@@ -158,10 +158,6 @@ export const api = {
   repos: () => get<Repo[]>("/api/repo"),
   githubRepos: () => get<GithubRepoEntry[]>("/api/github/repos"),
   projects: () => get<Project[]>("/api/project"),
-  createProject: (name: string, upstream: string) =>
-    post<Project>("/api/project", { name, upstream }),
-  renameProject: (id: number, name: string) =>
-    patch<Project>(`/api/project/${id}`, { name }),
   forProject: projectApi,
   pheromones: () => get<Pheromone[]>("/api/pheromones"),
   enqueueForagerJob: (

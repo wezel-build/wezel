@@ -47,6 +47,17 @@ pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>)
         Err(e) => return ise(e).into_response(),
     };
 
+    // If a project with this UUID already exists, return it.
+    if let Ok(Some(existing)) = sqlx::query_as::<_, Project>(
+        "SELECT id, repo_id, uuid, name, subdir, upstream FROM projects WHERE uuid = $1",
+    )
+    .bind(uuid)
+    .fetch_optional(&pool)
+    .await
+    {
+        return (StatusCode::OK, Json(existing)).into_response();
+    }
+
     match sqlx::query_as::<_, Project>(
         "INSERT INTO projects (repo_id, uuid, name, upstream) \
          VALUES ($1, $2, $3, $4) \
@@ -60,15 +71,6 @@ pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>)
     .await
     {
         Ok(project) => (StatusCode::CREATED, Json(project)).into_response(),
-        Err(sqlx::Error::Database(db_err))
-            if db_err.constraint() == Some("projects_repo_id_name_key") =>
-        {
-            (
-                StatusCode::CONFLICT,
-                format!("A project named \"{name}\" already exists for this repo"),
-            )
-                .into_response()
-        }
         Err(e) => ise(e).into_response(),
     }
 }

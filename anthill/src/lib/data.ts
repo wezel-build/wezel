@@ -21,6 +21,7 @@ export interface WebhookSetup {
 export interface Project {
   id: number;
   repo_id: number;
+  uuid: string;
   name: string;
   upstream: string;
 }

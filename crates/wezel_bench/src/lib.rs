@@ -17,12 +17,14 @@ use wezel_types::{Aggregation, ExperimentDef, ForagerPluginEnvelope, StepDef, Su
 #[derive(Debug, Deserialize)]
 struct ProjectConfig {
     pub project_id: uuid::Uuid,
+    pub name: String,
     pub server_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub project_id: uuid::Uuid,
+    pub name: String,
     pub server_url: String,
 }
 
@@ -42,6 +44,7 @@ impl Config {
             .with_context(|| format!("server_url not set in {}", config_path.display()))?;
         Ok(Config {
             project_id: resolved.project_id,
+            name: resolved.name,
             server_url,
         })
     }
