@@ -9,20 +9,20 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use figment::Figment;
-use figment::providers::{Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
 use wezel_types::{Aggregation, ExperimentDef, ForagerPluginEnvelope, StepDef, SummaryDef};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 struct ProjectConfig {
+    pub project_id: uuid::Uuid,
     pub server_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
+    pub project_id: uuid::Uuid,
     pub server_url: String,
 }
 
@@ -32,17 +32,18 @@ impl Config {
         if !config_path.is_file() {
             bail!("no .wezel/config.toml found at {}", config_path.display());
         }
-        let defaults = ProjectConfig { server_url: None };
-        let resolved: ProjectConfig = Figment::new()
-            .merge(Serialized::defaults(defaults))
-            .merge(Toml::file(&config_path))
-            .extract()
-            .with_context(|| format!("loading config from {}", config_path.display()))?;
+        let raw = std::fs::read_to_string(&config_path)
+            .with_context(|| format!("reading {}", config_path.display()))?;
+        let resolved: ProjectConfig = toml::from_str(&raw)
+            .with_context(|| format!("parsing {}", config_path.display()))?;
         let server_url = resolved
             .server_url
             .filter(|s| !s.is_empty())
             .with_context(|| format!("server_url not set in {}", config_path.display()))?;
-        Ok(Config { server_url })
+        Ok(Config {
+            project_id: resolved.project_id,
+            server_url,
+        })
     }
 }
 

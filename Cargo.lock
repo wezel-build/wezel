@@ -3159,6 +3159,7 @@ checksum = "b672338555252d43fd2240c714dc444b8c6fb0a5c5335e65a07bba7742735ddb"
 dependencies = [
  "getrandom 0.4.1",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 
@@ -3346,7 +3347,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs",
- "figment",
  "flate2",
  "log",
  "owo-colors",

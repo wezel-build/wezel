@@ -25,7 +25,7 @@ serde_json = "1"
 toml = "0.8"
 figment = { version = "0.10", features = ["toml"] }
 wezel_types = { path = "crates/wezel_types" }
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 whoami = "1"
 ureq = { version = "2", features = ["json"] }
 hex = "0.4"

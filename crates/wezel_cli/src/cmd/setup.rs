@@ -29,6 +29,7 @@ pub fn setup_cmd(server_url: Option<&str>) -> anyhow::Result<()> {
     };
 
     let config = ProjectConfig {
+        project_id: uuid::Uuid::new_v4(),
         server_url: Some(server_url),
         username: None,
         pheromone_dir: None,
