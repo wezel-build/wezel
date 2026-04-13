@@ -29,9 +29,8 @@ export default function NewProjectPage() {
             wezel setup
           </pre>
           <p className="text-[10px] font-mono text-dim m-0 mt-[6px]">
-            This creates{" "}
-            <code className="text-mid">.wezel/config.toml</code> with a
-            stable project ID and registers it with this server.
+            This creates <code className="text-mid">.wezel/config.toml</code>{" "}
+            with a stable project ID and registers it with this server.
           </p>
         </div>
 
