@@ -404,6 +404,8 @@ impl PheromoneOutput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildEvent {
+    /// Stable project UUID from `.wezel/config.toml`.
+    pub project_id: uuid::Uuid,
     /// Upstream project identifier (e.g. "github.com/user/repo").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upstream: Option<String>,

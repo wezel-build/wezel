@@ -26,6 +26,7 @@ pub struct RepoJson {
 pub struct Project {
     pub id: i64,
     pub repo_id: i64,
+    pub uuid: String,
     pub name: String,
     pub subdir: String,
     pub upstream: String,

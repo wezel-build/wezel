@@ -9,8 +9,13 @@ use sqlx::PgPool;
 use crate::models::{ForagerQueueJobStatus, IdRow};
 use crate::{ApiResult, ise};
 
-/// Find or create a repo + project from an upstream URL, returning (repo_id, project_id).
-async fn find_or_create_project(pool: &PgPool, upstream: &str) -> Result<(i64, i64), StatusCode> {
+/// Find or create a repo + project from an upstream URL and project UUID,
+/// returning (repo_id, project_id).
+async fn find_or_create_project(
+    pool: &PgPool,
+    upstream: &str,
+    project_uuid: &str,
+) -> Result<(i64, i64), StatusCode> {
     let upstream = &crate::github::normalize_upstream(upstream);
     let project_name = upstream.rsplit('/').next().unwrap_or(upstream);
 
@@ -32,21 +37,21 @@ async fn find_or_create_project(pool: &PgPool, upstream: &str) -> Result<(i64, i
         }
     };
 
-    // Find or create project.
+    // Find by UUID first, then fall back to creating.
     let project_id: i64 =
-        match sqlx::query_as::<_, (i64,)>(
-            "SELECT id FROM projects WHERE repo_id = $1 AND subdir = ''",
-        )
-        .bind(repo_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(ise)?
+        match sqlx::query_as::<_, (i64,)>("SELECT id FROM projects WHERE uuid = $1")
+            .bind(project_uuid)
+            .fetch_optional(pool)
+            .await
+            .map_err(ise)?
         {
             Some((id,)) => id,
             None => sqlx::query_as::<_, IdRow>(
-                "INSERT INTO projects (repo_id, name, upstream) VALUES ($1, $2, $3) RETURNING id",
+                "INSERT INTO projects (repo_id, uuid, name, upstream) \
+                 VALUES ($1, $2, $3, $4) RETURNING id",
             )
             .bind(repo_id)
+            .bind(project_uuid)
             .bind(project_name)
             .bind(upstream)
             .fetch_one(pool)
@@ -555,6 +560,7 @@ async fn enqueue_midpoint(
 #[derive(Deserialize)]
 pub struct ForagerEnqueueBody {
     project_upstream: String,
+    project_uuid: String,
     commit_sha: String,
     experiment_name: String,
 }
@@ -571,7 +577,13 @@ pub async fn post_forager_jobs(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let (_repo_id, project_id) = find_or_create_project(&pool, upstream).await?;
+    let project_uuid = body.project_uuid.trim();
+    if project_uuid.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let (_repo_id, project_id) =
+        find_or_create_project(&pool, upstream, project_uuid).await?;
 
     // Return existing pending/running job if one already exists.
     if let Some((id, status)) = sqlx::query_as::<_, (i64, String)>(

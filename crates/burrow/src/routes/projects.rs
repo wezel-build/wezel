@@ -20,6 +20,9 @@ pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>)
     let Some(upstream_raw) = body["upstream"].as_str() else {
         return StatusCode::BAD_REQUEST.into_response();
     };
+    let Some(uuid) = body["uuid"].as_str() else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
     let upstream = crate::github::normalize_upstream(upstream_raw);
     let upstream = upstream.as_str();
 
@@ -45,11 +48,12 @@ pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>)
     };
 
     match sqlx::query_as::<_, Project>(
-        "INSERT INTO projects (repo_id, name, upstream) \
-         VALUES ($1, $2, $3) \
-         RETURNING id, repo_id, name, subdir, upstream",
+        "INSERT INTO projects (repo_id, uuid, name, upstream) \
+         VALUES ($1, $2, $3, $4) \
+         RETURNING id, repo_id, uuid, name, subdir, upstream",
     )
     .bind(repo_id)
+    .bind(uuid)
     .bind(name)
     .bind(upstream)
     .fetch_one(&pool)
@@ -71,7 +75,7 @@ pub async fn create_project(State(pool): State<PgPool>, Json(body): Json<Value>)
 
 pub async fn get_projects(State(pool): State<PgPool>) -> ApiResult<Json<Vec<Project>>> {
     let projects = sqlx::query_as::<_, Project>(
-        "SELECT id, repo_id, name, subdir, upstream FROM projects ORDER BY id",
+        "SELECT id, repo_id, uuid, name, subdir, upstream FROM projects ORDER BY id",
     )
     .fetch_all(&pool)
     .await
@@ -87,7 +91,7 @@ pub async fn rename_project(
     let name = body["name"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
     let project = sqlx::query_as::<_, Project>(
         "UPDATE projects SET name = $1 WHERE id = $2 \
-         RETURNING id, repo_id, name, subdir, upstream",
+         RETURNING id, repo_id, uuid, name, subdir, upstream",
     )
     .bind(name)
     .bind(project_id)
@@ -183,7 +187,7 @@ pub async fn post_experiment_pr(
     Json(body): Json<ExperimentPrBody>,
 ) -> ApiResult<Json<ExperimentPrResponse>> {
     let project = sqlx::query_as::<_, Project>(
-        "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
+        "SELECT id, repo_id, uuid, name, subdir, upstream FROM projects WHERE id = $1",
     )
     .bind(project_id)
     .fetch_optional(&state.pool)

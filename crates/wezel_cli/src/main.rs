@@ -193,6 +193,7 @@ fn flush_in_background(
         .unwrap_or_else(|| "cargo".to_string());
 
     let event = BuildEvent {
+        project_id: config.project_id,
         upstream: detect_upstream(),
         commit: detect_commit(),
         cwd: cwd.display().to_string(),

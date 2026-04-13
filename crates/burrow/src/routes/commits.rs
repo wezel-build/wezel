@@ -256,7 +256,7 @@ pub async fn get_project_github_commit(
     State(state): State<AppState>,
 ) -> ApiResult<Json<GithubCommitJson>> {
     let project = sqlx::query_as::<_, Project>(
-        "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
+        "SELECT id, repo_id, uuid, name, subdir, upstream FROM projects WHERE id = $1",
     )
     .bind(project_id)
     .fetch_optional(&state.pool)
@@ -300,7 +300,7 @@ pub async fn schedule_project_commit(
     }
 
     let project = sqlx::query_as::<_, Project>(
-        "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
+        "SELECT id, repo_id, uuid, name, subdir, upstream FROM projects WHERE id = $1",
     )
     .bind(project_id)
     .fetch_optional(&state.pool)
