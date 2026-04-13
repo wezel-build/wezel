@@ -46,18 +46,20 @@ async fn find_or_create_project(
             .map_err(ise)?
         {
             Some((id,)) => id,
-            None => sqlx::query_as::<_, IdRow>(
-                "INSERT INTO projects (repo_id, uuid, name, upstream) \
+            None => {
+                sqlx::query_as::<_, IdRow>(
+                    "INSERT INTO projects (repo_id, uuid, name, upstream) \
                  VALUES ($1, $2, $3, $4) RETURNING id",
-            )
-            .bind(repo_id)
-            .bind(project_uuid)
-            .bind(project_name)
-            .bind(upstream)
-            .fetch_one(pool)
-            .await
-            .map_err(ise)?
-            .id,
+                )
+                .bind(repo_id)
+                .bind(project_uuid)
+                .bind(project_name)
+                .bind(upstream)
+                .fetch_one(pool)
+                .await
+                .map_err(ise)?
+                .id
+            }
         };
 
     Ok((repo_id, project_id))
@@ -582,8 +584,7 @@ pub async fn post_forager_jobs(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let (_repo_id, project_id) =
-        find_or_create_project(&pool, upstream, project_uuid).await?;
+    let (_repo_id, project_id) = find_or_create_project(&pool, upstream, project_uuid).await?;
 
     // Return existing pending/running job if one already exists.
     if let Some((id, status)) = sqlx::query_as::<_, (i64, String)>(
