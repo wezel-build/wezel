@@ -95,10 +95,9 @@ fn load(project_config_path: &Path) -> Option<Config> {
         log::debug!("merging global config from {}", global_path.display());
         if let Ok(contents) = fs::read_to_string(&global_path)
             && let Ok(global) = toml::from_str::<GlobalConfig>(&contents)
+            && let Some(ref u) = global.username
         {
-            if let Some(ref u) = global.username {
-                figment = figment.merge(Serialized::default("username", u));
-            }
+            figment = figment.merge(Serialized::default("username", u));
         }
     }
 
