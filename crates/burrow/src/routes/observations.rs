@@ -318,7 +318,32 @@ pub async fn ingest_events(
 
         // Find or create project.
         let name = upstream.rsplit('/').next().unwrap_or(upstream);
-        let project_id: i64 =
+        let project_uuid = event
+            .get("projectId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let project_id: i64 = if !project_uuid.is_empty() {
+            match sqlx::query_as::<_, (i64,)>("SELECT id FROM projects WHERE uuid = $1")
+                .bind(project_uuid)
+                .fetch_optional(&pool)
+                .await
+                .map_err(ise)?
+            {
+                Some((id,)) => id,
+                None => {
+                    sqlx::query_as::<_, IdRow>(
+                        "INSERT INTO projects (uuid, name, upstream) VALUES ($1, $2, $3) RETURNING id",
+                    )
+                    .bind(project_uuid)
+                    .bind(name)
+                    .bind(upstream)
+                    .fetch_one(&pool)
+                    .await
+                    .map_err(ise)?
+                    .id
+                }
+            }
+        } else {
             match sqlx::query_as::<_, (i64,)>("SELECT id FROM projects WHERE upstream = $1")
                 .bind(upstream)
                 .fetch_optional(&pool)
@@ -328,8 +353,9 @@ pub async fn ingest_events(
                 Some((id,)) => id,
                 None => {
                     sqlx::query_as::<_, IdRow>(
-                        "INSERT INTO projects (name, upstream) VALUES ($1, $2) RETURNING id",
+                        "INSERT INTO projects (uuid, name, upstream) VALUES ($1, $2, $3) RETURNING id",
                     )
+                    .bind(uuid::Uuid::new_v4().to_string())
                     .bind(name)
                     .bind(upstream)
                     .fetch_one(&pool)
@@ -337,7 +363,8 @@ pub async fn ingest_events(
                     .map_err(ise)?
                     .id
                 }
-            };
+            }
+        };
 
         // Ensure user exists.
         sqlx::query("INSERT INTO users (username) VALUES ($1) ON CONFLICT (username) DO NOTHING")

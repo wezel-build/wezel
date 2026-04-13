@@ -109,7 +109,7 @@ pub async fn get_branch_timeline(
     let limit = query.limit.unwrap_or(50).clamp(1, 500);
 
     let project = sqlx::query_as::<_, Project>(
-        "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
+        "SELECT id, repo_id, uuid, name, subdir, upstream FROM projects WHERE id = $1",
     )
     .bind(project_id)
     .fetch_optional(&pool)
@@ -153,7 +153,7 @@ pub async fn get_project_compare(
     State(pool): State<PgPool>,
 ) -> ApiResult<Json<CompareResponse>> {
     let project = sqlx::query_as::<_, Project>(
-        "SELECT id, repo_id, name, subdir, upstream FROM projects WHERE id = $1",
+        "SELECT id, repo_id, uuid, name, subdir, upstream FROM projects WHERE id = $1",
     )
     .bind(project_id)
     .fetch_optional(&pool)
