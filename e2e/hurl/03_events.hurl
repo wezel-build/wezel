@@ -1,7 +1,8 @@
-# Create project for events test (events endpoint finds-or-creates by upstream)
+# Create project for events test
 POST {{base_url}}/api/project
 Content-Type: application/json
 {
+  "uuid": "00000000-0000-4000-8000-000000000002",
   "name": "e2e-events-test",
   "upstream": "github.com/e2e-test/events-test"
 }
@@ -14,6 +15,7 @@ POST {{base_url}}/api/events
 Content-Type: application/json
 [
   {
+    "projectId": "00000000-0000-4000-8000-000000000002",
     "upstream": "github.com/e2e-test/events-test",
     "commit": "abc1234",
     "user": "e2e-tester",

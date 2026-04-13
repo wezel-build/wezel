@@ -2,6 +2,7 @@
 POST {{base_url}}/api/project
 Content-Type: application/json
 {
+  "uuid": "00000000-0000-4000-8000-000000000003",
   "name": "e2e-forager-test",
   "upstream": "github.com/e2e-test/forager-test"
 }
@@ -36,6 +37,7 @@ POST {{base_url}}/api/forager/jobs
 Content-Type: application/json
 {
   "project_upstream": "github.com/e2e-test/forager-test",
+  "project_uuid": "00000000-0000-4000-8000-000000000003",
   "commit_sha": "aabbccd1234567890000000000000000000000aa",
   "experiment_name": "e2e-bench"
 }
@@ -124,6 +126,7 @@ POST {{base_url}}/api/forager/jobs
 Content-Type: application/json
 {
   "project_upstream": "github.com/e2e-test/forager-test",
+  "project_uuid": "00000000-0000-4000-8000-000000000003",
   "commit_sha": "bbccdd112345670000000000000000000000bbcc",
   "experiment_name": "e2e-bench"
 }
