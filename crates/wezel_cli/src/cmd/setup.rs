@@ -15,7 +15,7 @@ fn config_path() -> PathBuf {
 
 fn create_config(server_url: Option<&str>) -> anyhow::Result<ProjectConfig> {
     let server_url = match server_url {
-        Some(url) => url.to_string(),
+        Some(url) => Some(url.to_string()),
         None => prompt_server_url()?,
     };
 
@@ -36,11 +36,12 @@ fn create_config(server_url: Option<&str>) -> anyhow::Result<ProjectConfig> {
     Ok(ProjectConfig {
         project_id: uuid::Uuid::new_v4(),
         name,
-        server_url: Some(server_url),
+        server_url,
         username: None,
         pheromone_dir: None,
         queue_dir: None,
         registries: None,
+        data_branch: None,
     })
 }
 
@@ -61,36 +62,37 @@ pub fn setup_cmd(server_url: Option<&str>) -> anyhow::Result<()> {
         config
     };
 
-    // Register the project with the server.
-    let Some(ref server_url) = config.server_url else {
-        anyhow::bail!("server_url not set in config");
-    };
-    let upstream = crate::detect_upstream().unwrap_or_default();
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(10))
-        .build();
-    match agent
-        .post(&format!("{server_url}/api/project"))
-        .send_json(serde_json::json!({
-            "uuid": config.project_id.to_string(),
-            "name": config.name,
-            "upstream": upstream,
-        })) {
-        Ok(_) => println!("Registered project with {server_url}"),
-        Err(e) => log::warn!("Failed to register project with server: {e}"),
+    // Register the project with the server (if configured).
+    if let Some(ref server_url) = config.server_url {
+        let upstream = crate::detect_upstream().unwrap_or_default();
+        let agent = ureq::AgentBuilder::new()
+            .timeout(std::time::Duration::from_secs(10))
+            .build();
+        match agent
+            .post(&format!("{server_url}/api/project"))
+            .send_json(serde_json::json!({
+                "uuid": config.project_id.to_string(),
+                "name": config.name,
+                "upstream": upstream,
+            })) {
+            Ok(_) => println!("Registered project with {server_url}"),
+            Err(e) => log::warn!("Failed to register project with server: {e}"),
+        }
     }
 
     Ok(())
 }
 
-fn prompt_server_url() -> anyhow::Result<String> {
+fn prompt_server_url() -> anyhow::Result<Option<String>> {
     let url: String = dialoguer::Input::new()
-        .with_prompt("Server URL")
+        .with_prompt("Server URL (leave empty for standalone mode)")
+        .allow_empty(true)
         .interact_text()?;
 
     let url = url.trim().to_string();
     if url.is_empty() {
-        anyhow::bail!("server_url cannot be empty");
+        Ok(None)
+    } else {
+        Ok(Some(url))
     }
-    Ok(url)
 }

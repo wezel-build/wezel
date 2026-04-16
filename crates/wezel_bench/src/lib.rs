@@ -3,6 +3,7 @@ pub mod fetch;
 pub mod lint;
 pub mod new;
 pub mod run;
+pub mod standalone;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,13 +20,16 @@ struct ProjectConfig {
     pub project_id: uuid::Uuid,
     pub name: String,
     pub server_url: Option<String>,
+    pub data_branch: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub project_id: uuid::Uuid,
     pub name: String,
-    pub server_url: String,
+    pub server_url: Option<String>,
+    /// Branch used for standalone state storage (default: "wezel/data").
+    pub data_branch: String,
 }
 
 impl Config {
@@ -38,14 +42,19 @@ impl Config {
             .with_context(|| format!("reading {}", config_path.display()))?;
         let resolved: ProjectConfig =
             toml::from_str(&raw).with_context(|| format!("parsing {}", config_path.display()))?;
-        let server_url = resolved
-            .server_url
+        // server_url: env var takes precedence, then config file.
+        let server_url = std::env::var("WEZEL_BURROW_URL")
+            .ok()
             .filter(|s| !s.is_empty())
-            .with_context(|| format!("server_url not set in {}", config_path.display()))?;
+            .or_else(|| resolved.server_url.filter(|s| !s.is_empty()));
         Ok(Config {
             project_id: resolved.project_id,
             name: resolved.name,
             server_url,
+            data_branch: resolved
+                .data_branch
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "wezel/data".to_string()),
         })
     }
 }

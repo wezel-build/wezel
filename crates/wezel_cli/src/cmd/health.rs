@@ -47,15 +47,21 @@ pub fn health_cmd() -> anyhow::Result<()> {
                 "project config: {} ✓",
                 wezel_dir.join("config.toml").display()
             );
-            println!("  server_url: {}", config.server_url);
+            match &config.server_url {
+                Some(url) => println!("  server_url: {url}"),
+                None => println!("  server_url: (not set — standalone mode)"),
+            }
             println!("  username: {}", config.username);
+            println!("  data_branch: {}", config.data_branch);
 
             // 4. Ping server
-            println!();
-            print!("server ({}): ", config.server_url);
-            match ping_burrow(&config.server_url) {
-                Ok(()) => println!("reachable ✓"),
-                Err(e) => println!("⚠ unreachable — {e}"),
+            if let Some(ref url) = config.server_url {
+                println!();
+                print!("server ({url}): ");
+                match ping_burrow(url) {
+                    Ok(()) => println!("reachable ✓"),
+                    Err(e) => println!("⚠ unreachable — {e}"),
+                }
             }
         }
         None => {

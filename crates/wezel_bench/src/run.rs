@@ -1,10 +1,52 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use wezel_types::{ForagerRunReport, ForagerStepReport, SummaryDef};
+use serde::Serialize;
+use wezel_types::{ForagerPluginOutput, ForagerRunReport, ForagerStepReport, SummaryDef};
 
 use crate::git;
-use crate::{Config, ExperimentToml, fetch, invoke_forager, parse_experiment};
+use crate::{ExperimentToml, fetch, invoke_forager, parse_experiment};
+
+/// JSON output for `wezel experiment run --output-format json`.
+#[derive(Debug, Serialize)]
+pub struct ExperimentRunOutput {
+    pub experiment: String,
+    pub commit: String,
+    pub steps: Vec<ForagerStepReport>,
+    pub summaries: HashMap<String, SummaryValue>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SummaryValue {
+    pub value: f64,
+    pub bisect: bool,
+}
+
+/// Compute summary values from step reports using the experiment's summary definitions.
+pub fn compute_summaries(
+    step_reports: &[ForagerStepReport],
+    summary_defs: &[SummaryDef],
+) -> HashMap<String, SummaryValue> {
+    let all_measurements: Vec<&ForagerPluginOutput> =
+        step_reports.iter().flat_map(|r| &r.measurements).collect();
+    // SummaryDef::compute takes &[ForagerPluginOutput], so collect owned refs.
+    let all_owned: Vec<ForagerPluginOutput> = all_measurements.into_iter().cloned().collect();
+
+    let mut result = HashMap::new();
+    for def in summary_defs {
+        if let Some(value) = def.compute(&all_owned) {
+            result.insert(
+                def.name.clone(),
+                SummaryValue {
+                    value,
+                    bisect: def.bisect,
+                },
+            );
+        }
+    }
+    result
+}
 
 pub struct BurrowSession {
     agent: ureq::Agent,
@@ -12,12 +54,12 @@ pub struct BurrowSession {
 }
 
 impl BurrowSession {
-    pub fn from_config(config: &Config) -> Self {
+    pub fn new(server_url: &str) -> Self {
         Self {
             agent: ureq::AgentBuilder::new()
                 .timeout(std::time::Duration::from_secs(30))
                 .build(),
-            server_url: config.server_url.clone(),
+            server_url: server_url.to_string(),
         }
     }
 

@@ -28,6 +28,8 @@ pub struct ProjectConfig {
     /// List of registry URIs for experiment adapters.
     /// Each entry can be any valid URI (https://, file://, etc.).
     pub registries: Option<Vec<String>>,
+    /// Branch used for standalone state storage (default: "wezel/data").
+    pub data_branch: Option<String>,
 }
 
 /// Fully resolved configuration after merging all layers.
@@ -35,7 +37,7 @@ pub struct ProjectConfig {
 pub struct Config {
     pub project_id: uuid::Uuid,
     pub name: String,
-    pub server_url: String,
+    pub server_url: Option<String>,
     pub username: String,
     /// Where pheromone binaries live.
     pub pheromone_dir: Option<String>,
@@ -43,10 +45,12 @@ pub struct Config {
     pub queue_dir: Option<String>,
     /// Configured registry URIs.
     pub registries: Vec<String>,
+    /// Branch used for standalone state storage (default: "wezel/data").
+    pub data_branch: String,
 }
 
 /// Walk up from `start` looking for a `.wezel/config.toml`.
-/// Returns `(project_wezel_dir, merged Config)` if found **and** `server_url` is set.
+/// Returns `(project_wezel_dir, merged Config)` if found.
 pub fn discover(start: &Path) -> Option<(PathBuf, Config)> {
     log::debug!("discovering config from {}", start.display());
 
@@ -58,7 +62,7 @@ pub fn discover(start: &Path) -> Option<(PathBuf, Config)> {
             let wezel_dir = dir.join(".wezel");
             let config = load(&candidate)?;
             log::debug!(
-                "loaded config: server_url={}, username={}",
+                "loaded config: server_url={:?}, username={}",
                 config.server_url,
                 config.username,
             );
@@ -75,11 +79,12 @@ pub fn discover(start: &Path) -> Option<(PathBuf, Config)> {
 ///   1. defaults (username = whoami)
 ///   2. `~/.wezel/config.toml`  (global — username only)
 ///   3. project `.wezel/config.toml` (server_url + username)
+///   4. `WEZEL_BURROW_URL` env var (overrides config file server_url)
 ///
 /// `project_id` is read directly from the project config — it is never
 /// inherited from the global config or defaults.
 ///
-/// Returns `None` if `project_id` or `server_url` is missing.
+/// Returns `None` if `project_id` is missing.
 fn load(project_config_path: &Path) -> Option<Config> {
     let project_raw = fs::read_to_string(project_config_path).ok()?;
     // project_id is not mergeable — read it straight from the project file.
@@ -105,10 +110,11 @@ fn load(project_config_path: &Path) -> Option<Config> {
 
     let resolved: ProjectConfig = figment.extract().ok()?;
 
-    let server_url = resolved.server_url?;
-    if server_url.is_empty() {
-        return None;
-    }
+    // server_url: env var takes precedence, then config file.
+    let server_url = std::env::var("WEZEL_BURROW_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| resolved.server_url.filter(|s| !s.is_empty()));
 
     Some(Config {
         project_id,
@@ -121,6 +127,10 @@ fn load(project_config_path: &Path) -> Option<Config> {
         pheromone_dir: resolved.pheromone_dir,
         queue_dir: resolved.queue_dir,
         registries: resolved.registries.unwrap_or_default(),
+        data_branch: resolved
+            .data_branch
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "wezel/data".to_string()),
     })
 }
 
