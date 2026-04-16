@@ -532,9 +532,10 @@ fn resolve_project_dir(project_dir: Option<PathBuf>) -> PathBuf {
 
 fn make_fetcher(project_dir: &Path, auto_yes: bool) -> Box<dyn wezel_bench::fetch::PluginFetcher> {
     match wezel_bench::Config::load(project_dir) {
-        Ok(config) if config.server_url.is_some() => {
-            Box::new(fetcher::BurrowFetcher::new(config.server_url.unwrap(), auto_yes))
-        }
+        Ok(config) if config.server_url.is_some() => Box::new(fetcher::BurrowFetcher::new(
+            config.server_url.unwrap(),
+            auto_yes,
+        )),
         _ => Box::new(fetcher::GithubFetcher::new("wezel-build/wezel", auto_yes)),
     }
 }
@@ -626,12 +627,8 @@ fn main() -> ExitCode {
                     )
                 } else {
                     run_result(
-                        wezel_bench::run::run_experiment(
-                            &experiment,
-                            &project_dir,
-                            Some(&caching),
-                        )
-                        .map(|_| ()),
+                        wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&caching))
+                            .map(|_| ()),
                     )
                 }
             }
@@ -679,10 +676,7 @@ fn main() -> ExitCode {
                             Some(&caching),
                         )
                         .map(|report| {
-                            println!(
-                                "{}",
-                                serde_json::to_string_pretty(&report).unwrap()
-                            );
+                            println!("{}", serde_json::to_string_pretty(&report).unwrap());
                         }),
                     )
                 }
@@ -720,7 +714,9 @@ fn main() -> ExitCode {
                     return ExitCode::FAILURE;
                 };
                 let Some(ref server_url) = config.server_url else {
-                    eprintln!("wezel: server_url not configured (set WEZEL_BURROW_URL or add server_url to .wezel/config.toml)");
+                    eprintln!(
+                        "wezel: server_url not configured (set WEZEL_BURROW_URL or add server_url to .wezel/config.toml)"
+                    );
                     return ExitCode::FAILURE;
                 };
                 let n = queue::flush_queue(server_url);

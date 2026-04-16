@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::fetch;
 use crate::git;
-use crate::run::{self, compute_summaries, SummaryValue};
+use crate::run::{self, SummaryValue, compute_summaries};
 
 // ── State types ──────────────────────────────────────────────────────────────
 
@@ -177,14 +177,7 @@ impl<'a> DataBranch<'a> {
         // Create commit.
         let commit_sha = cmd_output(
             self.repo_dir,
-            &[
-                "commit-tree",
-                &tree_sha,
-                "-p",
-                &parent_sha,
-                "-m",
-                message,
-            ],
+            &["commit-tree", &tree_sha, "-p", &parent_sha, "-m", message],
         )?;
 
         // Push.
@@ -207,10 +200,7 @@ impl<'a> DataBranch<'a> {
         let parent_sha = cmd_output(self.repo_dir, &["rev-parse", &parent_ref])?;
 
         // Read the full tree, remove the target path.
-        let ls_output = cmd_output(
-            self.repo_dir,
-            &["ls-tree", "-r", &format!("{parent_sha}:")],
-        );
+        let ls_output = cmd_output(self.repo_dir, &["ls-tree", "-r", &format!("{parent_sha}:")]);
         // If tree listing fails, nothing to remove.
         let Ok(ls_output) = ls_output else {
             return Ok(());
@@ -220,16 +210,12 @@ impl<'a> DataBranch<'a> {
             .lines()
             .filter(|line| {
                 // Each line: <mode> <type> <sha>\t<path>
-                line.split('\t')
-                    .nth(1)
-                    .map(|p| p != path)
-                    .unwrap_or(true)
+                line.split('\t').nth(1).map(|p| p != path).unwrap_or(true)
             })
             .collect();
 
         let tree_input = filtered.join("\n");
-        let tree_sha =
-            cmd_stdin_output(self.repo_dir, &["mktree"], &format!("{tree_input}\n"))?;
+        let tree_sha = cmd_stdin_output(self.repo_dir, &["mktree"], &format!("{tree_input}\n"))?;
 
         let commit_sha = cmd_output(
             self.repo_dir,
@@ -255,10 +241,7 @@ impl<'a> DataBranch<'a> {
         // Build a tree with just this one file.
         let tree_entry = self.mktree_single(path, &blob_sha)?;
 
-        let commit_sha = cmd_output(
-            self.repo_dir,
-            &["commit-tree", &tree_entry, "-m", message],
-        )?;
+        let commit_sha = cmd_output(self.repo_dir, &["commit-tree", &tree_entry, "-m", message])?;
 
         let refspec = format!("{commit_sha}:refs/heads/{}", self.branch);
         let status = std::process::Command::new("git")
@@ -281,18 +264,12 @@ impl<'a> DataBranch<'a> {
 
     /// Build a tree that adds/replaces `path` (which may contain `/`) with the
     /// given blob, keeping everything else from `parent_sha`.
-    fn build_tree_with_file(
-        &self,
-        parent_sha: &str,
-        path: &str,
-        blob_sha: &str,
-    ) -> Result<String> {
+    fn build_tree_with_file(&self, parent_sha: &str, path: &str, blob_sha: &str) -> Result<String> {
         // Split path into directory components and filename.
         let parts: Vec<&str> = path.split('/').collect();
         if parts.len() == 1 {
             // Simple case: file at root of tree.
-            let mut entries =
-                self.read_tree_entries(&format!("{parent_sha}^{{tree}}"))?;
+            let mut entries = self.read_tree_entries(&format!("{parent_sha}^{{tree}}"))?;
             entries.retain(|e| e.name != parts[0]);
             entries.push(TreeEntry {
                 mode: "100644".to_string(),
@@ -331,7 +308,9 @@ impl<'a> DataBranch<'a> {
 
         // Find or create the subtree for the first component.
         let dir_name = path_parts[0];
-        let existing_subtree = entries.iter().find(|e| e.name == dir_name && e.kind == "tree");
+        let existing_subtree = entries
+            .iter()
+            .find(|e| e.name == dir_name && e.kind == "tree");
 
         let sub_tree_sha = if let Some(entry) = existing_subtree {
             // Recurse into the existing subtree.
@@ -373,7 +352,9 @@ impl<'a> DataBranch<'a> {
         }
 
         let dir_name = path_parts[0];
-        let existing = entries.iter().find(|e| e.name == dir_name && e.kind == "tree");
+        let existing = entries
+            .iter()
+            .find(|e| e.name == dir_name && e.kind == "tree");
         let sub_sha = if let Some(entry) = existing {
             self.build_nested_tree_from_tree(&entry.sha, &path_parts[1..], blob_sha)?
         } else {
@@ -484,11 +465,7 @@ fn cmd_stdin_output(dir: &Path, args: &[&str], stdin: &str) -> Result<String> {
         .stderr(std::process::Stdio::null())
         .spawn()
         .with_context(|| format!("spawning git {}", args.join(" ")))?;
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())?;
+    child.stdin.take().unwrap().write_all(stdin.as_bytes())?;
     let out = child.wait_with_output()?;
     if !out.status.success() {
         bail!("git {} failed", args.join(" "));
@@ -543,13 +520,8 @@ pub fn run_standalone(
     }
 
     for experiment_name in &experiments {
-        let result = run_experiment_and_compare(
-            repo_dir,
-            &db,
-            experiment_name,
-            threshold,
-            fetcher,
-        )?;
+        let result =
+            run_experiment_and_compare(repo_dir, &db, experiment_name, threshold, fetcher)?;
         results.push(result);
         // Reset worktree between experiments (patches may have been applied).
         git::reset_worktree(repo_dir)?;
@@ -587,8 +559,7 @@ fn run_experiment_and_compare(
 ) -> Result<ExperimentResult> {
     log::info!("running experiment: {experiment_name}");
 
-    let (step_reports, summary_defs) =
-        run::run_experiment(experiment_name, repo_dir, fetcher)?;
+    let (step_reports, summary_defs) = run::run_experiment(experiment_name, repo_dir, fetcher)?;
     let computed = compute_summaries(&step_reports, &summary_defs);
     let commit = git::current_sha(repo_dir)?;
 
@@ -607,7 +578,10 @@ fn run_experiment_and_compare(
             db.write_file(
                 &format!("baselines/{experiment_name}.json"),
                 &json,
-                &format!("baseline: {experiment_name} @ {}", &commit[..7.min(commit.len())]),
+                &format!(
+                    "baseline: {experiment_name} @ {}",
+                    &commit[..7.min(commit.len())]
+                ),
             )?;
             Ok(ExperimentResult {
                 experiment: experiment_name.to_string(),
@@ -617,9 +591,7 @@ fn run_experiment_and_compare(
         }
         Some(baseline) => {
             // Compare each bisect-eligible summary against baseline.
-            if let Some(regression) =
-                detect_regression(&baseline, &computed, threshold)
-            {
+            if let Some(regression) = detect_regression(&baseline, &computed, threshold) {
                 // Start bisection.
                 let state = BisectionState {
                     experiment: experiment_name.to_string(),
@@ -664,7 +636,10 @@ fn run_experiment_and_compare(
                 db.write_file(
                     &format!("baselines/{experiment_name}.json"),
                     &json,
-                    &format!("update: {experiment_name} @ {}", &commit[..7.min(commit.len())]),
+                    &format!(
+                        "update: {experiment_name} @ {}",
+                        &commit[..7.min(commit.len())]
+                    ),
                 )?;
                 Ok(ExperimentResult {
                     experiment: experiment_name.to_string(),
@@ -749,7 +724,10 @@ fn run_bisection_step(
         db.write_file(
             &completed_path,
             &completed_json,
-            &format!("bisect complete: {experiment_name} culprit {}", &culprit[..7.min(culprit.len())]),
+            &format!(
+                "bisect complete: {experiment_name} culprit {}",
+                &culprit[..7.min(culprit.len())]
+            ),
         )?;
         db.remove_file(
             &format!("bisection/active/{experiment_name}.json"),
@@ -784,8 +762,7 @@ fn run_bisection_step(
     );
 
     git::checkout_detached(repo_dir, midpoint)?;
-    let (step_reports, summary_defs) =
-        run::run_experiment(experiment_name, repo_dir, fetcher)?;
+    let (step_reports, summary_defs) = run::run_experiment(experiment_name, repo_dir, fetcher)?;
     let computed = compute_summaries(&step_reports, &summary_defs);
 
     // Compare midpoint value against known-good.
