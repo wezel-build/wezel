@@ -180,7 +180,7 @@ impl<'a> DataBranch<'a> {
             &["commit-tree", &tree_sha, "-p", &parent_sha, "-m", message],
         )?;
 
-        // Push.
+        // Push and update local tracking ref.
         let refspec = format!("{commit_sha}:refs/heads/{}", self.branch);
         let status = std::process::Command::new("git")
             .args(["push", "origin", &refspec])
@@ -190,6 +190,15 @@ impl<'a> DataBranch<'a> {
         if !status.success() {
             bail!("git push to {} failed", self.branch);
         }
+        // Update local remote-tracking ref so subsequent reads see this commit.
+        let _ = cmd_output(
+            self.repo_dir,
+            &[
+                "update-ref",
+                &format!("refs/remotes/origin/{}", self.branch),
+                &commit_sha,
+            ],
+        );
 
         Ok(())
     }
@@ -200,22 +209,7 @@ impl<'a> DataBranch<'a> {
         let parent_sha = cmd_output(self.repo_dir, &["rev-parse", &parent_ref])?;
 
         // Read the full tree, remove the target path.
-        let ls_output = cmd_output(self.repo_dir, &["ls-tree", "-r", &format!("{parent_sha}:")]);
-        // If tree listing fails, nothing to remove.
-        let Ok(ls_output) = ls_output else {
-            return Ok(());
-        };
-
-        let filtered: Vec<&str> = ls_output
-            .lines()
-            .filter(|line| {
-                // Each line: <mode> <type> <sha>\t<path>
-                line.split('\t').nth(1).map(|p| p != path).unwrap_or(true)
-            })
-            .collect();
-
-        let tree_input = filtered.join("\n");
-        let tree_sha = cmd_stdin_output(self.repo_dir, &["mktree"], &format!("{tree_input}\n"))?;
+        let tree_sha = self.build_tree_without_file(&parent_sha, path)?;
 
         let commit_sha = cmd_output(
             self.repo_dir,
@@ -231,6 +225,14 @@ impl<'a> DataBranch<'a> {
         if !status.success() {
             bail!("git push to {} failed", self.branch);
         }
+        let _ = cmd_output(
+            self.repo_dir,
+            &[
+                "update-ref",
+                &format!("refs/remotes/origin/{}", self.branch),
+                &commit_sha,
+            ],
+        );
 
         Ok(())
     }
@@ -264,6 +266,39 @@ impl<'a> DataBranch<'a> {
 
     /// Build a tree that adds/replaces `path` (which may contain `/`) with the
     /// given blob, keeping everything else from `parent_sha`.
+    /// Build a tree that removes `path` (which may contain `/`) from the
+    /// tree of `parent_sha`, keeping everything else.
+    fn build_tree_without_file(&self, parent_sha: &str, path: &str) -> Result<String> {
+        let parts: Vec<&str> = path.split('/').collect();
+        self.remove_from_tree(&format!("{parent_sha}^{{tree}}"), &parts)
+    }
+
+    fn remove_from_tree(&self, tree_ref: &str, path_parts: &[&str]) -> Result<String> {
+        let mut entries = self.read_tree_entries(tree_ref)?;
+
+        if path_parts.len() == 1 {
+            entries.retain(|e| e.name != path_parts[0]);
+            return self.write_tree(&entries);
+        }
+
+        let dir_name = path_parts[0];
+        let sub_entry = entries.iter().find(|e| e.name == dir_name && e.kind == "tree");
+        if let Some(entry) = sub_entry {
+            let new_sub = self.remove_from_tree(&entry.sha, &path_parts[1..])?;
+            let sub_entries = self.read_tree_entries(&new_sub)?;
+            entries.retain(|e| e.name != dir_name);
+            if !sub_entries.is_empty() {
+                entries.push(TreeEntry {
+                    mode: "040000".to_string(),
+                    kind: "tree".to_string(),
+                    sha: new_sub,
+                    name: dir_name.to_string(),
+                });
+            }
+        }
+        self.write_tree(&entries)
+    }
+
     fn build_tree_with_file(&self, parent_sha: &str, path: &str, blob_sha: &str) -> Result<String> {
         // Split path into directory components and filename.
         let parts: Vec<&str> = path.split('/').collect();
@@ -426,6 +461,10 @@ impl<'a> DataBranch<'a> {
     }
 
     fn write_tree(&self, entries: &[TreeEntry]) -> Result<String> {
+        if entries.is_empty() {
+            // Empty tree — use git's well-known empty tree hash.
+            return cmd_stdin_output(self.repo_dir, &["mktree"], "");
+        }
         let input: String = entries
             .iter()
             .map(|e| format!("{} {} {}\t{}", e.mode, e.kind, e.sha, e.name))
