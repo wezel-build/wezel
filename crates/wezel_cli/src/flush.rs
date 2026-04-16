@@ -33,6 +33,11 @@ impl Drop for FlushLock {
 }
 
 pub fn flush_events(config: &Config) -> anyhow::Result<()> {
+    let Some(ref server_url) = config.server_url else {
+        debug!("no server_url configured, skipping flush");
+        return Ok(());
+    };
+
     let events_dir = wezel_dir().join("events");
     if !events_dir.exists() {
         return Ok(());
@@ -72,10 +77,10 @@ pub fn flush_events(config: &Config) -> anyhow::Result<()> {
     debug!(
         "flushing {} event(s) to {}",
         events.len(),
-        config.server_url
+        server_url
     );
 
-    let url = &config.server_url;
+    let url = server_url;
 
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(5))

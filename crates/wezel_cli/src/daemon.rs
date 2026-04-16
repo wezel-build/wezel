@@ -86,8 +86,10 @@ pub fn run_daemon() {
         // Flush queue if interval has elapsed.
         if now.duration_since(last_flush) >= FLUSH_INTERVAL {
             last_flush = now;
-            if let Some(ref cfg) = config {
-                let n = flush_queue(&cfg.server_url);
+            if let Some(ref cfg) = config
+                && let Some(ref server_url) = cfg.server_url
+            {
+                let n = flush_queue(server_url);
                 if n > 0 {
                     log::info!("daemon: flushed {n} event(s) to burrow");
                     last_activity = now;
@@ -98,9 +100,11 @@ pub fn run_daemon() {
         // Update pheromones if interval has elapsed.
         if now.duration_since(last_update) >= UPDATE_INTERVAL {
             last_update = now;
-            if let Some(ref cfg) = config {
+            if let Some(ref cfg) = config
+                && let Some(ref server_url) = cfg.server_url
+            {
                 log::debug!("daemon: checking pheromone updates");
-                update_pheromones(&cfg.server_url, &pheromone_dir);
+                update_pheromones(server_url, &pheromone_dir);
             }
         }
 

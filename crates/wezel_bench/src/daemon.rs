@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use wezel_types::{ForagerJob, ForagerRunReport};
@@ -81,13 +81,16 @@ pub fn run_start(
     fetcher: Option<&dyn fetch::PluginFetcher>,
 ) -> Result<()> {
     let config = Config::load(repo_dir)?;
-    let burrow = BurrowSession::from_config(&config);
+    let Some(ref server_url) = config.server_url else {
+        bail!("server_url not configured — set WEZEL_BURROW_URL or add server_url to .wezel/config.toml (or use --standalone mode)");
+    };
+    let burrow = BurrowSession::new(server_url);
     let project_upstream = git::upstream(repo_dir)?;
 
     let mut status = DaemonStatus {
         pid: std::process::id(),
         upstream: project_upstream.clone(),
-        server_url: config.server_url.clone(),
+        server_url: server_url.clone(),
         started_at: now_rfc3339(),
         current_job: None,
         recent: Vec::new(),
@@ -106,7 +109,7 @@ pub fn run_start(
 
     let result = run_loop(
         &queue_agent,
-        &config,
+        server_url,
         &burrow,
         &project_upstream,
         repo_dir,
@@ -123,7 +126,7 @@ pub fn run_start(
 #[expect(clippy::too_many_arguments)]
 fn run_loop(
     queue_agent: &ureq::Agent,
-    config: &Config,
+    server_url: &str,
     burrow: &BurrowSession,
     project_upstream: &str,
     repo_dir: &Path,
@@ -134,7 +137,7 @@ fn run_loop(
     loop {
         let next_body = serde_json::json!({ "project_upstream": project_upstream });
         let response = queue_agent
-            .post(&format!("{}/api/forager/jobs/next", config.server_url))
+            .post(&format!("{}/api/forager/jobs/next", server_url))
             .send_json(&next_body)
             .context("polling for next job")?;
 
@@ -210,7 +213,7 @@ fn run_loop(
         queue_agent
             .patch(&format!(
                 "{}/api/forager/jobs/{}",
-                config.server_url, job_id
+                server_url, job_id
             ))
             .send_json(&patch_body)
             .with_context(|| format!("patching job {} status", job_id))?;

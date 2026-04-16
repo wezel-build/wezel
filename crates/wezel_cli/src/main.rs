@@ -9,7 +9,7 @@ mod shell;
 
 use log::{debug, warn};
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::engine::{ArgValueCandidates, CompletionCandidate};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -208,7 +208,7 @@ fn flush_in_background(
     debug!("persisting event {tool}-{id}");
     persist_event(&tool, &id, &event);
 
-    debug!("flushing events to {}", config.server_url);
+    debug!("flushing events to {:?}", config.server_url);
     if let Err(e) = flush_events(config) {
         warn!("flush failed: {e}");
     }
@@ -416,6 +416,9 @@ enum ExperimentCmd {
         /// Automatically install missing plugins without prompting.
         #[arg(short = 'y', long = "yes")]
         auto_yes: bool,
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+        output_format: OutputFormat,
     },
     /// List available experiments.
     List {
@@ -450,8 +453,29 @@ enum ExperimentDaemonCmd {
         #[arg(long, default_value = "10")]
         poll_interval: u64,
     },
+    /// Run a single standalone pass (no Burrow server).
+    ///
+    /// Executes all experiments against the target branch, manages state on
+    /// a data branch, performs bisection if needed, and outputs a JSON report.
+    Standalone {
+        /// Path to the repository.
+        #[arg(long)]
+        repo_dir: PathBuf,
+        /// Branch to track for regressions.
+        #[arg(long, default_value = "main")]
+        branch: String,
+        /// Regression threshold as a percentage.
+        #[arg(long, default_value = "10")]
+        threshold: f64,
+    },
     /// Show current experiment daemon status and active job.
     Status,
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+enum OutputFormat {
+    Human,
+    Json,
 }
 
 #[derive(Subcommand)]
@@ -508,8 +532,10 @@ fn resolve_project_dir(project_dir: Option<PathBuf>) -> PathBuf {
 
 fn make_fetcher(project_dir: &Path, auto_yes: bool) -> Box<dyn wezel_bench::fetch::PluginFetcher> {
     match wezel_bench::Config::load(project_dir) {
-        Ok(config) => Box::new(fetcher::BurrowFetcher::new(config.server_url, auto_yes)),
-        Err(_) => Box::new(fetcher::GithubFetcher::new("wezel-build/wezel", auto_yes)),
+        Ok(config) if config.server_url.is_some() => {
+            Box::new(fetcher::BurrowFetcher::new(config.server_url.unwrap(), auto_yes))
+        }
+        _ => Box::new(fetcher::GithubFetcher::new("wezel-build/wezel", auto_yes)),
     }
 }
 
@@ -576,14 +602,38 @@ fn main() -> ExitCode {
                 experiment,
                 project_dir,
                 auto_yes,
+                output_format,
             } => {
                 let project_dir = resolve_project_dir(project_dir);
                 let fetcher = make_fetcher(&project_dir, auto_yes);
                 let caching = wezel_bench::fetch::CachingFetcher::new(&*fetcher);
-                run_result(
-                    wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&caching))
-                        .map(|_| ()), // returns (reports, summaries); we only care about errors here
-                )
+                if matches!(output_format, OutputFormat::Json) {
+                    run_result(
+                        wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&caching))
+                            .and_then(|(steps, summary_defs)| {
+                                let commit = wezel_bench::git::current_sha(&project_dir)?;
+                                let summaries =
+                                    wezel_bench::run::compute_summaries(&steps, &summary_defs);
+                                let output = wezel_bench::run::ExperimentRunOutput {
+                                    experiment,
+                                    commit,
+                                    steps,
+                                    summaries,
+                                };
+                                println!("{}", serde_json::to_string_pretty(&output).unwrap());
+                                Ok(())
+                            }),
+                    )
+                } else {
+                    run_result(
+                        wezel_bench::run::run_experiment(
+                            &experiment,
+                            &project_dir,
+                            Some(&caching),
+                        )
+                        .map(|_| ()),
+                    )
+                }
             }
             ExperimentCmd::List { project_dir } => {
                 let project_dir = resolve_project_dir(project_dir);
@@ -609,6 +659,32 @@ fn main() -> ExitCode {
                         poll_interval,
                         Some(&*fetcher),
                     ))
+                }
+                ExperimentDaemonCmd::Standalone {
+                    repo_dir,
+                    branch,
+                    threshold,
+                } => {
+                    let data_branch = wezel_bench::Config::load(&repo_dir)
+                        .map(|c| c.data_branch)
+                        .unwrap_or_else(|_| "wezel/data".to_string());
+                    let fetcher = make_fetcher(&repo_dir, true);
+                    let caching = wezel_bench::fetch::CachingFetcher::new(&*fetcher);
+                    run_result(
+                        wezel_bench::standalone::run_standalone(
+                            &repo_dir,
+                            &data_branch,
+                            &branch,
+                            threshold,
+                            Some(&caching),
+                        )
+                        .map(|report| {
+                            println!(
+                                "{}",
+                                serde_json::to_string_pretty(&report).unwrap()
+                            );
+                        }),
+                    )
                 }
                 ExperimentDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
             },
@@ -643,9 +719,13 @@ fn main() -> ExitCode {
                     eprintln!("wezel: no project config found (run `wezel setup` first)");
                     return ExitCode::FAILURE;
                 };
-                let n = queue::flush_queue(&config.server_url);
+                let Some(ref server_url) = config.server_url else {
+                    eprintln!("wezel: server_url not configured (set WEZEL_BURROW_URL or add server_url to .wezel/config.toml)");
+                    return ExitCode::FAILURE;
+                };
+                let n = queue::flush_queue(server_url);
                 println!("wezel sync: flushed {n} event(s)");
-                pheromone_mgr::update_pheromones(&config.server_url, &pheromones_dir());
+                pheromone_mgr::update_pheromones(server_url, &pheromones_dir());
                 println!("wezel sync: pheromone check done");
                 ExitCode::SUCCESS
             }
