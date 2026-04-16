@@ -66,6 +66,17 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+  wezel-lint:
+    name: Wezel experiment lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace
+      - run: |
+          export PATH="$PWD/target/debug:$PATH"
+          wezel exp lint --project-dir . -y
+
   e2e:
     name: End-to-end tests
     runs-on: ubuntu-latest
