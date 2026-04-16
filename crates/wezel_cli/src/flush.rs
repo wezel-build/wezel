@@ -74,11 +74,7 @@ pub fn flush_events(config: &Config) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    debug!(
-        "flushing {} event(s) to {}",
-        events.len(),
-        server_url
-    );
+    debug!("flushing {} event(s) to {}", events.len(), server_url);
 
     let url = server_url;
 

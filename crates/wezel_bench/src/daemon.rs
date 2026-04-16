@@ -82,7 +82,9 @@ pub fn run_start(
 ) -> Result<()> {
     let config = Config::load(repo_dir)?;
     let Some(ref server_url) = config.server_url else {
-        bail!("server_url not configured — set WEZEL_BURROW_URL or add server_url to .wezel/config.toml (or use --standalone mode)");
+        bail!(
+            "server_url not configured — set WEZEL_BURROW_URL or add server_url to .wezel/config.toml (or use --standalone mode)"
+        );
     };
     let burrow = BurrowSession::new(server_url);
     let project_upstream = git::upstream(repo_dir)?;
@@ -211,10 +213,7 @@ fn run_loop(
         };
 
         queue_agent
-            .patch(&format!(
-                "{}/api/forager/jobs/{}",
-                server_url, job_id
-            ))
+            .patch(&format!("{}/api/forager/jobs/{}", server_url, job_id))
             .send_json(&patch_body)
             .with_context(|| format!("patching job {} status", job_id))?;
 
