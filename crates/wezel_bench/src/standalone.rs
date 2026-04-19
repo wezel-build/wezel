@@ -282,7 +282,9 @@ impl<'a> DataBranch<'a> {
         }
 
         let dir_name = path_parts[0];
-        let sub_entry = entries.iter().find(|e| e.name == dir_name && e.kind == "tree");
+        let sub_entry = entries
+            .iter()
+            .find(|e| e.name == dir_name && e.kind == "tree");
         if let Some(entry) = sub_entry {
             let new_sub = self.remove_from_tree(&entry.sha, &path_parts[1..])?;
             let sub_entries = self.read_tree_entries(&new_sub)?;
