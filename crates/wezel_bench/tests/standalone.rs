@@ -88,8 +88,15 @@ impl TestFixture {
         // Ensure the local branch is called "main".
         git(&work_dir, &["checkout", "-b", "main"]);
 
-        // Create the fake forager plugin.
+        // Create the fake forager plugin and install it into the plugin cache.
         create_fake_plugin(&plugin_dir);
+        let cache_dir = wezel_bench::plugin_cache_dir();
+        fs::create_dir_all(&cache_dir).unwrap();
+        fs::copy(
+            plugin_dir.join("forager-test-metric"),
+            cache_dir.join("forager-test-metric"),
+        )
+        .unwrap();
 
         // Create .wezel/config.toml (no server_url — standalone mode).
         let wezel_dir = work_dir.join(".wezel");
@@ -97,7 +104,7 @@ impl TestFixture {
         fs::write(
             wezel_dir.join("config.toml"),
             format!(
-                "project_id = \"{}\"\nname = \"test-project\"\n",
+                "project_id = \"{}\"\nname = \"test-project\"\n\n[plugins]\ntest-metric = \"local:test\"\n",
                 uuid::Uuid::new_v4()
             ),
         )
@@ -140,19 +147,8 @@ bisect = true
         }
     }
 
-    /// Add the fake plugin to PATH for the duration of a closure.
-    fn with_plugin_on_path<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce() -> R,
-    {
-        let original_path = std::env::var("PATH").unwrap_or_default();
-        let new_path = format!("{}:{original_path}", self.plugin_dir.display());
-        // SAFETY: These tests run with --test-threads=1, so no concurrent
-        // env mutation.
-        unsafe { std::env::set_var("PATH", &new_path) };
-        let result = f();
-        unsafe { std::env::set_var("PATH", &original_path) };
-        result
+    fn plugins(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::from([("test-metric".to_string(), "local:test".to_string())])
     }
 
     /// Make a commit with a new metric value to simulate a regression.
@@ -180,6 +176,7 @@ impl Drop for TestFixture {
         let _ = fs::remove_dir_all(&self.bare_dir);
         let _ = fs::remove_dir_all(&self.work_dir);
         let _ = fs::remove_dir_all(&self.plugin_dir);
+        let _ = fs::remove_file(wezel_bench::plugin_cache_dir().join("forager-test-metric"));
     }
 }
 
@@ -279,16 +276,14 @@ fn standalone_detects_regression_and_bisects() {
     // Run bisection steps until culprit is found.
     let mut found_culprit = false;
     for _ in 0..10 {
-        let report = fixture.with_plugin_on_path(|| {
-            wezel_bench::standalone::run_standalone(
-                &fixture.work_dir,
-                "wezel/data",
-                "main",
-                10.0,
-                None,
-            )
-            .unwrap()
-        });
+        let report = wezel_bench::standalone::run_standalone(
+            &fixture.work_dir,
+            "wezel/data",
+            "main",
+            10.0,
+            &fixture.plugins(),
+        )
+        .unwrap();
 
         let json = serde_json::to_value(&report.results[0]).unwrap();
         let action = json["action"].as_str().unwrap();

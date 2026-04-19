@@ -1,7 +1,6 @@
 mod cmd;
 mod config;
 mod daemon;
-mod fetcher;
 mod flush;
 mod pheromone_mgr;
 mod queue;
@@ -530,14 +529,10 @@ fn resolve_project_dir(project_dir: Option<PathBuf>) -> PathBuf {
     project_dir.unwrap_or_else(|| std::env::current_dir().expect("getting current directory"))
 }
 
-fn make_fetcher(project_dir: &Path, auto_yes: bool) -> Box<dyn wezel_bench::fetch::PluginFetcher> {
-    match wezel_bench::Config::load(project_dir) {
-        Ok(config) if config.server_url.is_some() => Box::new(fetcher::BurrowFetcher::new(
-            config.server_url.unwrap(),
-            auto_yes,
-        )),
-        _ => Box::new(fetcher::GithubFetcher::new("wezel-build/wezel", auto_yes)),
-    }
+fn load_plugins(project_dir: &Path) -> std::collections::HashMap<String, String> {
+    wezel_bench::Config::load(project_dir)
+        .map(|c| c.plugins)
+        .unwrap_or_default()
 }
 
 fn main() -> ExitCode {
@@ -602,15 +597,14 @@ fn main() -> ExitCode {
             ExperimentCmd::Run {
                 experiment,
                 project_dir,
-                auto_yes,
+                auto_yes: _,
                 output_format,
             } => {
                 let project_dir = resolve_project_dir(project_dir);
-                let fetcher = make_fetcher(&project_dir, auto_yes);
-                let caching = wezel_bench::fetch::CachingFetcher::new(&*fetcher);
+                let plugins = load_plugins(&project_dir);
                 if matches!(output_format, OutputFormat::Json) {
                     run_result(
-                        wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&caching))
+                        wezel_bench::run::run_experiment(&experiment, &project_dir, &plugins)
                             .and_then(|(steps, summary_defs)| {
                                 let commit = wezel_bench::git::current_sha(&project_dir)?;
                                 let summaries =
@@ -627,7 +621,7 @@ fn main() -> ExitCode {
                     )
                 } else {
                     run_result(
-                        wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&caching))
+                        wezel_bench::run::run_experiment(&experiment, &project_dir, &plugins)
                             .map(|_| ()),
                     )
                 }
@@ -638,23 +632,22 @@ fn main() -> ExitCode {
             }
             ExperimentCmd::Lint {
                 project_dir,
-                auto_yes,
+                auto_yes: _,
             } => {
                 let project_dir = resolve_project_dir(project_dir);
-                let fetcher = make_fetcher(&project_dir, auto_yes);
-                let caching = wezel_bench::fetch::CachingFetcher::new(&*fetcher);
-                run_result(wezel_bench::lint::run_lint(&project_dir, Some(&caching)))
+                let plugins = load_plugins(&project_dir);
+                run_result(wezel_bench::lint::run_lint(&project_dir, &plugins))
             }
             ExperimentCmd::Daemon { cmd: daemon_cmd } => match daemon_cmd {
                 ExperimentDaemonCmd::Start {
                     repo_dir,
                     poll_interval,
                 } => {
-                    let fetcher = make_fetcher(&repo_dir, true);
+                    let plugins = load_plugins(&repo_dir);
                     run_result(wezel_bench::daemon::run_start(
                         &repo_dir,
                         poll_interval,
-                        Some(&*fetcher),
+                        &plugins,
                     ))
                 }
                 ExperimentDaemonCmd::Standalone {
@@ -662,18 +655,19 @@ fn main() -> ExitCode {
                     branch,
                     threshold,
                 } => {
-                    let data_branch = wezel_bench::Config::load(&repo_dir)
-                        .map(|c| c.data_branch)
+                    let config = wezel_bench::Config::load(&repo_dir);
+                    let data_branch = config
+                        .as_ref()
+                        .map(|c| c.data_branch.clone())
                         .unwrap_or_else(|_| "wezel/data".to_string());
-                    let fetcher = make_fetcher(&repo_dir, true);
-                    let caching = wezel_bench::fetch::CachingFetcher::new(&*fetcher);
+                    let plugins = config.map(|c| c.plugins).unwrap_or_default();
                     run_result(
                         wezel_bench::standalone::run_standalone(
                             &repo_dir,
                             &data_branch,
                             &branch,
                             threshold,
-                            Some(&caching),
+                            &plugins,
                         )
                         .map(|report| {
                             println!("{}", serde_json::to_string_pretty(&report).unwrap());

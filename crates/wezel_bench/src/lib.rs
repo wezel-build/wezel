@@ -21,6 +21,8 @@ struct ProjectConfig {
     pub name: String,
     pub server_url: Option<String>,
     pub data_branch: Option<String>,
+    #[serde(default)]
+    pub plugins: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,6 +32,8 @@ pub struct Config {
     pub server_url: Option<String>,
     /// Branch used for standalone state storage (default: "wezel/data").
     pub data_branch: String,
+    /// Plugin sources. Maps plugin name to source URI (e.g. "github:owner/repo").
+    pub plugins: HashMap<String, String>,
 }
 
 impl Config {
@@ -55,6 +59,7 @@ impl Config {
                 .data_branch
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| "wezel/data".to_string()),
+            plugins: resolved.plugins,
         })
     }
 }
@@ -321,20 +326,150 @@ pub mod git {
 
 // ── Plugin helpers ────────────────────────────────────────────────────────────
 
-pub fn resolve_plugin(name: &str) -> Option<PathBuf> {
+/// Directory where fetched plugins are cached.
+pub fn plugin_cache_dir() -> PathBuf {
+    dirs::home_dir()
+        .expect("could not determine home directory")
+        .join(".wezel")
+        .join("plugins")
+}
+
+/// Resolve a plugin binary. Only looks in the plugin cache dir.
+fn resolve_cached_plugin(name: &str) -> Option<PathBuf> {
     let binary_name = format!("forager-{name}");
-    std::env::current_exe()
-        .ok()
-        .and_then(|exe| {
-            let sibling = exe.parent()?.join(&binary_name);
-            sibling.is_file().then_some(sibling)
+    let path = plugin_cache_dir().join(&binary_name);
+    path.is_file().then_some(path)
+}
+
+/// Resolve a plugin: check cache, then fetch from the source declared in config.
+pub fn resolve_plugin(
+    name: &str,
+    plugins: &HashMap<String, String>,
+) -> std::result::Result<PathBuf, StepError> {
+    let binary_name = format!("forager-{name}");
+
+    // Check cache first.
+    if let Some(path) = resolve_cached_plugin(name) {
+        return Ok(path);
+    }
+
+    // Look up source in config.
+    let Some(source) = plugins.get(name) else {
+        return Err(StepError::PluginNotFound {
+            binary: binary_name,
+        });
+    };
+
+    // Fetch from source.
+    let path = fetch_plugin(name, source).map_err(|e| match e {
+        fetch::FetchError::NotAvailable { plugin, target } => StepError::PluginNotFound {
+            binary: format!("{plugin} (not available for {target})"),
+        },
+        other => StepError::Other(other.into()),
+    })?;
+
+    Ok(path)
+}
+
+/// Fetch a plugin from a source URI and install it to the cache dir.
+fn fetch_plugin(name: &str, source: &str) -> Result<PathBuf, fetch::FetchError> {
+    let binary_name = format!("forager-{name}");
+
+    if let Some(repo) = source.strip_prefix("github:") {
+        log::info!("fetching plugin `{binary_name}` from github.com/{repo}");
+        fetch_from_github(name, repo)
+    } else {
+        Err(fetch::FetchError::Other(anyhow::anyhow!(
+            "unsupported plugin source: {source}"
+        )))
+    }
+}
+
+/// Fetch a plugin binary from a GitHub repo's releases.
+fn fetch_from_github(name: &str, repo: &str) -> Result<PathBuf, fetch::FetchError> {
+    let binary_name = format!("forager-{name}");
+    let target = fetch::current_target().ok_or_else(|| fetch::FetchError::NotAvailable {
+        plugin: binary_name.clone(),
+        target: "unknown".into(),
+    })?;
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(30))
+        .build();
+
+    // Find latest release.
+    let releases_url = format!("https://api.github.com/repos/{repo}/releases");
+    let mut req = agent.get(&releases_url).query("per_page", "10");
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        let token = token.trim().to_string();
+        if !token.is_empty() {
+            req = req.set("Authorization", &format!("Bearer {token}"));
+        }
+    }
+    req = req.set("User-Agent", "wezel-cli");
+
+    let releases: Vec<serde_json::Value> = req
+        .call()
+        .map_err(|e| fetch::FetchError::Other(anyhow::anyhow!("fetching releases: {e}")))?
+        .into_json()
+        .map_err(|e| fetch::FetchError::Other(e.into()))?;
+
+    let release = releases
+        .first()
+        .ok_or_else(|| fetch::FetchError::Other(anyhow::anyhow!("no releases found in {repo}")))?;
+
+    let gh_assets = release["assets"]
+        .as_array()
+        .ok_or_else(|| fetch::FetchError::Other(anyhow::anyhow!("release has no assets")))?;
+
+    // Match archive by binary name (hyphen or underscore) and target triple.
+    let binary_name_underscored = binary_name.replace('-', "_");
+    let asset = gh_assets
+        .iter()
+        .find(|a| {
+            let fname = a["name"].as_str().unwrap_or("");
+            (fname.contains(&binary_name) || fname.contains(&binary_name_underscored))
+                && fname.contains(target)
+                && !fname.ends_with(".sha256")
         })
-        .or_else(|| which::which(&binary_name).ok())
+        .ok_or_else(|| fetch::FetchError::NotAvailable {
+            plugin: binary_name.clone(),
+            target: target.to_string(),
+        })?;
+
+    let download_url = asset["browser_download_url"]
+        .as_str()
+        .ok_or_else(|| fetch::FetchError::Other(anyhow::anyhow!("asset has no download URL")))?;
+
+    let mut dl_req = agent.get(download_url).set("User-Agent", "wezel-cli");
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        let token = token.trim().to_string();
+        if !token.is_empty() {
+            dl_req = dl_req.set("Authorization", &format!("Bearer {token}"));
+        }
+    }
+
+    let resp = dl_req
+        .call()
+        .map_err(|e| fetch::FetchError::Other(anyhow::anyhow!("downloading {binary_name}: {e}")))?;
+
+    let mut bytes = Vec::new();
+    use std::io::Read;
+    resp.into_reader()
+        .read_to_end(&mut bytes)
+        .map_err(|e| fetch::FetchError::Other(e.into()))?;
+
+    let dest_dir = plugin_cache_dir();
+    let dest = dest_dir.join(&binary_name);
+
+    fetch::extract_and_install(&bytes, &binary_name, &dest)?;
+    log::info!("installed `{binary_name}` to {}", dest.display());
+    Ok(dest)
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum StepError {
-    #[error("`{binary}` not found on PATH — is it installed?")]
+    #[error("plugin `{binary}` not found — declare it in [plugins] in .wezel/config.toml")]
     PluginNotFound { binary: String },
 
     #[error("failed to spawn `{binary}`: {reason}")]
@@ -365,27 +500,10 @@ pub fn invoke_forager(
     step_name: &str,
     inputs: &serde_json::Value,
     project_dir: &Path,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    plugins: &HashMap<String, String>,
 ) -> std::result::Result<Vec<wezel_types::ForagerPluginOutput>, StepError> {
     let binary_name = format!("forager-{forager_name}");
-    // Look next to our own executable first, then fall back to PATH.
-    // If not found and a fetcher is available, try to download and install.
-    let binary = match resolve_plugin(forager_name) {
-        Some(path) => path,
-        None => match fetcher {
-            Some(f) => f.fetch(forager_name).map_err(|e| match e {
-                fetch::FetchError::Declined { .. } => StepError::PluginNotFound {
-                    binary: binary_name.clone(),
-                },
-                other => StepError::Other(other.into()),
-            })?,
-            None => {
-                return Err(StepError::PluginNotFound {
-                    binary: binary_name.clone(),
-                });
-            }
-        },
-    };
+    let binary = resolve_plugin(forager_name, plugins)?;
 
     // Write inputs to a temp file.
     let inputs_id = uuid::Uuid::new_v4();

@@ -1,11 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 use owo_colors::OwoColorize;
 
-use crate::{fetch, parse_experiment, resolve_plugin};
+use crate::{parse_experiment, resolve_plugin};
 
 struct LintDiagnostic {
     step: String,
@@ -18,7 +18,7 @@ struct ExperimentResult {
     diagnostics: Vec<LintDiagnostic>,
 }
 
-pub fn run_lint(project_dir: &Path, fetcher: Option<&dyn fetch::PluginFetcher>) -> Result<()> {
+pub fn run_lint(project_dir: &Path, plugins: &HashMap<String, String>) -> Result<()> {
     let experiments_dir = project_dir.join(".wezel").join("experiments");
     if !experiments_dir.is_dir() {
         bail!("no experiments directory at {}", experiments_dir.display());
@@ -72,59 +72,48 @@ pub fn run_lint(project_dir: &Path, fetcher: Option<&dyn fetch::PluginFetcher>) 
                 }
             }
 
-            // Check plugin is on PATH; try fetching if a fetcher is available.
-            if resolve_plugin(&step.forager).is_none() {
-                if let Some(f) = fetcher {
-                    match f.fetch(&step.forager) {
-                        Ok(_) => {} // installed, proceed to schema check
-                        Err(e) => {
-                            if warned_plugins.insert(step.forager.clone()) {
+            // Check plugin is resolvable (cached or fetchable from config).
+            match resolve_plugin(&step.forager, plugins) {
+                Ok(binary) => {
+                    // Validate --schema output.
+                    match Command::new(&binary).arg("--schema").output() {
+                        Ok(o) if o.status.success() => {
+                            let stdout = String::from_utf8_lossy(&o.stdout);
+                            if serde_json::from_str::<serde_json::Value>(&stdout).is_err() {
                                 diagnostics.push(LintDiagnostic {
                                     step: step.name.clone(),
-                                    message: format!("plugin `forager-{}`: {e}", step.forager),
+                                    message: format!(
+                                        "`forager-{} --schema` returned invalid JSON",
+                                        step.forager
+                                    ),
                                 });
                             }
                         }
-                    }
-                } else if warned_plugins.insert(step.forager.clone()) {
-                    diagnostics.push(LintDiagnostic {
-                        step: step.name.clone(),
-                        message: format!("plugin `forager-{}` not found on PATH", step.forager),
-                    });
-                }
-            }
-
-            // If plugin is available, validate its --schema output.
-            if let Some(binary) = resolve_plugin(&step.forager) {
-                match Command::new(&binary).arg("--schema").output() {
-                    Ok(o) if o.status.success() => {
-                        let stdout = String::from_utf8_lossy(&o.stdout);
-                        if serde_json::from_str::<serde_json::Value>(&stdout).is_err() {
+                        Ok(o) => {
                             diagnostics.push(LintDiagnostic {
                                 step: step.name.clone(),
                                 message: format!(
-                                    "`forager-{} --schema` returned invalid JSON",
+                                    "`forager-{} --schema` exited with {}",
+                                    step.forager, o.status
+                                ),
+                            });
+                        }
+                        Err(e) => {
+                            diagnostics.push(LintDiagnostic {
+                                step: step.name.clone(),
+                                message: format!(
+                                    "failed to run `forager-{} --schema`: {e}",
                                     step.forager
                                 ),
                             });
                         }
                     }
-                    Ok(o) => {
+                }
+                Err(e) => {
+                    if warned_plugins.insert(step.forager.clone()) {
                         diagnostics.push(LintDiagnostic {
                             step: step.name.clone(),
-                            message: format!(
-                                "`forager-{} --schema` exited with {}",
-                                step.forager, o.status
-                            ),
-                        });
-                    }
-                    Err(e) => {
-                        diagnostics.push(LintDiagnostic {
-                            step: step.name.clone(),
-                            message: format!(
-                                "failed to run `forager-{} --schema`: {e}",
-                                step.forager
-                            ),
+                            message: format!("{e}"),
                         });
                     }
                 }

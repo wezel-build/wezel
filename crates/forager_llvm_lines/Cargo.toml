@@ -10,7 +10,7 @@ name = "forager-llvm-lines"
 path = "src/main.rs"
 
 [package.metadata.dist]
-dist = true
+dist = false
 
 [dependencies]
 anyhow = { workspace = true }

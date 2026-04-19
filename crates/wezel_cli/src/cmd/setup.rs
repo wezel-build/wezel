@@ -1,7 +1,21 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
 use crate::config::ProjectConfig;
+
+fn default_plugins() -> HashMap<String, String> {
+    HashMap::from([
+        (
+            "exec".to_string(),
+            "github:wezel-build/forager-exec".to_string(),
+        ),
+        (
+            "llvm-lines".to_string(),
+            "github:wezel-build/forager-llvm-lines".to_string(),
+        ),
+    ])
+}
 
 fn dot_wezel() -> PathBuf {
     std::env::current_dir()
@@ -40,7 +54,7 @@ fn create_config(server_url: Option<&str>) -> anyhow::Result<ProjectConfig> {
         username: None,
         pheromone_dir: None,
         queue_dir: None,
-        registries: None,
+        plugins: default_plugins(),
         data_branch: None,
     })
 }

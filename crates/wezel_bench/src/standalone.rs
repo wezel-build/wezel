@@ -4,7 +4,6 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
-use crate::fetch;
 use crate::git;
 use crate::run::{self, SummaryValue, compute_summaries};
 
@@ -531,7 +530,7 @@ pub fn run_standalone(
     data_branch: &str,
     target_branch: &str,
     threshold: f64,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    plugins: &HashMap<String, String>,
 ) -> Result<StandaloneReport> {
     // Fetch latest state from remote.
     git::fetch(repo_dir)?;
@@ -543,7 +542,7 @@ pub fn run_standalone(
     let active_bisections = db.list_active_bisections()?;
     if !active_bisections.is_empty() {
         for experiment_name in &active_bisections {
-            let result = run_bisection_step(repo_dir, &db, experiment_name, fetcher)?;
+            let result = run_bisection_step(repo_dir, &db, experiment_name, plugins)?;
             results.push(result);
         }
         return Ok(StandaloneReport { results });
@@ -562,7 +561,7 @@ pub fn run_standalone(
 
     for experiment_name in &experiments {
         let result =
-            run_experiment_and_compare(repo_dir, &db, experiment_name, threshold, fetcher)?;
+            run_experiment_and_compare(repo_dir, &db, experiment_name, threshold, plugins)?;
         results.push(result);
         // Reset worktree between experiments (patches may have been applied).
         git::reset_worktree(repo_dir)?;
@@ -596,11 +595,11 @@ fn run_experiment_and_compare(
     db: &DataBranch,
     experiment_name: &str,
     threshold: f64,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    plugins: &HashMap<String, String>,
 ) -> Result<ExperimentResult> {
     log::info!("running experiment: {experiment_name}");
 
-    let (step_reports, summary_defs) = run::run_experiment(experiment_name, repo_dir, fetcher)?;
+    let (step_reports, summary_defs) = run::run_experiment(experiment_name, repo_dir, plugins)?;
     let computed = compute_summaries(&step_reports, &summary_defs);
     let commit = git::current_sha(repo_dir)?;
 
@@ -732,7 +731,7 @@ fn run_bisection_step(
     repo_dir: &Path,
     db: &DataBranch,
     experiment_name: &str,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    plugins: &HashMap<String, String>,
 ) -> Result<ExperimentResult> {
     let state = db
         .read_active_bisection(experiment_name)?
@@ -803,7 +802,7 @@ fn run_bisection_step(
     );
 
     git::checkout_detached(repo_dir, midpoint)?;
-    let (step_reports, summary_defs) = run::run_experiment(experiment_name, repo_dir, fetcher)?;
+    let (step_reports, summary_defs) = run::run_experiment(experiment_name, repo_dir, plugins)?;
     let computed = compute_summaries(&step_reports, &summary_defs);
 
     // Compare midpoint value against known-good.

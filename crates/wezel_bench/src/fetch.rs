@@ -1,92 +1,12 @@
-use std::collections::HashMap;
 use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-
-// ── Trait ────────────────────────────────────────────────────────────────────
+use std::path::Path;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FetchError {
-    #[error("user declined to install `{plugin}`")]
-    Declined { plugin: String },
     #[error("plugin `{plugin}` not available for target `{target}`")]
     NotAvailable { plugin: String, target: String },
     #[error("{0}")]
     Other(#[from] anyhow::Error),
-}
-
-/// Strategy for fetching missing forager plugins at runtime.
-///
-/// Implementations live in `wezel_cli`; the trait is defined here so
-/// `invoke_forager` can accept `Option<&dyn PluginFetcher>`.
-pub trait PluginFetcher {
-    /// Fetch and install the plugin binary named `forager-{name}`.
-    /// Returns the path to the installed binary.
-    fn fetch(&self, name: &str) -> Result<PathBuf, FetchError>;
-}
-
-// ── Caching wrapper ──────────────────────────────────────────────────────────
-
-enum CachedOutcome {
-    Available(PathBuf),
-    Declined,
-    NotAvailable { plugin: String, target: String },
-    Failed(String),
-}
-
-/// Wraps any [`PluginFetcher`] and memoises outcomes so each plugin is only
-/// prompted / downloaded once per run, even when multiple callers (e.g.
-/// `query_identity_tags` and `invoke_forager`) try to fetch the same plugin.
-pub struct CachingFetcher<'a> {
-    inner: &'a dyn PluginFetcher,
-    cache: Mutex<HashMap<String, CachedOutcome>>,
-}
-
-impl<'a> CachingFetcher<'a> {
-    pub fn new(inner: &'a dyn PluginFetcher) -> Self {
-        Self {
-            inner,
-            cache: Mutex::new(HashMap::new()),
-        }
-    }
-}
-
-impl<'a> PluginFetcher for CachingFetcher<'a> {
-    fn fetch(&self, name: &str) -> Result<PathBuf, FetchError> {
-        {
-            let cache = self.cache.lock().unwrap();
-            if let Some(outcome) = cache.get(name) {
-                return match outcome {
-                    CachedOutcome::Available(path) => Ok(path.clone()),
-                    CachedOutcome::Declined => Err(FetchError::Declined {
-                        plugin: format!("forager-{name}"),
-                    }),
-                    CachedOutcome::NotAvailable { plugin, target } => {
-                        Err(FetchError::NotAvailable {
-                            plugin: plugin.clone(),
-                            target: target.clone(),
-                        })
-                    }
-                    CachedOutcome::Failed(msg) => Err(FetchError::Other(anyhow::anyhow!("{msg}"))),
-                };
-            }
-        } // release lock before calling inner (may block on user prompt)
-
-        let result = self.inner.fetch(name);
-
-        let outcome = match &result {
-            Ok(path) => CachedOutcome::Available(path.clone()),
-            Err(FetchError::Declined { .. }) => CachedOutcome::Declined,
-            Err(FetchError::NotAvailable { plugin, target }) => CachedOutcome::NotAvailable {
-                plugin: plugin.clone(),
-                target: target.clone(),
-            },
-            Err(FetchError::Other(e)) => CachedOutcome::Failed(e.to_string()),
-        };
-        self.cache.lock().unwrap().insert(name.to_string(), outcome);
-
-        result
-    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -105,13 +25,6 @@ pub fn current_target() -> Option<&'static str> {
     return Some("x86_64-pc-windows-msvc");
     #[allow(unreachable_code)]
     None
-}
-
-/// Directory containing the wezel binary — plugins install here as siblings.
-pub fn plugin_install_dir() -> Option<PathBuf> {
-    std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|p| p.to_path_buf()))
 }
 
 /// Extract a named binary from a `.tar.gz` or `.tar.xz` archive and write it atomically to `dest`.

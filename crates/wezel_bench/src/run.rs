@@ -6,7 +6,7 @@ use serde::Serialize;
 use wezel_types::{ForagerPluginOutput, ForagerRunReport, ForagerStepReport, SummaryDef};
 
 use crate::git;
-use crate::{ExperimentToml, fetch, invoke_forager, parse_experiment};
+use crate::{ExperimentToml, invoke_forager, parse_experiment};
 
 /// JSON output for `wezel experiment run --output-format json`.
 #[derive(Debug, Serialize)]
@@ -120,7 +120,7 @@ pub fn list_experiments(project_dir: &Path) -> Result<()> {
 pub fn run_experiment(
     experiment_name: &str,
     project_dir: &Path,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    plugins: &HashMap<String, String>,
 ) -> Result<(Vec<ForagerStepReport>, Vec<SummaryDef>)> {
     let experiment_dir = project_dir
         .join(".wezel")
@@ -157,7 +157,7 @@ pub fn run_experiment(
             &step.name,
             &step.inputs,
             project_dir,
-            fetcher,
+            plugins,
         );
 
         match result {

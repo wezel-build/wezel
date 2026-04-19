@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -25,9 +26,9 @@ pub struct ProjectConfig {
     pub pheromone_dir: Option<String>,
     /// Override where the event queue is stored (default: `~/.wezel/queue/`).
     pub queue_dir: Option<String>,
-    /// List of registry URIs for experiment adapters.
-    /// Each entry can be any valid URI (https://, file://, etc.).
-    pub registries: Option<Vec<String>>,
+    /// Plugin sources. Maps plugin name to source URI (e.g. "github:owner/repo").
+    #[serde(default)]
+    pub plugins: HashMap<String, String>,
     /// Branch used for standalone state storage (default: "wezel/data").
     pub data_branch: Option<String>,
 }
@@ -43,8 +44,8 @@ pub struct Config {
     pub pheromone_dir: Option<String>,
     /// Where queued events live.
     pub queue_dir: Option<String>,
-    /// Configured registry URIs.
-    pub registries: Vec<String>,
+    /// Plugin sources. Maps plugin name to source URI (e.g. "github:owner/repo").
+    pub plugins: HashMap<String, String>,
     /// Branch used for standalone state storage (default: "wezel/data").
     pub data_branch: String,
 }
@@ -126,7 +127,7 @@ fn load(project_config_path: &Path) -> Option<Config> {
             .unwrap_or_else(whoami::username),
         pheromone_dir: resolved.pheromone_dir,
         queue_dir: resolved.queue_dir,
-        registries: resolved.registries.unwrap_or_default(),
+        plugins: resolved.plugins,
         data_branch: resolved
             .data_branch
             .filter(|s| !s.is_empty())
