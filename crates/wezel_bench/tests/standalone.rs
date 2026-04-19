@@ -75,7 +75,11 @@ impl TestFixture {
         // Clone it.
         git(
             work_dir.parent().unwrap(),
-            &["clone", bare_dir.to_str().unwrap(), work_dir.to_str().unwrap()],
+            &[
+                "clone",
+                bare_dir.to_str().unwrap(),
+                work_dir.to_str().unwrap(),
+            ],
         );
 
         // Configure the clone.
@@ -184,14 +188,8 @@ fn standalone_creates_baseline_on_first_run() {
     let fixture = TestFixture::new();
 
     let report = fixture.with_plugin_on_path(|| {
-        wezel_bench::standalone::run_standalone(
-            &fixture.work_dir,
-            "wezel/data",
-            "main",
-            10.0,
-            None,
-        )
-        .unwrap()
+        wezel_bench::standalone::run_standalone(&fixture.work_dir, "wezel/data", "main", 10.0, None)
+            .unwrap()
     });
 
     assert_eq!(report.results.len(), 1);
@@ -216,14 +214,8 @@ fn standalone_updates_baseline_when_no_regression() {
 
     // First run: create baseline.
     fixture.with_plugin_on_path(|| {
-        wezel_bench::standalone::run_standalone(
-            &fixture.work_dir,
-            "wezel/data",
-            "main",
-            10.0,
-            None,
-        )
-        .unwrap()
+        wezel_bench::standalone::run_standalone(&fixture.work_dir, "wezel/data", "main", 10.0, None)
+            .unwrap()
     });
 
     // Add a commit with a small change (within threshold).
@@ -231,14 +223,8 @@ fn standalone_updates_baseline_when_no_regression() {
 
     // Second run: should update baseline.
     let report = fixture.with_plugin_on_path(|| {
-        wezel_bench::standalone::run_standalone(
-            &fixture.work_dir,
-            "wezel/data",
-            "main",
-            10.0,
-            None,
-        )
-        .unwrap()
+        wezel_bench::standalone::run_standalone(&fixture.work_dir, "wezel/data", "main", 10.0, None)
+            .unwrap()
     });
 
     assert_eq!(report.results.len(), 1);
@@ -261,14 +247,8 @@ fn standalone_detects_regression_and_bisects() {
 
     // First run: create baseline at 100.
     fixture.with_plugin_on_path(|| {
-        wezel_bench::standalone::run_standalone(
-            &fixture.work_dir,
-            "wezel/data",
-            "main",
-            10.0,
-            None,
-        )
-        .unwrap()
+        wezel_bench::standalone::run_standalone(&fixture.work_dir, "wezel/data", "main", 10.0, None)
+            .unwrap()
     });
 
     // Add commits: innocent (small changes), then REGRESSOR.
@@ -278,14 +258,8 @@ fn standalone_detects_regression_and_bisects() {
 
     // Second run: should detect regression.
     let report = fixture.with_plugin_on_path(|| {
-        wezel_bench::standalone::run_standalone(
-            &fixture.work_dir,
-            "wezel/data",
-            "main",
-            10.0,
-            None,
-        )
-        .unwrap()
+        wezel_bench::standalone::run_standalone(&fixture.work_dir, "wezel/data", "main", 10.0, None)
+            .unwrap()
     });
 
     assert_eq!(report.results.len(), 1);
