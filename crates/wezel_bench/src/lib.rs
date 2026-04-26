@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use wezel_types::{Aggregation, ExperimentDef, ForagerPluginEnvelope, StepDef, SummaryDef};
 
@@ -61,42 +62,68 @@ impl Config {
 
 // ── Experiment TOML parsing ──────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct ExperimentToml {
+/// Top-level shape of `.wezel/experiments/<name>/experiment.toml`.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(title = "Wezel experiment.toml")]
+pub struct ExperimentToml {
+    /// Experiment name. Should match the directory name.
     pub name: String,
+    /// Human-readable description of what the experiment measures.
     pub description: Option<String>,
+    /// Ordered list of forager steps. Patches are cumulative across steps.
     pub steps: Vec<ExperimentStepToml>,
+    /// Named scalars derived from measurements, used for regression detection.
     #[serde(default)]
     pub summaries: Vec<SummaryToml>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+/// Either a boolean (uses `<step.name>.patch`) or an explicit patch filename.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(untagged)]
-enum DiffField {
+pub enum DiffField {
     Bool(bool),
     Name(String),
 }
 
-#[derive(Debug, Deserialize)]
-struct ExperimentStepToml {
-    name: String,
-    tool: Option<String>,
-    description: Option<String>,
+/// A single step in the experiment. The `tool` field selects a forager plugin;
+/// remaining fields are passed to the plugin via `FORAGER_INPUTS` as JSON.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ExperimentStepToml {
+    /// Step identifier. Also the default patch filename stem when `apply-diff = true`.
+    pub name: String,
+    /// Forager plugin name (resolves to `forager-<tool>`). Defaults to `exec` if `cmd` is set.
+    pub tool: Option<String>,
+    pub description: Option<String>,
+    /// Apply a patch before running this step. `true` uses `<name>.patch`; a string overrides the filename.
     #[serde(rename = "apply-diff")]
-    apply_diff: Option<DiffField>,
+    #[schemars(rename = "apply-diff")]
+    pub apply_diff: Option<DiffField>,
+    /// Remaining fields are forwarded as forager inputs (e.g. `cmd`/`env`/`cwd` for `exec`, `package` for `llvm-lines`).
     #[serde(flatten)]
-    rest: HashMap<String, toml::Value>,
+    #[schemars(with = "HashMap<String, serde_json::Value>")]
+    pub rest: HashMap<String, toml::Value>,
 }
 
-#[derive(Debug, Deserialize)]
-struct SummaryToml {
-    name: String,
-    measurement: String,
-    aggregation: Aggregation,
+/// Aggregates a set of measurements into a single scalar tracked for regressions.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SummaryToml {
+    /// Summary identifier; surfaced in the dashboard.
+    pub name: String,
+    /// Measurement name (as emitted by the forager) to aggregate over.
+    pub measurement: String,
+    pub aggregation: Aggregation,
+    /// Tag key=value filters applied before aggregation.
     #[serde(default)]
-    filter: HashMap<String, String>,
+    pub filter: HashMap<String, String>,
+    /// Trigger bisection when this summary regresses.
     #[serde(default = "bool_true")]
-    bisect: bool,
+    pub bisect: bool,
+}
+
+/// Render the JSON Schema for `experiment.toml`.
+pub fn experiment_schema() -> serde_json::Value {
+    let schema = schemars::schema_for!(ExperimentToml);
+    serde_json::to_value(schema).expect("schema serialization is infallible")
 }
 
 fn bool_true() -> bool {
