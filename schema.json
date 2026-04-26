@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Aggregation": {
+      "description": "How to aggregate measurement values into a conclusion scalar.",
+      "enum": [
+        "sum",
+        "mean",
+        "median",
+        "max",
+        "min"
+      ],
+      "type": "string"
+    },
+    "DiffField": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "Either a boolean (uses `<step.name>.patch`) or an explicit patch filename."
+    },
+    "ExperimentStepToml": {
+      "additionalProperties": true,
+      "description": "A single step in the experiment. The `tool` field selects a forager plugin; remaining fields are passed to the plugin via `FORAGER_INPUTS` as JSON.",
+      "properties": {
+        "apply-diff": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DiffField"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Apply a patch before running this step. `true` uses `<name>.patch`; a string overrides the filename."
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Step identifier. Also the default patch filename stem when `apply-diff = true`.",
+          "type": "string"
+        },
+        "tool": {
+          "description": "Forager plugin name (resolves to `forager-<tool>`). Defaults to `exec` if `cmd` is set.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "SummaryToml": {
+      "description": "Aggregates a set of measurements into a single scalar tracked for regressions.",
+      "properties": {
+        "aggregation": {
+          "$ref": "#/definitions/Aggregation"
+        },
+        "bisect": {
+          "default": true,
+          "description": "Trigger bisection when this summary regresses.",
+          "type": "boolean"
+        },
+        "filter": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Tag key=value filters applied before aggregation.",
+          "type": "object"
+        },
+        "measurement": {
+          "description": "Measurement name (as emitted by the forager) to aggregate over.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Summary identifier; surfaced in the dashboard.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "aggregation",
+        "measurement",
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "Top-level shape of `.wezel/experiments/<name>/experiment.toml`.",
+  "properties": {
+    "description": {
+      "description": "Human-readable description of what the experiment measures.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "name": {
+      "description": "Experiment name. Should match the directory name.",
+      "type": "string"
+    },
+    "steps": {
+      "description": "Ordered list of forager steps. Patches are cumulative across steps.",
+      "items": {
+        "$ref": "#/definitions/ExperimentStepToml"
+      },
+      "type": "array"
+    },
+    "summaries": {
+      "description": "Named scalars derived from measurements, used for regression detection.",
+      "items": {
+        "$ref": "#/definitions/SummaryToml"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "steps"
+  ],
+  "title": "Wezel experiment.toml",
+  "type": "object"
+}

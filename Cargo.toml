@@ -1,12 +1,13 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/wezel_cli",
-    "crates/wezel_types",
-    "crates/pheromone_cargo",
-    "crates/wezel_bench",
-    "crates/forager_exec",
-    "crates/forager_llvm_lines",
+  "crates/wezel_cli",
+  "crates/wezel_types",
+  "crates/pheromone_cargo",
+  "crates/wezel_bench",
+  "crates/forager_exec",
+  "crates/forager_llvm_lines",
+  "crates/forager_cargo",
 ]
 
 [workspace.package]

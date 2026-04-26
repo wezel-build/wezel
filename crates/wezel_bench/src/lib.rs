@@ -66,8 +66,6 @@ impl Config {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[schemars(title = "Wezel experiment.toml")]
 pub struct ExperimentToml {
-    /// Experiment name. Should match the directory name.
-    pub name: String,
     /// Human-readable description of what the experiment measures.
     pub description: Option<String>,
     /// Ordered list of forager steps. Patches are cumulative across steps.
@@ -85,6 +83,9 @@ pub enum DiffField {
     Name(String),
 }
 
+fn default_exec() -> String {
+    "exec".to_owned()
+}
 /// A single step in the experiment. The `tool` field selects a forager plugin;
 /// remaining fields are passed to the plugin via `FORAGER_INPUTS` as JSON.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -92,7 +93,8 @@ pub struct ExperimentStepToml {
     /// Step identifier. Also the default patch filename stem when `apply-diff = true`.
     pub name: String,
     /// Forager plugin name (resolves to `forager-<tool>`). Defaults to `exec` if `cmd` is set.
-    pub tool: Option<String>,
+    #[serde(default = "default_exec")]
+    pub tool: String,
     pub description: Option<String>,
     /// Apply a patch before running this step. `true` uses `<name>.patch`; a string overrides the filename.
     #[serde(rename = "apply-diff")]
@@ -139,11 +141,7 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
 
     let mut steps = Vec::with_capacity(experiment.steps.len());
     for raw_step in experiment.steps {
-        let forager = match raw_step.tool {
-            Some(f) => f,
-            None if raw_step.rest.contains_key("cmd") => "exec".to_string(),
-            None => bail!("step '{}' has no tool name and no cmd field", raw_step.name),
-        };
+        let forager = raw_step.tool;
 
         let inputs_map: serde_json::Map<String, serde_json::Value> = raw_step
             .rest
@@ -179,7 +177,12 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
         .collect();
 
     Ok(ExperimentDef {
-        name: experiment.name,
+        name: experiment_dir
+            .file_name()
+            .context("Could not extract dir name from experiment directory")?
+            .to_str()
+            .context("Expected experiment name to be valid UTF-8")?
+            .to_owned(),
         description: experiment.description,
         steps,
         summaries,
