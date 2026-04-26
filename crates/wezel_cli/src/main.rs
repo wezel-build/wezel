@@ -440,6 +440,8 @@ enum ExperimentCmd {
         #[command(subcommand)]
         cmd: ExperimentDaemonCmd,
     },
+    /// Print the JSON Schema for `experiment.toml` to stdout.
+    Schema,
 }
 
 #[derive(Subcommand)]
@@ -682,6 +684,13 @@ fn main() -> ExitCode {
                 }
                 ExperimentDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
             },
+            ExperimentCmd::Schema => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&wezel_bench::experiment_schema()).unwrap()
+                );
+                ExitCode::SUCCESS
+            }
         },
 
         Command::Observe { cmd } => match cmd {

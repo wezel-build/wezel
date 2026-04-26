@@ -179,8 +179,9 @@ pub struct StepDef {
 }
 
 /// How to aggregate measurement values into a conclusion scalar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(rename_all = "kebab-case")]
 pub enum Aggregation {
     Sum,
     Mean,
