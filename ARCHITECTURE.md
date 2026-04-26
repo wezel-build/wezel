@@ -36,6 +36,64 @@ There are four faces to Wezel:
 - The backend (Burrow) - the infrastructure beneath Anthill. It ingests events from Pheromone, stores them, and serves data to the dashboard.
 - The asynchronous scenario executor (provided by the client) named Forager. It runs the scenarios and gathers the measures (both volatile and non-volatile ones).
 
+### Plugins
+
+Wezel is pluggable along two axes: **foragers** (`forager-<name>`) run experiment steps and emit measurements; **pheromones** (`pheromone-<build-system>`) classify shell commands into scenarios. Both follow the same plugin model.
+
+#### Distribution and pinning
+
+Plugins are standalone binaries distributed via GitHub releases (one asset per OS/arch per release).
+
+Every project declares its plugins explicitly in `.wezel/plugins.toml`:
+
+```toml
+[forager.llvm-lines]
+source = "github:wezel-build/forager-llvm-lines"
+version = "1.2.3"
+
+[pheromone.cargo]
+source = "github:wezel-build/pheromone-cargo"
+version = "0.5.0"
+```
+
+Resolved versions and content hashes are pinned in `.wezel/plugins.lock`, which is committed. Silent drift in plugin behavior between versions would corrupt historical comparisons; the lockfile is non-negotiable.
+
+There is **no implicit PATH discovery**. A `forager-foo` binary sitting on `$PATH` will not be picked up — it must be declared in the manifest. The project's manifest plus its lockfile are the complete record of what code can influence measurements.
+
+#### Local plugins
+
+A plugin may be sourced from a local path:
+
+```toml
+[forager.custom-bench]
+source = "path:/home/alice/dev/forager-custom-bench"
+
+[forager.experimental]
+source = "path:../sibling-repo/target/release/forager-experimental"
+```
+
+The path is unrestricted — it does not need to live inside the project tree. The point is not *where* the binary lives but that it is **explicitly declared**: nothing on `$PATH` can affect a wezel run unless the project's manifest names it. Local plugins are content-hashed and pinned in the lockfile just like remote ones; changes to the source trigger a reinstall.
+
+#### Installation and schema cache
+
+`wezel` resolves the manifest and installs each plugin into `~/.wezel/plugins/<name>/<version-or-hash>/`:
+
+```
+~/.wezel/plugins/pheromone-cargo/0.5.0/
+  pheromone-cargo
+  schema.json
+```
+
+Installation runs `<plugin> --schema` exactly once and persists the result alongside the binary. **Runtime never re-runs `--schema`.** Pheromone is invoked from a shell precmd hook and cannot afford a fork-and-exec per prompt; foragers don't strictly need the optimization but use the same code path for uniformity. New version → new directory → new schema, so cache invalidation is free.
+
+The schema is also published as a release asset for IDE / static-tooling integrations that prefer not to execute untrusted binaries.
+
+#### Schema and validation
+
+`<plugin> --schema` prints a JSON Schema describing the plugin's input shape. Wezel reads the cached copy to validate `experiment.toml` (or the equivalent pheromone config) at load time, before any work runs.
+
+JSON Schema only catches shape errors. For semantic checks (does this package exist, does this patch apply, is this build target reachable), plugins may implement a `<plugin> validate <inputs-file>` subcommand that wezel calls during the same load-time pass.
+
 ### Forager
 Forager is the experimentation arm of Wezel. It runs on dedicated hardware provisioned by the client — consistency of the machine is essential for meaningful volatile measurements. Forager does not prescribe *how* it is triggered; a cron job, a scheduled CI pipeline on a self-hosted runner, or a manual invocation all work.
 
@@ -47,6 +105,30 @@ Forager is the experimentation arm of Wezel. It runs on dedicated hardware provi
 5. Results are reported to Burrow: raw **measurements** from each step, plus **summaries** computed by aggregating those measurements according to formulas defined in the experiment TOML.
 6. Burrow compares each summary against recent history. If a regression is detected in a bisect-eligible summary, Burrow enqueues a bisection.
 7. Forager workers test the midpoint commits; bisection narrows until the culprit is identified.
+
+#### Plugin invocation contract
+
+A forager step is invoked as:
+
+- `FORAGER_INPUTS=<path>` — JSON file containing the step's config (validated against the plugin's schema by wezel before invocation).
+- `FORAGER_OUT_DIR=<dir>` — fresh per-step directory. The plugin writes:
+  - `measurements.json` — the envelope of measurements (required).
+  - `artifacts/...` — anything else the plugin wants to preserve (flamegraphs, raw tool output, build logs).
+- **cwd is the experiment workspace** (see below).
+
+Reserved CLI flags (`--schema`, `--version`, future `validate`) are *only* for protocol concerns. Inputs never go through argv — file-in, files-out is the contract.
+
+On any step failure, wezel records enough to reconstruct the failing invocation (the run ID, step name, plugin version, resolved inputs, and SHA), and prints a `wezel reproduce <run>:<step>` command that re-materializes the workspace, re-writes the inputs file, and re-invokes the plugin verbatim. The user can also pass `--keep-workspace` to a forager run to skip cleanup when actively debugging.
+
+#### Experiment workspace
+
+Each experiment run gets its own **workspace** — a checkout of the source tree at the SHA under test. The workspace is the cwd of every step in the run and persists across all steps. Build caches (`./target`, `./node_modules`) accumulate naturally, so an experiment of the form "clean build, then apply patch and rebuild" measures incremental compile time correctly without any plugin awareness.
+
+Workspaces are materialized via `git worktree` off a shared bare clone — fast even for hundred-commit bisections, since history is downloaded once per worker and each checkout is near-instant.
+
+**Exception:** if the target repo contains `.gitmodules`, wezel falls back to a fresh clone per job. Submodule HEAD is shared across worktrees of the same parent repo, so concurrent bisection workers would silently corrupt each other's submodule state.
+
+Workspaces are cleaned up unconditionally at the end of a run, on both success and failure. Preservation is opt-in (`--keep-workspace`); accumulating failed workspaces across many bisection rounds would fill the disk silently. When a step fails, the recorded run metadata is enough for `wezel reproduce` to recreate the workspace from scratch, so nothing is lost by cleaning up.
 
 #### Bisection
 Bisection is embarrassingly parallel. Each commit under test is independent, so the user can provision multiple worker machines to test commits concurrently. With enough workers, every commit in the range can be tested in a single round — no binary search needed.
