@@ -49,11 +49,9 @@
           "type": "string"
         },
         "tool": {
+          "default": "exec",
           "description": "Forager plugin name (resolves to `forager-<tool>`). Defaults to `exec` if `cmd` is set.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         }
       },
       "required": [
@@ -106,10 +104,6 @@
         "null"
       ]
     },
-    "name": {
-      "description": "Experiment name. Should match the directory name.",
-      "type": "string"
-    },
     "steps": {
       "description": "Ordered list of forager steps. Patches are cumulative across steps.",
       "items": {
@@ -126,7 +120,6 @@
     }
   },
   "required": [
-    "name",
     "steps"
   ],
   "title": "Wezel experiment.toml",
