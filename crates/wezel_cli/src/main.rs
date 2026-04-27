@@ -663,14 +663,15 @@ fn main() -> ExitCode {
                                         steps,
                                         summaries,
                                     };
-                                    println!(
-                                        "{}",
-                                        serde_json::to_string_pretty(&output).unwrap()
-                                    );
+                                    println!("{}", serde_json::to_string_pretty(&output).unwrap());
                                 }
                                 OutputFormat::Human => {
                                     print_human_report(
-                                        &experiment, &commit, &steps, &summaries, verbose,
+                                        &experiment,
+                                        &commit,
+                                        &steps,
+                                        &summaries,
+                                        verbose,
                                     );
                                 }
                             }
