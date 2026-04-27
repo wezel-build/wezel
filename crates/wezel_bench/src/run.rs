@@ -24,6 +24,9 @@ pub struct SummaryValue {
 }
 
 /// Compute summary values from step reports using the experiment's summary definitions.
+///
+/// Summaries that fail to compute (e.g. ambiguous aggregation) are logged at
+/// warn level and omitted from the result.
 pub fn compute_summaries(
     step_reports: &[ForagerStepReport],
     summary_defs: &[SummaryDef],
@@ -35,14 +38,20 @@ pub fn compute_summaries(
 
     let mut result = HashMap::new();
     for def in summary_defs {
-        if let Some(value) = def.compute(&all_owned) {
-            result.insert(
-                def.name.clone(),
-                SummaryValue {
-                    value,
-                    bisect: def.bisect,
-                },
-            );
+        match def.compute(&all_owned) {
+            Ok(Some(value)) => {
+                result.insert(
+                    def.name.clone(),
+                    SummaryValue {
+                        value,
+                        bisect: def.bisect,
+                    },
+                );
+            }
+            Ok(None) => {}
+            Err(e) => {
+                log::warn!("summary '{}' skipped: {e}", def.name);
+            }
         }
     }
     result
@@ -178,18 +187,10 @@ pub fn run_experiment(
         }
     }
 
-    // Print results locally.
-    println!("Experiment: {experiment_name}");
-    println!("Commit:    {}", &commit_sha[..7.min(commit_sha.len())]);
-    for report in &step_reports {
-        if report.measurements.is_empty() {
-            println!("  {} — (no measurements)", report.step);
-        } else {
-            for m in &report.measurements {
-                println!("  {} — {} = {}", report.step, m.name, m.value);
-            }
-        }
-    }
+    log::debug!(
+        "experiment '{experiment_name}' finished at {}",
+        &commit_sha[..7.min(commit_sha.len())]
+    );
 
     Ok((step_reports, experiment.summaries))
 }

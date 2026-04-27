@@ -113,7 +113,10 @@ pub struct SummaryToml {
     pub name: String,
     /// Measurement name (as emitted by the forager) to aggregate over.
     pub measurement: String,
-    pub aggregation: Aggregation,
+    /// How to combine multiple matching values. Omit when the filter is
+    /// expected to select a single value.
+    #[serde(default)]
+    pub aggregation: Option<Aggregation>,
     /// Tag key=value filters applied before aggregation.
     #[serde(default)]
     pub filter: HashMap<String, String>,

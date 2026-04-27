@@ -63,7 +63,16 @@
       "description": "Aggregates a set of measurements into a single scalar tracked for regressions.",
       "properties": {
         "aggregation": {
-          "$ref": "#/definitions/Aggregation"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Aggregation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How to combine multiple matching values. Omit when the filter is expected to select a single value."
         },
         "bisect": {
           "default": true,
@@ -88,7 +97,6 @@
         }
       },
       "required": [
-        "aggregation",
         "measurement",
         "name"
       ],
