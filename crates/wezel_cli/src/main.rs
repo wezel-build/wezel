@@ -419,6 +419,9 @@ enum ExperimentCmd {
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
         output_format: OutputFormat,
+        /// Include per-step measurements in human-readable output.
+        #[arg(short = 'v', long)]
+        verbose: bool,
     },
     /// List available experiments.
     List {
@@ -542,6 +545,41 @@ fn make_fetcher(project_dir: &Path, auto_yes: bool) -> Box<dyn wezel_bench::fetc
     }
 }
 
+fn print_human_report(
+    experiment: &str,
+    commit: &str,
+    steps: &[wezel_types::ForagerStepReport],
+    summaries: &std::collections::HashMap<String, wezel_bench::run::SummaryValue>,
+    verbose: bool,
+) {
+    println!("Experiment: {experiment}");
+    println!("Commit:     {}", &commit[..7.min(commit.len())]);
+
+    if verbose {
+        println!("\nMeasurements:");
+        for report in steps {
+            if report.measurements.is_empty() {
+                println!("  {} — (no measurements)", report.step);
+            } else {
+                for m in &report.measurements {
+                    println!("  {} — {} = {}", report.step, m.name, m.value);
+                }
+            }
+        }
+    }
+
+    println!("\nSummaries:");
+    if summaries.is_empty() {
+        println!("  (none)");
+    } else {
+        let mut entries: Vec<_> = summaries.iter().collect();
+        entries.sort_by(|a, b| a.0.cmp(b.0));
+        for (name, sv) in entries {
+            println!("  {name} = {}", sv.value);
+        }
+    }
+}
+
 fn main() -> ExitCode {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"))
         .format_timestamp(None)
@@ -606,33 +644,39 @@ fn main() -> ExitCode {
                 project_dir,
                 auto_yes,
                 output_format,
+                verbose,
             } => {
                 let project_dir = resolve_project_dir(project_dir);
                 let fetcher = make_fetcher(&project_dir, auto_yes);
                 let caching = wezel_bench::fetch::CachingFetcher::new(&*fetcher);
-                if matches!(output_format, OutputFormat::Json) {
-                    run_result(
-                        wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&caching))
-                            .and_then(|(steps, summary_defs)| {
-                                let commit = wezel_bench::git::current_sha(&project_dir)?;
-                                let summaries =
-                                    wezel_bench::run::compute_summaries(&steps, &summary_defs);
-                                let output = wezel_bench::run::ExperimentRunOutput {
-                                    experiment,
-                                    commit,
-                                    steps,
-                                    summaries,
-                                };
-                                println!("{}", serde_json::to_string_pretty(&output).unwrap());
-                                Ok(())
-                            }),
-                    )
-                } else {
-                    run_result(
-                        wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&caching))
-                            .map(|_| ()),
-                    )
-                }
+                run_result(
+                    wezel_bench::run::run_experiment(&experiment, &project_dir, Some(&caching))
+                        .and_then(|(steps, summary_defs)| {
+                            let commit = wezel_bench::git::current_sha(&project_dir)?;
+                            let summaries =
+                                wezel_bench::run::compute_summaries(&steps, &summary_defs);
+                            match output_format {
+                                OutputFormat::Json => {
+                                    let output = wezel_bench::run::ExperimentRunOutput {
+                                        experiment,
+                                        commit,
+                                        steps,
+                                        summaries,
+                                    };
+                                    println!(
+                                        "{}",
+                                        serde_json::to_string_pretty(&output).unwrap()
+                                    );
+                                }
+                                OutputFormat::Human => {
+                                    print_human_report(
+                                        &experiment, &commit, &steps, &summaries, verbose,
+                                    );
+                                }
+                            }
+                            Ok(())
+                        }),
+                )
             }
             ExperimentCmd::List { project_dir } => {
                 let project_dir = resolve_project_dir(project_dir);

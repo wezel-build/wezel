@@ -198,7 +198,10 @@ pub struct SummaryDef {
     pub name: String,
     /// Measurement name to aggregate over.
     pub measurement: String,
-    pub aggregation: Aggregation,
+    /// How to combine multiple matching values. Omit when the filter is
+    /// expected to select a single value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aggregation: Option<Aggregation>,
     /// Tag key=value filters applied before aggregation.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub filter: HashMap<String, String>,
@@ -211,9 +214,37 @@ fn bool_true() -> bool {
     true
 }
 
+/// Reasons `SummaryDef::compute` may fail. Distinct from "no matches", which is
+/// `Ok(None)`.
+#[derive(Debug, Clone)]
+pub enum SummaryError {
+    /// More than one value matched the filter, but no `aggregation` was set.
+    AmbiguousAggregation { matches: usize },
+}
+
+impl std::fmt::Display for SummaryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AmbiguousAggregation { matches } => write!(
+                f,
+                "{matches} values matched the filter but no `aggregation` was specified"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SummaryError {}
+
 impl SummaryDef {
-    /// Compute this conclusion's value from a slice of plugin measurements.
-    pub fn compute(&self, measurements: &[ForagerPluginOutput]) -> Option<f64> {
+    /// Compute this summary's value from a slice of plugin measurements.
+    ///
+    /// Returns `Ok(None)` when no measurements match the filter. Returns
+    /// `Err(AmbiguousAggregation)` when multiple values match but the summary
+    /// did not specify how to combine them.
+    pub fn compute(
+        &self,
+        measurements: &[ForagerPluginOutput],
+    ) -> Result<Option<f64>, SummaryError> {
         let mut values: Vec<f64> = measurements
             .iter()
             .filter(|m| m.name == self.measurement)
@@ -226,10 +257,22 @@ impl SummaryDef {
             .collect();
 
         if values.is_empty() {
-            return None;
+            return Ok(None);
         }
 
-        Some(match self.aggregation {
+        let aggregation = match self.aggregation {
+            Some(a) => a,
+            None => {
+                if values.len() == 1 {
+                    return Ok(Some(values[0]));
+                }
+                return Err(SummaryError::AmbiguousAggregation {
+                    matches: values.len(),
+                });
+            }
+        };
+
+        Ok(Some(match aggregation {
             Aggregation::Sum => values.iter().sum(),
             Aggregation::Mean => values.iter().sum::<f64>() / values.len() as f64,
             Aggregation::Max => values.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
@@ -243,7 +286,7 @@ impl SummaryDef {
                     values[mid]
                 }
             }
-        })
+        }))
     }
 }
 
