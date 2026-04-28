@@ -34,6 +34,8 @@ tar = "0.4"
 xz2 = "0.1"
 url = "2"
 schemars = "0.8"
+sha2 = "0.10"
+hex = "0.4"
 
 # The profile that 'dist' will build with
 [profile.dist]

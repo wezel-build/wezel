@@ -1,6 +1,7 @@
 pub mod daemon;
 pub mod fetch;
 pub mod lint;
+pub mod lockfile;
 pub mod new;
 pub mod run;
 pub mod standalone;
@@ -22,6 +23,8 @@ struct ProjectConfig {
     pub name: String,
     pub server_url: Option<String>,
     pub data_branch: Option<String>,
+    #[serde(default)]
+    pub tools: ToolsSection,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,6 +34,29 @@ pub struct Config {
     pub server_url: Option<String>,
     /// Branch used for standalone state storage (default: "wezel/data").
     pub data_branch: String,
+    /// External tool sources declared under `[tools]` in `.wezel/config.toml`.
+    pub tools: ToolsSection,
+}
+
+/// Umbrella for declared external binaries — foragers today, with room for
+/// pheromones, explainers, etc. as their installs become first-class.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ToolsSection {
+    /// Map of forager name → install source. Keys correspond to the `tool`
+    /// field of an experiment step (e.g. `tool = "exec"` looks up
+    /// `[tools.foragers.exec]`).
+    #[serde(default)]
+    pub foragers: HashMap<String, ToolSource>,
+}
+
+/// Where to obtain a tool binary. Currently only GitHub releases.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSource {
+    /// `owner/repo` on github.com.
+    pub github: String,
+    /// Optional release tag pin. Default: latest release.
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 impl Config {
@@ -56,6 +82,7 @@ impl Config {
                 .data_branch
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| "wezel/data".to_string()),
+            tools: resolved.tools,
         })
     }
 }
@@ -354,15 +381,14 @@ pub mod git {
 
 // ── Plugin helpers ────────────────────────────────────────────────────────────
 
+/// Resolve a forager binary in the local store only.
+///
+/// The store is the directory next to the wezel binary, or the path in
+/// `WEZEL_PLUGIN_DIR` when set (used by tests). PATH is never consulted.
 pub fn resolve_plugin(name: &str) -> Option<PathBuf> {
     let binary_name = format!("forager-{name}");
-    std::env::current_exe()
-        .ok()
-        .and_then(|exe| {
-            let sibling = exe.parent()?.join(&binary_name);
-            sibling.is_file().then_some(sibling)
-        })
-        .or_else(|| which::which(&binary_name).ok())
+    let candidate = fetch::plugin_install_dir()?.join(&binary_name);
+    candidate.is_file().then_some(candidate)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -398,20 +424,16 @@ pub fn invoke_forager(
     step_name: &str,
     inputs: &serde_json::Value,
     project_dir: &Path,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    fetcher: Option<&mut dyn fetch::PluginFetcher>,
 ) -> std::result::Result<Vec<wezel_types::ForagerPluginOutput>, StepError> {
     let binary_name = format!("forager-{forager_name}");
-    // Look next to our own executable first, then fall back to PATH.
-    // If not found and a fetcher is available, try to download and install.
+    // Resolve from the local store; if missing, ask the fetcher to install.
     let binary = match resolve_plugin(forager_name) {
         Some(path) => path,
         None => match fetcher {
-            Some(f) => f.fetch(forager_name).map_err(|e| match e {
-                fetch::FetchError::Declined { .. } => StepError::PluginNotFound {
-                    binary: binary_name.clone(),
-                },
-                other => StepError::Other(other.into()),
-            })?,
+            Some(f) => f
+                .fetch(forager_name)
+                .map_err(|e| StepError::Other(e.into()))?,
             None => {
                 return Err(StepError::PluginNotFound {
                     binary: binary_name.clone(),

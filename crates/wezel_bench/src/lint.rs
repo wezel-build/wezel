@@ -18,7 +18,10 @@ struct ExperimentResult {
     diagnostics: Vec<LintDiagnostic>,
 }
 
-pub fn run_lint(project_dir: &Path, fetcher: Option<&dyn fetch::PluginFetcher>) -> Result<()> {
+pub fn run_lint(
+    project_dir: &Path,
+    mut fetcher: Option<&mut dyn fetch::PluginFetcher>,
+) -> Result<()> {
     let experiments_dir = project_dir.join(".wezel").join("experiments");
     if !experiments_dir.is_dir() {
         bail!("no experiments directory at {}", experiments_dir.display());
