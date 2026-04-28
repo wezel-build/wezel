@@ -3,6 +3,12 @@ use std::path::PathBuf;
 
 use crate::config::ProjectConfig;
 
+const DEFAULT_GITIGNORE: &str = "\
+# Wezel project-local state. Add patterns here as needed.
+events/
+*.local.toml
+";
+
 fn dot_wezel() -> PathBuf {
     std::env::current_dir()
         .expect("could not determine current directory")
@@ -58,6 +64,9 @@ pub fn setup_cmd(server_url: Option<&str>) -> anyhow::Result<()> {
         let contents = toml::to_string_pretty(&config)?;
         fs::create_dir_all(dot_wezel())?;
         fs::write(&path, &contents)?;
+        // The .gitignore is part of the initial scaffold; written alongside
+        // config.toml so first-run state is reproducible across machines.
+        fs::write(dot_wezel().join(".gitignore"), DEFAULT_GITIGNORE)?;
         println!("Created {}", path.display());
         config
     };
