@@ -21,7 +21,9 @@ use wezel_types::{Aggregation, ExperimentDef, ForagerPluginEnvelope, StepDef, Su
 struct ProjectConfig {
     pub project_id: uuid::Uuid,
     pub name: String,
+    #[serde(default)]
     pub server_url: Option<String>,
+    #[serde(default)]
     pub data_branch: Option<String>,
     #[serde(default)]
     pub tools: ToolsSection,
@@ -67,8 +69,8 @@ impl Config {
         }
         let raw = std::fs::read_to_string(&config_path)
             .with_context(|| format!("reading {}", config_path.display()))?;
-        let resolved: ProjectConfig =
-            toml::from_str(&raw).with_context(|| format!("parsing {}", config_path.display()))?;
+        let resolved: ProjectConfig = toml::from_str(&raw)
+            .with_context(|| format!("Failed parsing {}", config_path.display()))?;
         // server_url: env var takes precedence, then config file.
         let server_url = std::env::var("WEZEL_BURROW_URL")
             .ok()
