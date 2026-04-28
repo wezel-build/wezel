@@ -19,5 +19,3 @@ Thumbs.db
 # Environment
 .env
 .env.local
-.wezel/**
-!.wezel/experiments
