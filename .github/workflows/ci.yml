@@ -39,7 +39,12 @@ jobs:
       - uses: actions/checkout@v6
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace
-      - run: |
+      - name: Install foragers from wezel.lock
+        run: |
+          export PATH="$PWD/target/debug:$PATH"
+          wezel tool sync --project-dir .
+      - name: Lint experiments
+        run: |
           export PATH="$PWD/target/debug:$PATH"
           wezel exp lint --project-dir .
 
