@@ -4,12 +4,14 @@ description = "Measures incremental build cost of adding a function"
 # Step 1: build the baseline (no patch applied)
 [[steps]]
 name = "baseline"
+tool = "exec"
 cmd = "cargo build --release"
 env = { CARGO_INCREMENTAL = "1" }
 
 # Step 2: apply add-one-fn.patch and rebuild
 [[steps]]
 name = "add-one-fn"
+tool = "exec"
 #apply-diff = true
 cmd = "cargo build --release"
 env = { CARGO_INCREMENTAL = "1" }

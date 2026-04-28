@@ -49,13 +49,13 @@
           "type": "string"
         },
         "tool": {
-          "default": "exec",
-          "description": "Forager plugin name (resolves to `forager-<tool>`). Defaults to `exec` if `cmd` is set.",
+          "description": "Forager plugin name (resolves to `forager-<tool>`). Required.",
           "type": "string"
         }
       },
       "required": [
-        "name"
+        "name",
+        "tool"
       ],
       "type": "object"
     },

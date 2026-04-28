@@ -3,7 +3,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use sha2::{Digest, Sha256};
-use wezel_bench::Config;
+use wezel_bench::Workspace;
 use wezel_bench::fetch::{self, FetchError, PluginFetcher};
 use wezel_bench::lockfile::{self, LockedTool, WezelLock};
 
@@ -12,24 +12,19 @@ use wezel_bench::lockfile::{self, LockedTool, WezelLock};
 /// tags and per-target archive hashes in `.wezel/wezel.lock`.
 ///
 /// Never prompts. Quarantine xattrs are stripped after install on macOS.
-pub struct ConfigFetcher {
-    project_dir: PathBuf,
-    config: Config,
+pub struct ConfigFetcher<'ws> {
+    workspace: &'ws Workspace,
     lock: WezelLock,
 }
 
-impl ConfigFetcher {
-    pub fn new(project_dir: PathBuf, config: Config) -> anyhow::Result<Self> {
-        let lock = lockfile::load(&project_dir)?;
-        Ok(Self {
-            project_dir,
-            config,
-            lock,
-        })
+impl<'ws> ConfigFetcher<'ws> {
+    pub fn new(workspace: &'ws Workspace) -> anyhow::Result<Self> {
+        let lock = lockfile::load(&workspace.project_dir)?;
+        Ok(Self { workspace, lock })
     }
 }
 
-impl PluginFetcher for ConfigFetcher {
+impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
     fn fetch(&mut self, name: &str) -> Result<PathBuf, FetchError> {
         let binary_name = format!("forager-{name}");
         let target = fetch::current_target().ok_or_else(|| FetchError::NotAvailable {
@@ -37,7 +32,7 @@ impl PluginFetcher for ConfigFetcher {
             target: "unknown".into(),
         })?;
 
-        let source = self.config.tools.foragers.get(name).ok_or_else(|| {
+        let source = self.workspace.config.tools.foragers.get(name).ok_or_else(|| {
             FetchError::Other(anyhow::anyhow!(
                 "forager `{name}` not declared in `.wezel/config.toml`. \
                  Add `[tools.foragers.{name}]` with `github = \"owner/repo\"`."
@@ -69,10 +64,7 @@ impl PluginFetcher for ConfigFetcher {
             )));
         }
 
-        let dest_dir = fetch::plugin_install_dir().ok_or_else(|| {
-            FetchError::Other(anyhow::anyhow!("cannot determine install directory"))
-        })?;
-        let dest = dest_dir.join(&binary_name);
+        let dest = self.workspace.plugin_dir.join(&binary_name);
         fetch::extract_and_install(&bytes, &binary_name, &dest)?;
         fetch::strip_quarantine(&dest);
         eprintln!(
@@ -98,7 +90,7 @@ impl PluginFetcher for ConfigFetcher {
         entry.github = source.github.clone();
         entry.tag = resolved.tag.clone();
         entry.assets.insert(target.to_string(), lock_key);
-        lockfile::save(&self.project_dir, &self.lock).map_err(FetchError::Other)?;
+        lockfile::save(&self.workspace.project_dir, &self.lock).map_err(FetchError::Other)?;
 
         Ok(dest)
     }

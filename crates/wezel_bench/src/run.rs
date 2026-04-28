@@ -6,7 +6,7 @@ use serde::Serialize;
 use wezel_types::{ForagerPluginOutput, ForagerRunReport, ForagerStepReport, SummaryDef};
 
 use crate::git;
-use crate::{ExperimentToml, fetch, invoke_forager, parse_experiment};
+use crate::{ExperimentToml, Workspace, fetch, invoke_forager, parse_experiment};
 
 /// JSON output for `wezel experiment run --output-format json`.
 #[derive(Debug, Serialize)]
@@ -128,10 +128,11 @@ pub fn list_experiments(project_dir: &Path) -> Result<()> {
 /// caller (daemon or CLI) decides whether/how to submit results.
 pub fn run_experiment(
     experiment_name: &str,
-    project_dir: &Path,
+    workspace: &Workspace,
     mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<(Vec<ForagerStepReport>, Vec<SummaryDef>)> {
-    let experiment_dir = project_dir
+    let experiment_dir = workspace
+        .project_dir
         .join(".wezel")
         .join("experiments")
         .join(experiment_name);
@@ -144,7 +145,7 @@ pub fn run_experiment(
     }
 
     let experiment = parse_experiment(&experiment_dir)?;
-    let commit_sha = git::current_sha(project_dir)?;
+    let commit_sha = git::current_sha(&workspace.project_dir)?;
 
     // Run each step.
     let mut step_reports: Vec<ForagerStepReport> = Vec::new();
@@ -156,7 +157,7 @@ pub fn run_experiment(
         if let Some(ref patch_stem) = step.diff {
             let patch_path = experiment_dir.join(format!("{patch_stem}.patch"));
             log::info!("  applying patch: {}", patch_path.display());
-            git::apply_patch(project_dir, &patch_path)
+            git::apply_patch(&workspace.project_dir, &patch_path)
                 .with_context(|| format!("applying patch for step '{}'", step.name))?;
         }
 
@@ -165,7 +166,7 @@ pub fn run_experiment(
             &step.forager,
             &step.name,
             &step.inputs,
-            project_dir,
+            workspace,
             fetcher.as_deref_mut(),
         );
 

@@ -5,9 +5,12 @@ pub mod lockfile;
 pub mod new;
 pub mod run;
 pub mod standalone;
+pub mod workspace;
+
+pub use workspace::Workspace;
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
@@ -112,17 +115,13 @@ pub enum DiffField {
     Name(String),
 }
 
-fn default_exec() -> String {
-    "exec".to_owned()
-}
 /// A single step in the experiment. The `tool` field selects a forager plugin;
 /// remaining fields are passed to the plugin via `FORAGER_INPUTS` as JSON.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExperimentStepToml {
     /// Step identifier. Also the default patch filename stem when `apply-diff = true`.
     pub name: String,
-    /// Forager plugin name (resolves to `forager-<tool>`). Defaults to `exec` if `cmd` is set.
-    #[serde(default = "default_exec")]
+    /// Forager plugin name (resolves to `forager-<tool>`). Required.
     pub tool: String,
     pub description: Option<String>,
     /// Apply a patch before running this step. `true` uses `<name>.patch`; a string overrides the filename.
@@ -383,19 +382,9 @@ pub mod git {
 
 // ── Plugin helpers ────────────────────────────────────────────────────────────
 
-/// Resolve a forager binary in the local store only.
-///
-/// The store is the directory next to the wezel binary, or the path in
-/// `WEZEL_PLUGIN_DIR` when set (used by tests). PATH is never consulted.
-pub fn resolve_plugin(name: &str) -> Option<PathBuf> {
-    let binary_name = format!("forager-{name}");
-    let candidate = fetch::plugin_install_dir()?.join(&binary_name);
-    candidate.is_file().then_some(candidate)
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum StepError {
-    #[error("`{binary}` not found on PATH — is it installed?")]
+    #[error("`{binary}` not found in the local store — is it installed?")]
     PluginNotFound { binary: String },
 
     #[error("failed to spawn `{binary}`: {reason}")]
@@ -425,12 +414,12 @@ pub fn invoke_forager(
     forager_name: &str,
     step_name: &str,
     inputs: &serde_json::Value,
-    project_dir: &Path,
+    workspace: &Workspace,
     fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> std::result::Result<Vec<wezel_types::ForagerPluginOutput>, StepError> {
     let binary_name = format!("forager-{forager_name}");
     // Resolve from the local store; if missing, ask the fetcher to install.
-    let binary = match resolve_plugin(forager_name) {
+    let binary = match workspace.resolve_plugin(forager_name) {
         Some(path) => path,
         None => match fetcher {
             Some(f) => f
@@ -456,7 +445,7 @@ pub fn invoke_forager(
         .env("FORAGER_INPUTS", &inputs_path)
         .env("FORAGER_OUT", &out_path)
         .env("FORAGER_STEP", step_name)
-        .current_dir(project_dir)
+        .current_dir(&workspace.project_dir)
         .status()
         .map_err(|e| StepError::SpawnFailed {
             binary: binary_name.clone(),
