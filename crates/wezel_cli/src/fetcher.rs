@@ -32,12 +32,18 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
             target: "unknown".into(),
         })?;
 
-        let source = self.workspace.config.tools.foragers.get(name).ok_or_else(|| {
-            FetchError::Other(anyhow::anyhow!(
-                "forager `{name}` not declared in `.wezel/config.toml`. \
+        let source = self
+            .workspace
+            .config
+            .tools
+            .foragers
+            .get(name)
+            .ok_or_else(|| {
+                FetchError::Other(anyhow::anyhow!(
+                    "forager `{name}` not declared in `.wezel/config.toml`. \
                  Add `[tools.foragers.{name}]` with `github = \"owner/repo\"`."
-            ))
-        })?;
+                ))
+            })?;
 
         let locked = self.lock.tools.foragers.get(name).cloned();
 

@@ -810,8 +810,7 @@ fn run_bisection_step(
     );
 
     git::checkout_detached(&workspace.project_dir, midpoint)?;
-    let (step_reports, summary_defs) =
-        run::run_experiment(experiment_name, workspace, fetcher)?;
+    let (step_reports, summary_defs) = run::run_experiment(experiment_name, workspace, fetcher)?;
     let computed = compute_summaries(&step_reports, &summary_defs);
 
     // Compare midpoint value against known-good.
