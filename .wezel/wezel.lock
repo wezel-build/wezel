@@ -1,0 +1,15 @@
+version = 1
+
+[tools.foragers.exec]
+github = "wezel-build/forager_exec"
+tag = "nightly-2026-04-28-6e41053"
+
+[tools.foragers.exec.assets]
+aarch64-apple-darwin = "sha256:ce40510164cde0d542d8f5d55c8bb2177a5b93a7ffaf9bbfb9695810594a8393"
+
+[tools.foragers.llvm-lines]
+github = "wezel-build/forager_llvm_lines"
+tag = "nightly-2026-04-28-caff6e2"
+
+[tools.foragers.llvm-lines.assets]
+aarch64-apple-darwin = "sha256:99ecae2dd1a6a1bf4c04d0a2766b5db1045878f9d317226651f5e8f1def8978c"
