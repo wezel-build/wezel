@@ -99,10 +99,10 @@ pub fn current_target() -> Option<&'static str> {
 /// Resolved from `WEZEL_PLUGIN_DIR` (when non-empty), otherwise the directory
 /// of the running wezel binary.
 pub fn plugin_install_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("WEZEL_PLUGIN_DIR") {
-        if !dir.is_empty() {
-            return Some(PathBuf::from(dir));
-        }
+    if let Ok(dir) = std::env::var("WEZEL_PLUGIN_DIR")
+        && !dir.is_empty()
+    {
+        return Some(PathBuf::from(dir));
     }
     std::env::current_exe()
         .ok()
