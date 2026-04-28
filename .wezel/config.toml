@@ -1,2 +1,8 @@
 project_id = "416d4a8a-4f25-48a3-897e-14697a5a9afa"
 name = "wezel"
+
+[tools.foragers.exec]
+github = "wezel-build/forager_exec"
+
+[tools.foragers.llvm-lines]
+github = "wezel-build/forager_llvm_lines"
