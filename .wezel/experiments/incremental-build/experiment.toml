@@ -20,7 +20,7 @@ env = { CARGO_INCREMENTAL = "1" }
 [[steps]]
 name = "measure-llvm"
 tool = "llvm-lines"
-package = "burrow"
+package = "wezel_types"
 
 # Conclusions derived from measurements for regression detection.
 [[summaries]]
