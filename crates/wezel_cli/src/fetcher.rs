@@ -190,9 +190,7 @@ fn fetch_latest_release(repo: &str) -> Result<serde_json::Value, FetchError> {
     let url = format!("https://api.github.com/repos/{repo}/releases?per_page=1");
     let value = github_get_json(&url)?;
     let mut releases = value.as_array().cloned().ok_or_else(|| {
-        FetchError::Other(anyhow::anyhow!(
-            "GET {url}: expected array, got {value}"
-        ))
+        FetchError::Other(anyhow::anyhow!("GET {url}: expected array, got {value}"))
     })?;
     if releases.is_empty() {
         return Err(FetchError::Other(anyhow::anyhow!(
@@ -281,10 +279,7 @@ fn write_schema_sidecar(
     })?;
     let schema_path = workspace.schema_path(forager_name);
     std::fs::write(&schema_path, &out.stdout).map_err(|e| {
-        FetchError::Other(anyhow::anyhow!(
-            "writing {}: {e}",
-            schema_path.display()
-        ))
+        FetchError::Other(anyhow::anyhow!("writing {}: {e}", schema_path.display()))
     })?;
     Ok(())
 }
