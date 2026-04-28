@@ -140,18 +140,23 @@ bisect = true
         }
     }
 
-    /// Add the fake plugin to PATH for the duration of a closure.
+    /// Point the local plugin store at the fixture's plugin dir for the
+    /// duration of a closure.
     fn with_plugin_on_path<F, R>(&self, f: F) -> R
     where
         F: FnOnce() -> R,
     {
-        let original_path = std::env::var("PATH").unwrap_or_default();
-        let new_path = format!("{}:{original_path}", self.plugin_dir.display());
+        let prev = std::env::var("WEZEL_PLUGIN_DIR").ok();
         // SAFETY: These tests run with --test-threads=1, so no concurrent
         // env mutation.
-        unsafe { std::env::set_var("PATH", &new_path) };
+        unsafe { std::env::set_var("WEZEL_PLUGIN_DIR", self.plugin_dir.display().to_string()) };
         let result = f();
-        unsafe { std::env::set_var("PATH", &original_path) };
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("WEZEL_PLUGIN_DIR", v),
+                None => std::env::remove_var("WEZEL_PLUGIN_DIR"),
+            }
+        };
         result
     }
 

@@ -78,7 +78,7 @@ const MAX_RECENT: usize = 20;
 pub fn run_start(
     repo_dir: &Path,
     poll_interval: u64,
-    fetcher: Option<&mut dyn fetch::PluginFetcher>,
+    fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<()> {
     let config = Config::load(repo_dir)?;
     let Some(ref server_url) = config.server_url else {
@@ -134,7 +134,7 @@ fn run_loop(
     repo_dir: &Path,
     poll_interval: u64,
     status: &mut DaemonStatus,
-    mut fetcher: Option<&mut dyn fetch::PluginFetcher>,
+    mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<()> {
     loop {
         let next_body = serde_json::json!({ "project_upstream": project_upstream });

@@ -20,7 +20,7 @@ struct ExperimentResult {
 
 pub fn run_lint(
     project_dir: &Path,
-    mut fetcher: Option<&mut dyn fetch::PluginFetcher>,
+    mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<()> {
     let experiments_dir = project_dir.join(".wezel").join("experiments");
     if !experiments_dir.is_dir() {
@@ -75,9 +75,9 @@ pub fn run_lint(
                 }
             }
 
-            // Check plugin is on PATH; try fetching if a fetcher is available.
+            // Check plugin is in the local store; try fetching if a fetcher is available.
             if resolve_plugin(&step.forager).is_none() {
-                if let Some(f) = fetcher {
+                if let Some(ref mut f) = fetcher {
                     match f.fetch(&step.forager) {
                         Ok(_) => {} // installed, proceed to schema check
                         Err(e) => {
@@ -92,7 +92,10 @@ pub fn run_lint(
                 } else if warned_plugins.insert(step.forager.clone()) {
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),
-                        message: format!("plugin `forager-{}` not found on PATH", step.forager),
+                        message: format!(
+                            "plugin `forager-{}` not in local store",
+                            step.forager
+                        ),
                     });
                 }
             }

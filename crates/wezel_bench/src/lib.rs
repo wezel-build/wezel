@@ -424,7 +424,7 @@ pub fn invoke_forager(
     step_name: &str,
     inputs: &serde_json::Value,
     project_dir: &Path,
-    fetcher: Option<&mut dyn fetch::PluginFetcher>,
+    fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> std::result::Result<Vec<wezel_types::ForagerPluginOutput>, StepError> {
     let binary_name = format!("forager-{forager_name}");
     // Resolve from the local store; if missing, ask the fetcher to install.
