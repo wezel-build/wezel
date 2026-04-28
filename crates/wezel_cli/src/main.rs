@@ -529,9 +529,7 @@ fn resolve_project_dir(project_dir: Option<PathBuf>) -> PathBuf {
     project_dir.unwrap_or_else(|| std::env::current_dir().expect("getting current directory"))
 }
 
-fn make_fetcher(
-    project_dir: &Path,
-) -> anyhow::Result<Box<dyn wezel_bench::fetch::PluginFetcher>> {
+fn make_fetcher(project_dir: &Path) -> anyhow::Result<Box<dyn wezel_bench::fetch::PluginFetcher>> {
     let config = wezel_bench::Config::load(project_dir)?;
     Ok(Box::new(fetcher::ConfigFetcher::new(
         project_dir.to_path_buf(),
@@ -642,16 +640,14 @@ fn main() -> ExitCode {
                 let project_dir = resolve_project_dir(project_dir);
                 run_result((|| -> anyhow::Result<()> {
                     let mut fetcher = make_fetcher(&project_dir)?;
-                    let mut caching =
-                        wezel_bench::fetch::CachingFetcher::new(&mut *fetcher);
+                    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut *fetcher);
                     let (steps, summary_defs) = wezel_bench::run::run_experiment(
                         &experiment,
                         &project_dir,
                         Some(&mut caching),
                     )?;
                     let commit = wezel_bench::git::current_sha(&project_dir)?;
-                    let summaries =
-                        wezel_bench::run::compute_summaries(&steps, &summary_defs);
+                    let summaries = wezel_bench::run::compute_summaries(&steps, &summary_defs);
                     match output_format {
                         OutputFormat::Json => {
                             let output = wezel_bench::run::ExperimentRunOutput {
@@ -660,19 +656,10 @@ fn main() -> ExitCode {
                                 steps,
                                 summaries,
                             };
-                            println!(
-                                "{}",
-                                serde_json::to_string_pretty(&output).unwrap()
-                            );
+                            println!("{}", serde_json::to_string_pretty(&output).unwrap());
                         }
                         OutputFormat::Human => {
-                            print_human_report(
-                                &experiment,
-                                &commit,
-                                &steps,
-                                &summaries,
-                                verbose,
-                            );
+                            print_human_report(&experiment, &commit, &steps, &summaries, verbose);
                         }
                     }
                     Ok(())
@@ -686,8 +673,7 @@ fn main() -> ExitCode {
                 let project_dir = resolve_project_dir(project_dir);
                 run_result((|| -> anyhow::Result<()> {
                     let mut fetcher = make_fetcher(&project_dir)?;
-                    let mut caching =
-                        wezel_bench::fetch::CachingFetcher::new(&mut *fetcher);
+                    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut *fetcher);
                     wezel_bench::lint::run_lint(&project_dir, Some(&mut caching))
                 })())
             }
@@ -697,11 +683,7 @@ fn main() -> ExitCode {
                     poll_interval,
                 } => run_result((|| -> anyhow::Result<()> {
                     let mut fetcher = make_fetcher(&repo_dir)?;
-                    wezel_bench::daemon::run_start(
-                        &repo_dir,
-                        poll_interval,
-                        Some(&mut *fetcher),
-                    )
+                    wezel_bench::daemon::run_start(&repo_dir, poll_interval, Some(&mut *fetcher))
                 })()),
                 ExperimentDaemonCmd::Standalone {
                     repo_dir,
@@ -713,8 +695,7 @@ fn main() -> ExitCode {
                         .unwrap_or_else(|_| "wezel/data".to_string());
                     run_result((|| -> anyhow::Result<()> {
                         let mut fetcher = make_fetcher(&repo_dir)?;
-                        let mut caching =
-                            wezel_bench::fetch::CachingFetcher::new(&mut *fetcher);
+                        let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut *fetcher);
                         let report = wezel_bench::standalone::run_standalone(
                             &repo_dir,
                             &data_branch,

@@ -92,10 +92,7 @@ pub fn run_lint(
                 } else if warned_plugins.insert(step.forager.clone()) {
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),
-                        message: format!(
-                            "plugin `forager-{}` not in local store",
-                            step.forager
-                        ),
+                        message: format!("plugin `forager-{}` not in local store", step.forager),
                     });
                 }
             }
