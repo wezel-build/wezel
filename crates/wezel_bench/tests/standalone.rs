@@ -201,14 +201,8 @@ fn standalone_updates_baseline_when_no_regression() {
     let fixture = TestFixture::new();
 
     // First run: create baseline.
-    wezel_bench::standalone::run_standalone(
-        &fixture.workspace(),
-        "wezel/data",
-        "main",
-        10.0,
-        None,
-    )
-    .unwrap();
+    wezel_bench::standalone::run_standalone(&fixture.workspace(), "wezel/data", "main", 10.0, None)
+        .unwrap();
 
     // Add a commit with a small change (within threshold).
     fixture.commit_with_metric(105, "small change");
@@ -241,14 +235,8 @@ fn standalone_detects_regression_and_bisects() {
     let fixture = TestFixture::new();
 
     // First run: create baseline at 100.
-    wezel_bench::standalone::run_standalone(
-        &fixture.workspace(),
-        "wezel/data",
-        "main",
-        10.0,
-        None,
-    )
-    .unwrap();
+    wezel_bench::standalone::run_standalone(&fixture.workspace(), "wezel/data", "main", 10.0, None)
+        .unwrap();
 
     // Add commits: innocent (small changes), then REGRESSOR.
     fixture.commit_with_metric(101, "innocent-1");

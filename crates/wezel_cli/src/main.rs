@@ -639,11 +639,8 @@ fn main() -> ExitCode {
                     let ws = make_workspace(project_dir)?;
                     let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
                     let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
-                    let (steps, summary_defs) = wezel_bench::run::run_experiment(
-                        &experiment,
-                        &ws,
-                        Some(&mut caching),
-                    )?;
+                    let (steps, summary_defs) =
+                        wezel_bench::run::run_experiment(&experiment, &ws, Some(&mut caching))?;
                     let commit = wezel_bench::git::current_sha(&ws.project_dir)?;
                     let summaries = wezel_bench::run::compute_summaries(&steps, &summary_defs);
                     match output_format {

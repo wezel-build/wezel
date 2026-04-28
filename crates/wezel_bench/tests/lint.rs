@@ -130,5 +130,6 @@ fn lint_passes_when_declared_and_installed() {
     let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
     fx.install_fake_forager("exec");
     fx.add_experiment("e1", &experiment_with_step("exec", "cmd = \"true\""));
-    fx.run_lint().expect("lint should pass on a clean experiment");
+    fx.run_lint()
+        .expect("lint should pass on a clean experiment");
 }
