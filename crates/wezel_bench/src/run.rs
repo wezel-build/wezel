@@ -129,7 +129,7 @@ pub fn list_experiments(project_dir: &Path) -> Result<()> {
 pub fn run_experiment(
     experiment_name: &str,
     project_dir: &Path,
-    mut fetcher: Option<&mut dyn fetch::PluginFetcher>,
+    mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<(Vec<ForagerStepReport>, Vec<SummaryDef>)> {
     let experiment_dir = project_dir
         .join(".wezel")

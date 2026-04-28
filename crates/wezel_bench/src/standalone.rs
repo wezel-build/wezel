@@ -531,7 +531,7 @@ pub fn run_standalone(
     data_branch: &str,
     target_branch: &str,
     threshold: f64,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<StandaloneReport> {
     // Fetch latest state from remote.
     git::fetch(repo_dir)?;
@@ -543,7 +543,8 @@ pub fn run_standalone(
     let active_bisections = db.list_active_bisections()?;
     if !active_bisections.is_empty() {
         for experiment_name in &active_bisections {
-            let result = run_bisection_step(repo_dir, &db, experiment_name, fetcher)?;
+            let result =
+                run_bisection_step(repo_dir, &db, experiment_name, fetcher.as_deref_mut())?;
             results.push(result);
         }
         return Ok(StandaloneReport { results });
@@ -561,8 +562,13 @@ pub fn run_standalone(
     }
 
     for experiment_name in &experiments {
-        let result =
-            run_experiment_and_compare(repo_dir, &db, experiment_name, threshold, fetcher)?;
+        let result = run_experiment_and_compare(
+            repo_dir,
+            &db,
+            experiment_name,
+            threshold,
+            fetcher.as_deref_mut(),
+        )?;
         results.push(result);
         // Reset worktree between experiments (patches may have been applied).
         git::reset_worktree(repo_dir)?;
@@ -596,7 +602,7 @@ fn run_experiment_and_compare(
     db: &DataBranch,
     experiment_name: &str,
     threshold: f64,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<ExperimentResult> {
     log::info!("running experiment: {experiment_name}");
 
@@ -732,7 +738,7 @@ fn run_bisection_step(
     repo_dir: &Path,
     db: &DataBranch,
     experiment_name: &str,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<ExperimentResult> {
     let state = db
         .read_active_bisection(experiment_name)?
