@@ -41,7 +41,7 @@ jobs:
       - run: cargo build --workspace
       - run: |
           export PATH="$PWD/target/debug:$PATH"
-          wezel exp lint --project-dir . -y
+          wezel exp lint --project-dir .
 
   wezel-schema:
     name: Wezel experiment schema
@@ -55,4 +55,3 @@ jobs:
             echo "::error::schema.json is out of date. Run \`wezel experiment schema > schema.json\` and commit the result." >&2
             exit 1
           fi
-
