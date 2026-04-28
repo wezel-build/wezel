@@ -23,7 +23,8 @@ impl Workspace {
     /// Load `.wezel/config.toml` from `project_dir` and pair it with the
     /// caller-chosen plugin store directory.
     pub fn discover(project_dir: PathBuf, plugin_dir: PathBuf) -> Result<Self> {
-        let config = Config::load(&project_dir)?;
+        let canonical_project_dir = std::fs::canonicalize(&project_dir)?;
+        let config = Config::load(&canonical_project_dir)?;
         Ok(Self {
             project_dir,
             plugin_dir,
