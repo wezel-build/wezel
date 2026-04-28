@@ -1,10 +1,9 @@
 use std::collections::HashSet;
-use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 use owo_colors::OwoColorize;
 
-use crate::{Workspace, fetch, parse_experiment};
+use crate::{Workspace, fetch, lockfile, parse_experiment};
 
 struct LintDiagnostic {
     step: String,
@@ -25,6 +24,17 @@ pub fn run_lint(
     if !experiments_dir.is_dir() {
         bail!("no experiments directory at {}", experiments_dir.display());
     }
+
+    // The lockfile is the source of truth for resolution; missing it is a
+    // hard error so CI surfaces drift instead of silently fetching latest.
+    let lock_path = lockfile::path(&workspace.project_dir);
+    if !lock_path.is_file() {
+        bail!(
+            "no lockfile at {} — run `wezel experiment run` once to populate it",
+            lock_path.display()
+        );
+    }
+    let lock = lockfile::load(&workspace.project_dir)?;
 
     let mut dirs: Vec<_> = std::fs::read_dir(&experiments_dir)
         .context("reading experiments directory")?
@@ -75,8 +85,8 @@ pub fn run_lint(
             }
 
             // The forager must be declared in [tools.foragers.<name>].
-            // Skip the resolve/install/schema checks below if it isn't —
-            // they'd just produce noise about the same root cause.
+            // Skip downstream checks if it isn't — they'd just produce noise
+            // about the same root cause.
             if !workspace.config.tools.foragers.contains_key(&step.forager) {
                 if warned_plugins.insert(step.forager.clone()) {
                     diagnostics.push(LintDiagnostic {
@@ -90,61 +100,76 @@ pub fn run_lint(
                 continue;
             }
 
-            // Check plugin is in the local store; try fetching if a fetcher is available.
-            if workspace.resolve_plugin(&step.forager).is_none() {
-                if let Some(ref mut f) = fetcher {
-                    match f.fetch(&step.forager) {
-                        Ok(_) => {} // installed, proceed to schema check
-                        Err(e) => {
-                            if warned_plugins.insert(step.forager.clone()) {
-                                diagnostics.push(LintDiagnostic {
-                                    step: step.name.clone(),
-                                    message: format!("plugin `forager-{}`: {e}", step.forager),
-                                });
-                            }
-                        }
-                    }
-                } else if warned_plugins.insert(step.forager.clone()) {
+            // The lockfile must contain a locked entry; otherwise lint refuses
+            // to fetch latest behind the user's back.
+            if !lock.tools.foragers.contains_key(&step.forager) {
+                if warned_plugins.insert(step.forager.clone()) {
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),
-                        message: format!("plugin `forager-{}` not in local store", step.forager),
+                        message: format!(
+                            "forager `{}` is declared but not locked — run `wezel experiment run` to refresh wezel.lock",
+                            step.forager
+                        ),
                     });
                 }
+                continue;
             }
 
-            // If plugin is available, validate its --schema output.
-            if let Some(binary) = workspace.resolve_plugin(&step.forager) {
-                match Command::new(&binary).arg("--schema").output() {
-                    Ok(o) if o.status.success() => {
-                        let stdout = String::from_utf8_lossy(&o.stdout);
-                        if serde_json::from_str::<serde_json::Value>(&stdout).is_err() {
-                            diagnostics.push(LintDiagnostic {
-                                step: step.name.clone(),
-                                message: format!(
-                                    "`forager-{} --schema` returned invalid JSON",
-                                    step.forager
-                                ),
-                            });
-                        }
-                    }
-                    Ok(o) => {
+            // Install from the locked tag if missing locally. The fetcher
+            // passed by lint runs in read-only mode so wezel.lock isn't
+            // mutated.
+            if workspace.resolve_plugin(&step.forager).is_none()
+                && let Some(ref mut f) = fetcher
+                && let Err(e) = f.fetch(&step.forager)
+                && warned_plugins.insert(step.forager.clone())
+            {
+                diagnostics.push(LintDiagnostic {
+                    step: step.name.clone(),
+                    message: format!("plugin `forager-{}`: {e}", step.forager),
+                });
+                continue;
+            }
+
+            // Every declared forager must end up resolvable — its cached
+            // schema is part of the contract that lint validates.
+            if workspace.resolve_plugin(&step.forager).is_none() {
+                if warned_plugins.insert(step.forager.clone()) {
+                    diagnostics.push(LintDiagnostic {
+                        step: step.name.clone(),
+                        message: format!(
+                            "plugin `forager-{}` not in local store",
+                            step.forager
+                        ),
+                    });
+                }
+                continue;
+            }
+
+            // Read the cached schema sidecar that the installer wrote. Lint
+            // never invokes the binary for schema discovery.
+            let schema_path = workspace.schema_path(&step.forager);
+            match std::fs::read_to_string(&schema_path) {
+                Ok(raw) => {
+                    if serde_json::from_str::<serde_json::Value>(&raw).is_err() {
                         diagnostics.push(LintDiagnostic {
                             step: step.name.clone(),
                             message: format!(
-                                "`forager-{} --schema` exited with {}",
-                                step.forager, o.status
+                                "cached schema for `forager-{}` is invalid JSON ({})",
+                                step.forager,
+                                schema_path.display()
                             ),
                         });
                     }
-                    Err(e) => {
-                        diagnostics.push(LintDiagnostic {
-                            step: step.name.clone(),
-                            message: format!(
-                                "failed to run `forager-{} --schema`: {e}",
-                                step.forager
-                            ),
-                        });
-                    }
+                }
+                Err(e) => {
+                    diagnostics.push(LintDiagnostic {
+                        step: step.name.clone(),
+                        message: format!(
+                            "no cached schema for `forager-{}` at {} ({e}) — reinstall the forager",
+                            step.forager,
+                            schema_path.display()
+                        ),
+                    });
                 }
             }
         }

@@ -39,6 +39,13 @@ impl Workspace {
         candidate.is_file().then_some(candidate)
     }
 
+    /// Path to the cached `--schema` JSON sidecar for a forager. Written by
+    /// the installer; read by lint so we don't shell out per-invocation.
+    pub fn schema_path(&self, forager: &str) -> PathBuf {
+        self.plugin_dir
+            .join(format!("forager-{forager}.schema.json"))
+    }
+
     /// Default plugin store: the directory containing the running wezel
     /// binary. Used by the CLI; tests should pass a tempdir to `discover`
     /// directly.

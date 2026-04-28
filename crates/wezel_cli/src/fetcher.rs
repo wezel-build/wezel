@@ -15,12 +15,30 @@ use wezel_bench::lockfile::{self, LockedTool, WezelLock};
 pub struct ConfigFetcher<'ws> {
     workspace: &'ws Workspace,
     lock: WezelLock,
+    /// When true, installation is allowed only for foragers already pinned in
+    /// the lockfile, and `wezel.lock` is never written. Used by lint.
+    read_only: bool,
 }
 
 impl<'ws> ConfigFetcher<'ws> {
     pub fn new(workspace: &'ws Workspace) -> anyhow::Result<Self> {
         let lock = lockfile::load(&workspace.project_dir)?;
-        Ok(Self { workspace, lock })
+        Ok(Self {
+            workspace,
+            lock,
+            read_only: false,
+        })
+    }
+
+    /// Lint flavour: refuses to install anything not already locked, and
+    /// never mutates `wezel.lock`.
+    pub fn read_only(workspace: &'ws Workspace) -> anyhow::Result<Self> {
+        let lock = lockfile::load(&workspace.project_dir)?;
+        Ok(Self {
+            workspace,
+            lock,
+            read_only: true,
+        })
     }
 }
 
@@ -46,6 +64,14 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
             })?;
 
         let locked = self.lock.tools.foragers.get(name).cloned();
+
+        if self.read_only && locked.is_none() {
+            return Err(FetchError::Other(anyhow::anyhow!(
+                "forager `{name}` is not pinned in wezel.lock; \
+                 cannot install in read-only mode (run `wezel experiment run` \
+                 to refresh the lockfile)"
+            )));
+        }
 
         // Priority for the tag: lockfile > config pin > latest release.
         let resolved = resolve_release(
@@ -73,6 +99,7 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
         let dest = self.workspace.plugin_dir.join(&binary_name);
         fetch::extract_and_install(&bytes, &binary_name, &dest)?;
         fetch::strip_quarantine(&dest);
+        write_schema_sidecar(self.workspace, name, &dest)?;
         eprintln!(
             "Installed `{binary_name}` ({}) from github.com/{} to {}",
             resolved.tag,
@@ -80,23 +107,25 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
             dest.display()
         );
 
-        if self.lock.version == 0 {
-            self.lock.version = lockfile::CURRENT_VERSION;
+        if !self.read_only {
+            if self.lock.version == 0 {
+                self.lock.version = lockfile::CURRENT_VERSION;
+            }
+            let entry = self
+                .lock
+                .tools
+                .foragers
+                .entry(name.to_string())
+                .or_insert_with(|| LockedTool {
+                    github: source.github.clone(),
+                    tag: resolved.tag.clone(),
+                    assets: BTreeMap::new(),
+                });
+            entry.github = source.github.clone();
+            entry.tag = resolved.tag.clone();
+            entry.assets.insert(target.to_string(), lock_key);
+            lockfile::save(&self.workspace.project_dir, &self.lock).map_err(FetchError::Other)?;
         }
-        let entry = self
-            .lock
-            .tools
-            .foragers
-            .entry(name.to_string())
-            .or_insert_with(|| LockedTool {
-                github: source.github.clone(),
-                tag: resolved.tag.clone(),
-                assets: BTreeMap::new(),
-            });
-        entry.github = source.github.clone();
-        entry.tag = resolved.tag.clone();
-        entry.assets.insert(target.to_string(), lock_key);
-        lockfile::save(&self.workspace.project_dir, &self.lock).map_err(FetchError::Other)?;
 
         Ok(dest)
     }
@@ -154,9 +183,23 @@ fn resolve_release(
     Ok(ResolvedRelease { tag, download_url })
 }
 
+/// Fetch the most recent release. Uses `/releases?per_page=1` rather than
+/// `/releases/latest` because the latter skips prereleases — and forager
+/// repos commonly tag everything as `nightly-*` prereleases.
 fn fetch_latest_release(repo: &str) -> Result<serde_json::Value, FetchError> {
-    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    github_get_json(&url)
+    let url = format!("https://api.github.com/repos/{repo}/releases?per_page=1");
+    let value = github_get_json(&url)?;
+    let mut releases = value.as_array().cloned().ok_or_else(|| {
+        FetchError::Other(anyhow::anyhow!(
+            "GET {url}: expected array, got {value}"
+        ))
+    })?;
+    if releases.is_empty() {
+        return Err(FetchError::Other(anyhow::anyhow!(
+            "no releases published on github.com/{repo}"
+        )));
+    }
+    Ok(releases.remove(0))
 }
 
 fn fetch_release_by_tag(repo: &str, tag: &str) -> Result<serde_json::Value, FetchError> {
@@ -207,4 +250,41 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(bytes);
     hex::encode(h.finalize())
+}
+
+/// Run `<binary> --schema` once at install time and write the JSON to the
+/// schema sidecar so lint and runtime tools can read it without spawning a
+/// child process.
+fn write_schema_sidecar(
+    workspace: &Workspace,
+    forager_name: &str,
+    binary: &std::path::Path,
+) -> Result<(), FetchError> {
+    let out = std::process::Command::new(binary)
+        .arg("--schema")
+        .output()
+        .map_err(|e| {
+            FetchError::Other(anyhow::anyhow!(
+                "running --schema for forager-{forager_name}: {e}"
+            ))
+        })?;
+    if !out.status.success() {
+        return Err(FetchError::Other(anyhow::anyhow!(
+            "forager-{forager_name} --schema exited with {}",
+            out.status
+        )));
+    }
+    serde_json::from_slice::<serde_json::Value>(&out.stdout).map_err(|e| {
+        FetchError::Other(anyhow::anyhow!(
+            "forager-{forager_name} --schema produced invalid JSON: {e}"
+        ))
+    })?;
+    let schema_path = workspace.schema_path(forager_name);
+    std::fs::write(&schema_path, &out.stdout).map_err(|e| {
+        FetchError::Other(anyhow::anyhow!(
+            "writing {}: {e}",
+            schema_path.display()
+        ))
+    })?;
+    Ok(())
 }
