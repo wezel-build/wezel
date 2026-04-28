@@ -59,14 +59,14 @@ impl PluginFetcher for ConfigFetcher {
         let archive_sha = sha256_hex(&bytes);
         let lock_key = format!("sha256:{archive_sha}");
 
-        if let Some(expected) = locked.as_ref().and_then(|l| l.assets.get(target)) {
-            if expected != &lock_key {
-                return Err(FetchError::Other(anyhow::anyhow!(
-                    "wezel.lock sha mismatch for {binary_name} ({target}): \
+        if let Some(expected) = locked.as_ref().and_then(|l| l.assets.get(target))
+            && expected != &lock_key
+        {
+            return Err(FetchError::Other(anyhow::anyhow!(
+                "wezel.lock sha mismatch for {binary_name} ({target}): \
                      expected {expected}, got {lock_key}. \
                      Delete .wezel/wezel.lock to refresh."
-                )));
-            }
+            )));
         }
 
         let dest_dir = fetch::plugin_install_dir().ok_or_else(|| {
