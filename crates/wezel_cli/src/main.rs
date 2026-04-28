@@ -395,6 +395,24 @@ enum Command {
         #[command(subcommand)]
         cmd: ObserveCmd,
     },
+    /// Manage external tools declared under `[tools]` in `.wezel/config.toml`.
+    Tool {
+        #[command(subcommand)]
+        cmd: ToolCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum ToolCmd {
+    /// Install every declared tool to the local store and refresh `wezel.lock`.
+    ///
+    /// Idempotent: tools whose binary and schema sidecar are already present
+    /// are skipped.
+    Sync {
+        /// Project root directory (defaults to current directory).
+        #[arg(long)]
+        project_dir: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -668,7 +686,7 @@ fn main() -> ExitCode {
                 let project_dir = resolve_project_dir(project_dir);
                 run_result((|| -> anyhow::Result<()> {
                     let ws = make_workspace(project_dir)?;
-                    let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
+                    let mut fetcher = fetcher::ConfigFetcher::read_only(&ws)?;
                     let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
                     wezel_bench::lint::run_lint(&ws, Some(&mut caching))
                 })())
@@ -754,5 +772,39 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
         },
+
+        Command::Tool { cmd } => match cmd {
+            ToolCmd::Sync { project_dir } => {
+                let project_dir = resolve_project_dir(project_dir);
+                run_result((|| -> anyhow::Result<()> {
+                    let ws = make_workspace(project_dir)?;
+                    tool_sync(&ws)
+                })())
+            }
+        },
     }
+}
+
+fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
+    let foragers: Vec<&String> = ws.config.tools.foragers.keys().collect();
+    if foragers.is_empty() {
+        println!("No tools declared under [tools] in .wezel/config.toml.");
+        return Ok(());
+    }
+
+    let mut fetcher = fetcher::ConfigFetcher::new(ws)?;
+    let mut installed = 0usize;
+    let mut skipped = 0usize;
+    for name in foragers {
+        if ws.resolve_plugin(name).is_some() && ws.schema_path(name).is_file() {
+            println!("  forager-{name}  up to date");
+            skipped += 1;
+            continue;
+        }
+        wezel_bench::fetch::PluginFetcher::fetch(&mut fetcher, name)?;
+        installed += 1;
+    }
+
+    println!("\n{installed} installed, {skipped} up to date.");
+    Ok(())
 }
