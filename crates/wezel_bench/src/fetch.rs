@@ -1,14 +1,11 @@
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 // ── Trait ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, thiserror::Error)]
 pub enum FetchError {
-    #[error("user declined to install `{plugin}`")]
-    Declined { plugin: String },
     #[error("plugin `{plugin}` not available for target `{target}`")]
     NotAvailable { plugin: String, target: String },
     #[error("{0}")]
@@ -18,72 +15,62 @@ pub enum FetchError {
 /// Strategy for fetching missing forager plugins at runtime.
 ///
 /// Implementations live in `wezel_cli`; the trait is defined here so
-/// `invoke_forager` can accept `Option<&dyn PluginFetcher>`.
+/// `invoke_forager` can accept `Option<&mut dyn PluginFetcher>`.
 pub trait PluginFetcher {
     /// Fetch and install the plugin binary named `forager-{name}`.
     /// Returns the path to the installed binary.
-    fn fetch(&self, name: &str) -> Result<PathBuf, FetchError>;
+    fn fetch(&mut self, name: &str) -> Result<PathBuf, FetchError>;
 }
 
 // ── Caching wrapper ──────────────────────────────────────────────────────────
 
 enum CachedOutcome {
     Available(PathBuf),
-    Declined,
     NotAvailable { plugin: String, target: String },
     Failed(String),
 }
 
 /// Wraps any [`PluginFetcher`] and memoises outcomes so each plugin is only
-/// prompted / downloaded once per run, even when multiple callers (e.g.
-/// `query_identity_tags` and `invoke_forager`) try to fetch the same plugin.
+/// downloaded once per run, even when multiple callers try to fetch the same
+/// plugin.
 pub struct CachingFetcher<'a> {
-    inner: &'a dyn PluginFetcher,
-    cache: Mutex<HashMap<String, CachedOutcome>>,
+    inner: &'a mut dyn PluginFetcher,
+    cache: HashMap<String, CachedOutcome>,
 }
 
 impl<'a> CachingFetcher<'a> {
-    pub fn new(inner: &'a dyn PluginFetcher) -> Self {
+    pub fn new(inner: &'a mut dyn PluginFetcher) -> Self {
         Self {
             inner,
-            cache: Mutex::new(HashMap::new()),
+            cache: HashMap::new(),
         }
     }
 }
 
 impl<'a> PluginFetcher for CachingFetcher<'a> {
-    fn fetch(&self, name: &str) -> Result<PathBuf, FetchError> {
-        {
-            let cache = self.cache.lock().unwrap();
-            if let Some(outcome) = cache.get(name) {
-                return match outcome {
-                    CachedOutcome::Available(path) => Ok(path.clone()),
-                    CachedOutcome::Declined => Err(FetchError::Declined {
-                        plugin: format!("forager-{name}"),
-                    }),
-                    CachedOutcome::NotAvailable { plugin, target } => {
-                        Err(FetchError::NotAvailable {
-                            plugin: plugin.clone(),
-                            target: target.clone(),
-                        })
-                    }
-                    CachedOutcome::Failed(msg) => Err(FetchError::Other(anyhow::anyhow!("{msg}"))),
-                };
-            }
-        } // release lock before calling inner (may block on user prompt)
+    fn fetch(&mut self, name: &str) -> Result<PathBuf, FetchError> {
+        if let Some(outcome) = self.cache.get(name) {
+            return match outcome {
+                CachedOutcome::Available(path) => Ok(path.clone()),
+                CachedOutcome::NotAvailable { plugin, target } => Err(FetchError::NotAvailable {
+                    plugin: plugin.clone(),
+                    target: target.clone(),
+                }),
+                CachedOutcome::Failed(msg) => Err(FetchError::Other(anyhow::anyhow!("{msg}"))),
+            };
+        }
 
         let result = self.inner.fetch(name);
 
         let outcome = match &result {
             Ok(path) => CachedOutcome::Available(path.clone()),
-            Err(FetchError::Declined { .. }) => CachedOutcome::Declined,
             Err(FetchError::NotAvailable { plugin, target }) => CachedOutcome::NotAvailable {
                 plugin: plugin.clone(),
                 target: target.clone(),
             },
             Err(FetchError::Other(e)) => CachedOutcome::Failed(e.to_string()),
         };
-        self.cache.lock().unwrap().insert(name.to_string(), outcome);
+        self.cache.insert(name.to_string(), outcome);
 
         result
     }
@@ -107,11 +94,38 @@ pub fn current_target() -> Option<&'static str> {
     None
 }
 
-/// Directory containing the wezel binary — plugins install here as siblings.
+/// Directory containing the local forager store.
+///
+/// Resolved from `WEZEL_PLUGIN_DIR` (when non-empty), otherwise the directory
+/// of the running wezel binary.
 pub fn plugin_install_dir() -> Option<PathBuf> {
+    if let Ok(dir) = std::env::var("WEZEL_PLUGIN_DIR") {
+        if !dir.is_empty() {
+            return Some(PathBuf::from(dir));
+        }
+    }
     std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|p| p.to_path_buf()))
+}
+
+/// Strip macOS Gatekeeper's quarantine xattr from a freshly downloaded file.
+///
+/// No-op on non-macOS targets and when the attribute isn't present.
+pub fn strip_quarantine(path: &Path) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("xattr")
+            .args(["-d", "com.apple.quarantine"])
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+    }
 }
 
 /// Extract a named binary from a `.tar.gz` or `.tar.xz` archive and write it atomically to `dest`.

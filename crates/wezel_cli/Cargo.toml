@@ -34,4 +34,6 @@ url = { workspace = true }
 figment = { version = "0.10", features = ["toml"] }
 flate2 = { workspace = true }
 tar = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
 wezel_bench = { path = "../wezel_bench" }

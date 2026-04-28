@@ -78,7 +78,7 @@ const MAX_RECENT: usize = 20;
 pub fn run_start(
     repo_dir: &Path,
     poll_interval: u64,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    fetcher: Option<&mut dyn fetch::PluginFetcher>,
 ) -> Result<()> {
     let config = Config::load(repo_dir)?;
     let Some(ref server_url) = config.server_url else {
@@ -134,7 +134,7 @@ fn run_loop(
     repo_dir: &Path,
     poll_interval: u64,
     status: &mut DaemonStatus,
-    fetcher: Option<&dyn fetch::PluginFetcher>,
+    mut fetcher: Option<&mut dyn fetch::PluginFetcher>,
 ) -> Result<()> {
     loop {
         let next_body = serde_json::json!({ "project_upstream": project_upstream });
@@ -175,7 +175,8 @@ fn run_loop(
         git::checkout_detached(repo_dir, &job.commit_sha)
             .with_context(|| format!("checkout {} for job {}", job.commit_sha, job_id))?;
 
-        let result = run_experiment(&job.experiment_name, repo_dir, fetcher);
+        let result =
+            run_experiment(&job.experiment_name, repo_dir, fetcher.as_deref_mut());
 
         // Submit results to Burrow and update the queue job status.
         let (patch_body, finished) = match result {
