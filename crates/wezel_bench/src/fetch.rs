@@ -94,21 +94,6 @@ pub fn current_target() -> Option<&'static str> {
     None
 }
 
-/// Directory containing the local forager store.
-///
-/// Resolved from `WEZEL_PLUGIN_DIR` (when non-empty), otherwise the directory
-/// of the running wezel binary.
-pub fn plugin_install_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("WEZEL_PLUGIN_DIR")
-        && !dir.is_empty()
-    {
-        return Some(PathBuf::from(dir));
-    }
-    std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|p| p.to_path_buf()))
-}
-
 /// Strip macOS Gatekeeper's quarantine xattr from a freshly downloaded file.
 ///
 /// No-op on non-macOS targets and when the attribute isn't present.

@@ -529,12 +529,9 @@ fn resolve_project_dir(project_dir: Option<PathBuf>) -> PathBuf {
     project_dir.unwrap_or_else(|| std::env::current_dir().expect("getting current directory"))
 }
 
-fn make_fetcher(project_dir: &Path) -> anyhow::Result<Box<dyn wezel_bench::fetch::PluginFetcher>> {
-    let config = wezel_bench::Config::load(project_dir)?;
-    Ok(Box::new(fetcher::ConfigFetcher::new(
-        project_dir.to_path_buf(),
-        config,
-    )?))
+fn make_workspace(project_dir: PathBuf) -> anyhow::Result<wezel_bench::Workspace> {
+    let plugin_dir = wezel_bench::Workspace::default_plugin_dir()?;
+    wezel_bench::Workspace::discover(project_dir, plugin_dir)
 }
 
 fn print_human_report(
@@ -639,14 +636,15 @@ fn main() -> ExitCode {
             } => {
                 let project_dir = resolve_project_dir(project_dir);
                 run_result((|| -> anyhow::Result<()> {
-                    let mut fetcher = make_fetcher(&project_dir)?;
-                    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut *fetcher);
+                    let ws = make_workspace(project_dir)?;
+                    let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
+                    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
                     let (steps, summary_defs) = wezel_bench::run::run_experiment(
                         &experiment,
-                        &project_dir,
+                        &ws,
                         Some(&mut caching),
                     )?;
-                    let commit = wezel_bench::git::current_sha(&project_dir)?;
+                    let commit = wezel_bench::git::current_sha(&ws.project_dir)?;
                     let summaries = wezel_bench::run::compute_summaries(&steps, &summary_defs);
                     match output_format {
                         OutputFormat::Json => {
@@ -672,9 +670,10 @@ fn main() -> ExitCode {
             ExperimentCmd::Lint { project_dir } => {
                 let project_dir = resolve_project_dir(project_dir);
                 run_result((|| -> anyhow::Result<()> {
-                    let mut fetcher = make_fetcher(&project_dir)?;
-                    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut *fetcher);
-                    wezel_bench::lint::run_lint(&project_dir, Some(&mut caching))
+                    let ws = make_workspace(project_dir)?;
+                    let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
+                    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
+                    wezel_bench::lint::run_lint(&ws, Some(&mut caching))
                 })())
             }
             ExperimentCmd::Daemon { cmd: daemon_cmd } => match daemon_cmd {
@@ -682,31 +681,29 @@ fn main() -> ExitCode {
                     repo_dir,
                     poll_interval,
                 } => run_result((|| -> anyhow::Result<()> {
-                    let mut fetcher = make_fetcher(&repo_dir)?;
-                    wezel_bench::daemon::run_start(&repo_dir, poll_interval, Some(&mut *fetcher))
+                    let ws = make_workspace(repo_dir)?;
+                    let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
+                    wezel_bench::daemon::run_start(&ws, poll_interval, Some(&mut fetcher))
                 })()),
                 ExperimentDaemonCmd::Standalone {
                     repo_dir,
                     branch,
                     threshold,
-                } => {
-                    let data_branch = wezel_bench::Config::load(&repo_dir)
-                        .map(|c| c.data_branch)
-                        .unwrap_or_else(|_| "wezel/data".to_string());
-                    run_result((|| -> anyhow::Result<()> {
-                        let mut fetcher = make_fetcher(&repo_dir)?;
-                        let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut *fetcher);
-                        let report = wezel_bench::standalone::run_standalone(
-                            &repo_dir,
-                            &data_branch,
-                            &branch,
-                            threshold,
-                            Some(&mut caching),
-                        )?;
-                        println!("{}", serde_json::to_string_pretty(&report).unwrap());
-                        Ok(())
-                    })())
-                }
+                } => run_result((|| -> anyhow::Result<()> {
+                    let ws = make_workspace(repo_dir)?;
+                    let data_branch = ws.config.data_branch.clone();
+                    let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
+                    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
+                    let report = wezel_bench::standalone::run_standalone(
+                        &ws,
+                        &data_branch,
+                        &branch,
+                        threshold,
+                        Some(&mut caching),
+                    )?;
+                    println!("{}", serde_json::to_string_pretty(&report).unwrap());
+                    Ok(())
+                })()),
                 ExperimentDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
             },
             ExperimentCmd::Schema => {

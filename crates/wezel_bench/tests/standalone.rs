@@ -140,24 +140,10 @@ bisect = true
         }
     }
 
-    /// Point the local plugin store at the fixture's plugin dir for the
-    /// duration of a closure.
-    fn with_plugin_on_path<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce() -> R,
-    {
-        let prev = std::env::var("WEZEL_PLUGIN_DIR").ok();
-        // SAFETY: These tests run with --test-threads=1, so no concurrent
-        // env mutation.
-        unsafe { std::env::set_var("WEZEL_PLUGIN_DIR", self.plugin_dir.display().to_string()) };
-        let result = f();
-        unsafe {
-            match prev {
-                Some(v) => std::env::set_var("WEZEL_PLUGIN_DIR", v),
-                None => std::env::remove_var("WEZEL_PLUGIN_DIR"),
-            }
-        };
-        result
+    /// Build a Workspace pointing at this fixture's project + plugin dirs.
+    fn workspace(&self) -> wezel_bench::Workspace {
+        wezel_bench::Workspace::discover(self.work_dir.clone(), self.plugin_dir.clone())
+            .expect("workspace discovery")
     }
 
     /// Make a commit with a new metric value to simulate a regression.
@@ -191,20 +177,17 @@ impl Drop for TestFixture {
 #[test]
 fn standalone_creates_baseline_on_first_run() {
     let fixture = TestFixture::new();
+    let ws = fixture.workspace();
 
-    let report = fixture.with_plugin_on_path(|| {
-        wezel_bench::standalone::run_standalone(&fixture.work_dir, "wezel/data", "main", 10.0, None)
-            .unwrap()
-    });
+    let report =
+        wezel_bench::standalone::run_standalone(&ws, "wezel/data", "main", 10.0, None).unwrap();
 
     assert_eq!(report.results.len(), 1);
     let result = &report.results[0];
     assert_eq!(result.experiment, "basic");
-    // Serialize to check the action string representation.
     let json = serde_json::to_value(result).unwrap();
     assert_eq!(json["action"], "baseline_created");
 
-    // Verify the data branch was created with a baseline file.
     let baseline_raw = git(
         &fixture.work_dir,
         &["show", "origin/wezel/data:baselines/basic.json"],
@@ -218,25 +201,32 @@ fn standalone_updates_baseline_when_no_regression() {
     let fixture = TestFixture::new();
 
     // First run: create baseline.
-    fixture.with_plugin_on_path(|| {
-        wezel_bench::standalone::run_standalone(&fixture.work_dir, "wezel/data", "main", 10.0, None)
-            .unwrap()
-    });
+    wezel_bench::standalone::run_standalone(
+        &fixture.workspace(),
+        "wezel/data",
+        "main",
+        10.0,
+        None,
+    )
+    .unwrap();
 
     // Add a commit with a small change (within threshold).
     fixture.commit_with_metric(105, "small change");
 
     // Second run: should update baseline.
-    let report = fixture.with_plugin_on_path(|| {
-        wezel_bench::standalone::run_standalone(&fixture.work_dir, "wezel/data", "main", 10.0, None)
-            .unwrap()
-    });
+    let report = wezel_bench::standalone::run_standalone(
+        &fixture.workspace(),
+        "wezel/data",
+        "main",
+        10.0,
+        None,
+    )
+    .unwrap();
 
     assert_eq!(report.results.len(), 1);
     let json = serde_json::to_value(&report.results[0]).unwrap();
     assert_eq!(json["action"], "baseline_updated");
 
-    // Verify the baseline was updated.
     git(&fixture.work_dir, &["fetch", "origin"]);
     let baseline_raw = git(
         &fixture.work_dir,
@@ -251,10 +241,14 @@ fn standalone_detects_regression_and_bisects() {
     let fixture = TestFixture::new();
 
     // First run: create baseline at 100.
-    fixture.with_plugin_on_path(|| {
-        wezel_bench::standalone::run_standalone(&fixture.work_dir, "wezel/data", "main", 10.0, None)
-            .unwrap()
-    });
+    wezel_bench::standalone::run_standalone(
+        &fixture.workspace(),
+        "wezel/data",
+        "main",
+        10.0,
+        None,
+    )
+    .unwrap();
 
     // Add commits: innocent (small changes), then REGRESSOR.
     fixture.commit_with_metric(101, "innocent-1");
@@ -262,17 +256,20 @@ fn standalone_detects_regression_and_bisects() {
     fixture.commit_with_metric(200, "regressor");
 
     // Second run: should detect regression.
-    let report = fixture.with_plugin_on_path(|| {
-        wezel_bench::standalone::run_standalone(&fixture.work_dir, "wezel/data", "main", 10.0, None)
-            .unwrap()
-    });
+    let report = wezel_bench::standalone::run_standalone(
+        &fixture.workspace(),
+        "wezel/data",
+        "main",
+        10.0,
+        None,
+    )
+    .unwrap();
 
     assert_eq!(report.results.len(), 1);
     let json = serde_json::to_value(&report.results[0]).unwrap();
     assert_eq!(json["action"], "regression_detected");
     assert!(json["details"]["regression_pct"].as_f64().unwrap() > 10.0);
 
-    // Verify bisection state was written.
     let bisect_raw = git(
         &fixture.work_dir,
         &["show", "origin/wezel/data:bisection/active/basic.json"],
@@ -284,16 +281,14 @@ fn standalone_detects_regression_and_bisects() {
     // Run bisection steps until culprit is found.
     let mut found_culprit = false;
     for _ in 0..10 {
-        let report = fixture.with_plugin_on_path(|| {
-            wezel_bench::standalone::run_standalone(
-                &fixture.work_dir,
-                "wezel/data",
-                "main",
-                10.0,
-                None,
-            )
-            .unwrap()
-        });
+        let report = wezel_bench::standalone::run_standalone(
+            &fixture.workspace(),
+            "wezel/data",
+            "main",
+            10.0,
+            None,
+        )
+        .unwrap();
 
         let json = serde_json::to_value(&report.results[0]).unwrap();
         let action = json["action"].as_str().unwrap();

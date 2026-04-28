@@ -1,11 +1,10 @@
 use std::collections::HashSet;
-use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 use owo_colors::OwoColorize;
 
-use crate::{fetch, parse_experiment, resolve_plugin};
+use crate::{Workspace, fetch, parse_experiment};
 
 struct LintDiagnostic {
     step: String,
@@ -19,10 +18,10 @@ struct ExperimentResult {
 }
 
 pub fn run_lint(
-    project_dir: &Path,
+    workspace: &Workspace,
     mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<()> {
-    let experiments_dir = project_dir.join(".wezel").join("experiments");
+    let experiments_dir = workspace.project_dir.join(".wezel").join("experiments");
     if !experiments_dir.is_dir() {
         bail!("no experiments directory at {}", experiments_dir.display());
     }
@@ -75,8 +74,24 @@ pub fn run_lint(
                 }
             }
 
+            // The forager must be declared in [tools.foragers.<name>].
+            // Skip the resolve/install/schema checks below if it isn't —
+            // they'd just produce noise about the same root cause.
+            if !workspace.config.tools.foragers.contains_key(&step.forager) {
+                if warned_plugins.insert(step.forager.clone()) {
+                    diagnostics.push(LintDiagnostic {
+                        step: step.name.clone(),
+                        message: format!(
+                            "forager `{}` is not declared — add `[tools.foragers.{}]` to .wezel/config.toml",
+                            step.forager, step.forager
+                        ),
+                    });
+                }
+                continue;
+            }
+
             // Check plugin is in the local store; try fetching if a fetcher is available.
-            if resolve_plugin(&step.forager).is_none() {
+            if workspace.resolve_plugin(&step.forager).is_none() {
                 if let Some(ref mut f) = fetcher {
                     match f.fetch(&step.forager) {
                         Ok(_) => {} // installed, proceed to schema check
@@ -98,7 +113,7 @@ pub fn run_lint(
             }
 
             // If plugin is available, validate its --schema output.
-            if let Some(binary) = resolve_plugin(&step.forager) {
+            if let Some(binary) = workspace.resolve_plugin(&step.forager) {
                 match Command::new(&binary).arg("--schema").output() {
                     Ok(o) if o.status.success() => {
                         let stdout = String::from_utf8_lossy(&o.stdout);

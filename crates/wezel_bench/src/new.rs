@@ -23,6 +23,7 @@ pub fn create_experiment(name: &str, description: Option<&str>, project_dir: &Pa
         r#"
 [[steps]]
 name = "build"
+tool = "exec"
 cmd = "cargo build"
 "#,
     );

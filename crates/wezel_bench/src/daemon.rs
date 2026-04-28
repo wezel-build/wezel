@@ -1,11 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use wezel_types::{ForagerJob, ForagerRunReport};
 
-use crate::Config;
+use crate::Workspace;
 use crate::fetch;
 use crate::git;
 use crate::run::{BurrowSession, run_experiment};
@@ -76,18 +76,17 @@ const MAX_RECENT: usize = 20;
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 pub fn run_start(
-    repo_dir: &Path,
+    workspace: &Workspace,
     poll_interval: u64,
     fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<()> {
-    let config = Config::load(repo_dir)?;
-    let Some(ref server_url) = config.server_url else {
+    let Some(ref server_url) = workspace.config.server_url else {
         bail!(
             "server_url not configured — set WEZEL_BURROW_URL or add server_url to .wezel/config.toml (or use --standalone mode)"
         );
     };
     let burrow = BurrowSession::new(server_url);
-    let project_upstream = git::upstream(repo_dir)?;
+    let project_upstream = git::upstream(&workspace.project_dir)?;
 
     let mut status = DaemonStatus {
         pid: std::process::id(),
@@ -114,7 +113,7 @@ pub fn run_start(
         server_url,
         &burrow,
         &project_upstream,
-        repo_dir,
+        workspace,
         poll_interval,
         &mut status,
         fetcher,
@@ -131,7 +130,7 @@ fn run_loop(
     server_url: &str,
     burrow: &BurrowSession,
     project_upstream: &str,
-    repo_dir: &Path,
+    workspace: &Workspace,
     poll_interval: u64,
     status: &mut DaemonStatus,
     mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
@@ -169,13 +168,14 @@ fn run_loop(
         });
         write_status(status);
 
-        git::reset_worktree(repo_dir)
+        git::reset_worktree(&workspace.project_dir)
             .with_context(|| format!("resetting worktree before job {}", job_id))?;
-        git::fetch(repo_dir).with_context(|| format!("git fetch before job {}", job_id))?;
-        git::checkout_detached(repo_dir, &job.commit_sha)
+        git::fetch(&workspace.project_dir)
+            .with_context(|| format!("git fetch before job {}", job_id))?;
+        git::checkout_detached(&workspace.project_dir, &job.commit_sha)
             .with_context(|| format!("checkout {} for job {}", job.commit_sha, job_id))?;
 
-        let result = run_experiment(&job.experiment_name, repo_dir, fetcher.as_deref_mut());
+        let result = run_experiment(&job.experiment_name, workspace, fetcher.as_deref_mut());
 
         // Submit results to Burrow and update the queue job status.
         let (patch_body, finished) = match result {

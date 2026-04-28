@@ -3,4 +3,5 @@ description = "Measures various bits about the workspace"
 
 [[steps]]
 name = "build"
+tool = "exec"
 cmd = "cargo tree"

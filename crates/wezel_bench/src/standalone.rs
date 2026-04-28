@@ -4,6 +4,7 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
+use crate::Workspace;
 use crate::fetch;
 use crate::git;
 use crate::run::{self, SummaryValue, compute_summaries};
@@ -527,16 +528,16 @@ fn now_rfc3339() -> String {
 // ── Main entry point ─────────────────────────────────────────────────────────
 
 pub fn run_standalone(
-    repo_dir: &Path,
+    workspace: &Workspace,
     data_branch: &str,
     target_branch: &str,
     threshold: f64,
     mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<StandaloneReport> {
     // Fetch latest state from remote.
-    git::fetch(repo_dir)?;
+    git::fetch(&workspace.project_dir)?;
 
-    let db = DataBranch::new(repo_dir, data_branch);
+    let db = DataBranch::new(&workspace.project_dir, data_branch);
     let mut results = Vec::new();
 
     // Check for active bisections first.
@@ -544,7 +545,7 @@ pub fn run_standalone(
     if !active_bisections.is_empty() {
         for experiment_name in &active_bisections {
             let result =
-                run_bisection_step(repo_dir, &db, experiment_name, fetcher.as_deref_mut())?;
+                run_bisection_step(workspace, &db, experiment_name, fetcher.as_deref_mut())?;
             results.push(result);
         }
         return Ok(StandaloneReport { results });
@@ -552,10 +553,10 @@ pub fn run_standalone(
 
     // No active bisections — run all experiments against HEAD of target branch.
     let target_ref = format!("origin/{target_branch}");
-    git::checkout_detached(repo_dir, &target_ref)
+    git::checkout_detached(&workspace.project_dir, &target_ref)
         .with_context(|| format!("checking out {target_ref}"))?;
 
-    let experiments = list_experiment_names(repo_dir)?;
+    let experiments = list_experiment_names(&workspace.project_dir)?;
     if experiments.is_empty() {
         log::info!("no experiments found");
         return Ok(StandaloneReport { results });
@@ -563,7 +564,7 @@ pub fn run_standalone(
 
     for experiment_name in &experiments {
         let result = run_experiment_and_compare(
-            repo_dir,
+            workspace,
             &db,
             experiment_name,
             threshold,
@@ -571,13 +572,13 @@ pub fn run_standalone(
         )?;
         results.push(result);
         // Reset worktree between experiments (patches may have been applied).
-        git::reset_worktree(repo_dir)?;
+        git::reset_worktree(&workspace.project_dir)?;
     }
 
     Ok(StandaloneReport { results })
 }
 
-fn list_experiment_names(repo_dir: &Path) -> Result<Vec<String>> {
+fn list_experiment_names(repo_dir: &std::path::Path) -> Result<Vec<String>> {
     let experiments_dir = repo_dir.join(".wezel").join("experiments");
     if !experiments_dir.is_dir() {
         return Ok(vec![]);
@@ -598,7 +599,7 @@ fn list_experiment_names(repo_dir: &Path) -> Result<Vec<String>> {
 }
 
 fn run_experiment_and_compare(
-    repo_dir: &Path,
+    workspace: &Workspace,
     db: &DataBranch,
     experiment_name: &str,
     threshold: f64,
@@ -606,9 +607,9 @@ fn run_experiment_and_compare(
 ) -> Result<ExperimentResult> {
     log::info!("running experiment: {experiment_name}");
 
-    let (step_reports, summary_defs) = run::run_experiment(experiment_name, repo_dir, fetcher)?;
+    let (step_reports, summary_defs) = run::run_experiment(experiment_name, workspace, fetcher)?;
     let computed = compute_summaries(&step_reports, &summary_defs);
-    let commit = git::current_sha(repo_dir)?;
+    let commit = git::current_sha(&workspace.project_dir)?;
 
     // Read existing baseline.
     let existing_baseline = db.read_baseline(experiment_name)?;
@@ -735,7 +736,7 @@ fn detect_regression(
 }
 
 fn run_bisection_step(
-    repo_dir: &Path,
+    workspace: &Workspace,
     db: &DataBranch,
     experiment_name: &str,
     fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
@@ -746,15 +747,15 @@ fn run_bisection_step(
 
     // List commits in good..bad range.
     let range = format!("{}..{}", state.good, state.bad);
-    let commits_output = cmd_output(repo_dir, &["rev-list", "--reverse", &range])?;
+    let commits_output = cmd_output(&workspace.project_dir, &["rev-list", "--reverse", &range])?;
     let commits: Vec<&str> = commits_output.lines().collect();
 
     if commits.len() <= 1 {
         // The bad commit IS the culprit.
         let culprit = &state.bad;
-        git::checkout_detached(repo_dir, culprit)?;
-        let message = git::commit_message(repo_dir);
-        let author = git::commit_author(repo_dir);
+        git::checkout_detached(&workspace.project_dir, culprit)?;
+        let message = git::commit_message(&workspace.project_dir);
+        let author = git::commit_author(&workspace.project_dir);
         let pct = if state.good_value != 0.0 {
             ((state.bad_value - state.good_value) / state.good_value) * 100.0
         } else {
@@ -808,8 +809,9 @@ fn run_bisection_step(
         commits.len()
     );
 
-    git::checkout_detached(repo_dir, midpoint)?;
-    let (step_reports, summary_defs) = run::run_experiment(experiment_name, repo_dir, fetcher)?;
+    git::checkout_detached(&workspace.project_dir, midpoint)?;
+    let (step_reports, summary_defs) =
+        run::run_experiment(experiment_name, workspace, fetcher)?;
     let computed = compute_summaries(&step_reports, &summary_defs);
 
     // Compare midpoint value against known-good.
@@ -849,7 +851,7 @@ fn run_bisection_step(
     )?;
 
     // Reset worktree after bisection step.
-    git::reset_worktree(repo_dir)?;
+    git::reset_worktree(&workspace.project_dir)?;
 
     Ok(ExperimentResult {
         experiment: experiment_name.to_string(),
