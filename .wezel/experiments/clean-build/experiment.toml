@@ -6,14 +6,15 @@ description = "Measures incremental build cost of adding a function"
 name = "baseline"
 tool = "cargo"
 command = "build"
-worksp
+build_target = "workspace"
+
 # Step 2: apply add-one-fn.patch and rebuild
 [[steps]]
 name = "add-one-fn"
 tool = "cargo"
 # apply-diff = true
 command = "build"
-workspace = true
+build_target = "workspace"
 
 # Step 3: measure LLVM IR line count (no patch applied for this step)
 [[steps]]
