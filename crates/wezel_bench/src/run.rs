@@ -199,13 +199,13 @@ pub fn run_experiment(
         let mut all_measurements = Vec::new();
         let mut hard_failure = None;
         for iter in 1..=samples {
-            if iter > 1 {
-                if let Some(ref snap) = snapshot {
-                    snap.restore_to(&scratch_workspace.project_dir)
-                        .with_context(|| {
-                            format!("restoring snapshot for step '{}' iter {iter}", step.name)
-                        })?;
-                }
+            if iter > 1
+                && let Some(ref snap) = snapshot
+            {
+                snap.restore_to(&scratch_workspace.project_dir)
+                    .with_context(|| {
+                        format!("restoring snapshot for step '{}' iter {iter}", step.name)
+                    })?;
             }
             log::debug!("  iter {iter}/{samples}");
             match invoke_forager(

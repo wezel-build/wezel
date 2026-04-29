@@ -95,6 +95,13 @@
           "description": "Summary identifier; surfaced in the dashboard.",
           "type": "string"
         },
+        "samples": {
+          "default": 1,
+          "description": "Number of forager invocations of `step` to take. Lint requires all summaries on the same step to agree. Default 1.",
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
+        },
         "step": {
           "description": "Step that emits the measurement.",
           "type": "string"
