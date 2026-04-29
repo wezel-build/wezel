@@ -94,11 +94,16 @@
         "name": {
           "description": "Summary identifier; surfaced in the dashboard.",
           "type": "string"
+        },
+        "step": {
+          "description": "Step that emits the measurement.",
+          "type": "string"
         }
       },
       "required": [
         "measurement",
-        "name"
+        "name",
+        "step"
       ],
       "type": "object"
     }

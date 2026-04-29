@@ -243,10 +243,7 @@ impl SummaryDef {
     /// Returns `Ok(None)` when no measurements match the filter. Returns
     /// `Err(AmbiguousAggregation)` when multiple values match but the summary
     /// did not specify how to combine them.
-    pub fn compute(
-        &self,
-        steps: &[ForagerStepReport],
-    ) -> Result<Option<f64>, SummaryError> {
+    pub fn compute(&self, steps: &[ForagerStepReport]) -> Result<Option<f64>, SummaryError> {
         let mut values: Vec<f64> = steps
             .iter()
             .filter(|s| s.step == self.step)
