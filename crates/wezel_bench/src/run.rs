@@ -6,7 +6,7 @@ use serde::Serialize;
 use wezel_types::{ForagerRunReport, ForagerStepReport, SummaryDef};
 
 use crate::git;
-use crate::workspace::Scratch;
+use crate::workspace::{Scratch, Snapshot};
 use crate::{Config, ExperimentToml, Workspace, fetch, invoke_forager, parse_experiment};
 
 /// JSON output for `wezel experiment run --output-format json`.
@@ -143,6 +143,15 @@ pub fn run_experiment(
     let experiment = parse_experiment(&experiment_dir)?;
     let commit_sha = git::current_sha(&workspace.project_dir)?;
 
+    // Per-step sample count is derived from summaries; lint enforces a single
+    // value per step, so taking max here just guards against a stale lockfile
+    // where lint hasn't been re-run.
+    let mut step_samples: HashMap<&str, usize> = HashMap::new();
+    for summary in &experiment.summaries {
+        let entry = step_samples.entry(summary.step.as_str()).or_insert(1);
+        *entry = (*entry).max(summary.samples);
+    }
+
     // Isolate the run: fresh clone of the user's repo at `commit_sha`, into
     // a tempdir that's removed when `scratch` drops. Foragers run inside
     // this scratch checkout so `target/` and step patches never touch the
@@ -159,7 +168,16 @@ pub fn run_experiment(
     let mut step_reports: Vec<ForagerStepReport> = Vec::new();
 
     for step in &experiment.steps {
-        log::info!("step '{}' [forager={}]", step.name, step.forager);
+        let samples = step_samples
+            .get(step.name.as_str())
+            .copied()
+            .unwrap_or(1)
+            .max(1);
+        log::info!(
+            "step '{}' [forager={}, samples={samples}]",
+            step.name,
+            step.forager
+        );
 
         // Apply patch if the step declares one. Patch files come from the
         // user's experiment dir; they're applied inside the scratch checkout.
@@ -170,31 +188,50 @@ pub fn run_experiment(
                 .with_context(|| format!("applying patch for step '{}'", step.name))?;
         }
 
-        // Invoke the forager plugin.
-        let result = invoke_forager(
-            &step.forager,
-            &step.name,
-            &step.inputs,
-            &scratch_workspace,
-            fetcher.as_deref_mut(),
-        );
+        // Take a snapshot once when sampling — every iteration restores from
+        // it, making them i.i.d. The post-state of the last iter is what
+        // downstream steps see.
+        let snapshot = (samples > 1)
+            .then(|| Snapshot::capture(&scratch_workspace.project_dir))
+            .transpose()
+            .with_context(|| format!("snapshotting before step '{}'", step.name))?;
 
-        match result {
-            Ok(measurements) => {
-                step_reports.push(ForagerStepReport {
-                    step: step.name.clone(),
-                    measurements,
-                });
+        let mut all_measurements = Vec::new();
+        let mut hard_failure = None;
+        for iter in 1..=samples {
+            if iter > 1 {
+                if let Some(ref snap) = snapshot {
+                    snap.restore_to(&scratch_workspace.project_dir)
+                        .with_context(|| {
+                            format!("restoring snapshot for step '{}' iter {iter}", step.name)
+                        })?;
+                }
             }
-            Err(e) if e.is_hard() => bail!("{e}"),
-            Err(e) => {
-                log::warn!("{e}");
-                step_reports.push(ForagerStepReport {
-                    step: step.name.clone(),
-                    measurements: vec![],
-                });
+            log::debug!("  iter {iter}/{samples}");
+            match invoke_forager(
+                &step.forager,
+                &step.name,
+                &step.inputs,
+                &scratch_workspace,
+                fetcher.as_deref_mut(),
+            ) {
+                Ok(mut measurements) => all_measurements.append(&mut measurements),
+                Err(e) if e.is_hard() => {
+                    hard_failure = Some(e);
+                    break;
+                }
+                Err(e) => log::warn!("{e}"),
             }
         }
+
+        if let Some(e) = hard_failure {
+            bail!("{e}");
+        }
+
+        step_reports.push(ForagerStepReport {
+            step: step.name.clone(),
+            measurements: all_measurements,
+        });
     }
 
     log::debug!(

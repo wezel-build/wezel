@@ -17,7 +17,7 @@ name = "total-llvm-lines"
 step = "measure-llvm"
 measurement = "llvm-lines"
 aggregation = "sum"
-filter = { unit = "lines" }
+filter = { summary_unit = "lines" }
 bisect = true
 
 [[summaries]]
@@ -25,7 +25,7 @@ name = "total-llvm-copies"
 step = "measure-llvm"
 measurement = "llvm-lines"
 aggregation = "sum"
-filter = { unit = "copies" }
+filter = { summary_unit = "copies" }
 bisect = false
 
 [[summaries]]

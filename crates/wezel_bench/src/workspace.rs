@@ -107,3 +107,71 @@ impl Scratch {
         self.dir.path()
     }
 }
+
+/// Side-stash of a project directory's contents, used to make sampled steps
+/// i.i.d. by restoring before each iteration.
+pub struct Snapshot {
+    holder: tempfile::TempDir,
+}
+
+impl Snapshot {
+    /// `cp -a source <holder>/snap`. Captures the full tree (including
+    /// `target/`, `.git/`, etc.) so a restore returns to byte-identical state.
+    pub fn capture(source: &Path) -> Result<Self> {
+        let holder = tempfile::Builder::new()
+            .prefix("wezel-snapshot-")
+            .tempdir()
+            .context("creating snapshot tempdir")?;
+        let dest = holder.path().join("snap");
+        let status = Command::new("cp")
+            .arg("-a")
+            .arg(source)
+            .arg(&dest)
+            .status()
+            .context("spawning cp -a for snapshot")?;
+        if !status.success() {
+            bail!(
+                "cp -a {} {} failed",
+                source.display(),
+                dest.display()
+            );
+        }
+        Ok(Self { holder })
+    }
+
+    /// Wipe `target` and copy the snapshot's contents back in. `target` itself
+    /// is preserved (so external owners — like a `Scratch`'s `TempDir` — keep
+    /// their invariant).
+    pub fn restore_to(&self, target: &Path) -> Result<()> {
+        for entry in std::fs::read_dir(target)
+            .with_context(|| format!("reading {} for restore", target.display()))?
+        {
+            let entry = entry?;
+            let p = entry.path();
+            let ft = entry.file_type()?;
+            if ft.is_dir() && !ft.is_symlink() {
+                std::fs::remove_dir_all(&p)
+                    .with_context(|| format!("removing {}", p.display()))?;
+            } else {
+                std::fs::remove_file(&p)
+                    .with_context(|| format!("removing {}", p.display()))?;
+            }
+        }
+        let mut snap_contents = self.holder.path().join("snap").into_os_string();
+        snap_contents.push("/.");
+        let status = Command::new("cp")
+            .arg("-a")
+            .arg(&snap_contents)
+            .arg(target)
+            .status()
+            .context("spawning cp -a for restore")?;
+        if !status.success() {
+            bail!(
+                "cp -a {:?} {} failed",
+                snap_contents,
+                target.display()
+            );
+        }
+        Ok(())
+    }
+}
