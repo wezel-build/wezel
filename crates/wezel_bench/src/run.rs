@@ -9,6 +9,27 @@ use crate::git;
 use crate::workspace::{Scratch, Snapshot};
 use crate::{Config, ExperimentToml, Workspace, fetch, invoke_forager, parse_experiment};
 
+/// One entry in the up-front plan handed to a `RunReporter` so it can size
+/// progress UI before any step actually starts.
+#[derive(Debug, Clone)]
+pub struct StepPlan {
+    pub name: String,
+    pub samples: usize,
+}
+
+/// Receives lifecycle events during `run_experiment`. Default impls are noops
+/// so renderers can override only what they need.
+///
+/// Pass `None` for headless callers (daemon, standalone bisect) and a real
+/// implementation (e.g. indicatif-backed) from interactive CLI commands.
+pub trait RunReporter: Send + Sync {
+    fn run_started(&self, _experiment: &str, _commit: &str, _steps: &[StepPlan]) {}
+    fn step_started(&self, _step: &str) {}
+    fn sample_done(&self, _step: &str, _iter: usize, _samples: usize) {}
+    fn step_finished(&self, _step: &str) {}
+    fn run_finished(&self) {}
+}
+
 /// JSON output for `wezel experiment run --output-format json`.
 #[derive(Debug, Serialize)]
 pub struct ExperimentRunOutput {
@@ -126,6 +147,7 @@ pub fn run_experiment(
     experiment_name: &str,
     workspace: &Workspace,
     mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
+    reporter: Option<&dyn RunReporter>,
 ) -> Result<(Vec<ForagerStepReport>, Vec<SummaryDef>)> {
     let experiment_dir = workspace
         .project_dir
@@ -150,6 +172,18 @@ pub fn run_experiment(
     for summary in &experiment.summaries {
         let entry = step_samples.entry(summary.step.as_str()).or_insert(1);
         *entry = (*entry).max(summary.samples);
+    }
+
+    let plan: Vec<StepPlan> = experiment
+        .steps
+        .iter()
+        .map(|s| StepPlan {
+            name: s.name.clone(),
+            samples: step_samples.get(s.name.as_str()).copied().unwrap_or(1).max(1),
+        })
+        .collect();
+    if let Some(r) = reporter {
+        r.run_started(experiment_name, &commit_sha, &plan);
     }
 
     // Isolate the run: fresh clone of the user's repo at `commit_sha`, into
@@ -178,6 +212,9 @@ pub fn run_experiment(
             step.name,
             step.forager
         );
+        if let Some(r) = reporter {
+            r.step_started(&step.name);
+        }
 
         // Apply patch if the step declares one. Patch files come from the
         // user's experiment dir; they're applied inside the scratch checkout.
@@ -222,16 +259,27 @@ pub fn run_experiment(
                 }
                 Err(e) => log::warn!("{e}"),
             }
+            if let Some(r) = reporter {
+                r.sample_done(&step.name, iter, samples);
+            }
         }
 
         if let Some(e) = hard_failure {
             bail!("{e}");
         }
 
+        if let Some(r) = reporter {
+            r.step_finished(&step.name);
+        }
+
         step_reports.push(ForagerStepReport {
             step: step.name.clone(),
             measurements: all_measurements,
         });
+    }
+
+    if let Some(r) = reporter {
+        r.run_finished();
     }
 
     log::debug!(

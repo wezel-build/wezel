@@ -4,6 +4,7 @@ mod daemon;
 mod fetcher;
 mod flush;
 mod pheromone_mgr;
+mod progress;
 mod queue;
 mod shell;
 
@@ -489,7 +490,7 @@ enum ExperimentDaemonCmd {
     Status,
 }
 
-#[derive(Clone, Debug, ValueEnum)]
+#[derive(Clone, Debug, PartialEq, Eq, ValueEnum)]
 enum OutputFormat {
     Human,
     Json,
@@ -657,8 +658,16 @@ fn main() -> ExitCode {
                     let ws = make_workspace(project_dir)?;
                     let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
                     let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
-                    let (steps, summary_defs) =
-                        wezel_bench::run::run_experiment(&experiment, &ws, Some(&mut caching))?;
+                    let reporter = (output_format == OutputFormat::Human)
+                        .then(progress::IndicatifReporter::new);
+                    let (steps, summary_defs) = wezel_bench::run::run_experiment(
+                        &experiment,
+                        &ws,
+                        Some(&mut caching),
+                        reporter
+                            .as_ref()
+                            .map(|r| r as &dyn wezel_bench::run::RunReporter),
+                    )?;
                     let commit = wezel_bench::git::current_sha(&ws.project_dir)?;
                     let summaries = wezel_bench::run::compute_summaries(&steps, &summary_defs);
                     match output_format {

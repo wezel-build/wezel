@@ -32,4 +32,6 @@ bisect = false
 name = "build-time"
 step = "baseline"
 measurement = "time_ms"
+aggregation = "mean"
 bisect = false
+samples = 5

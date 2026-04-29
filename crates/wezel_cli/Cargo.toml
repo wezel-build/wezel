@@ -37,3 +37,4 @@ tar = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 wezel_bench = { path = "../wezel_bench" }
+indicatif = { workspace = true }
