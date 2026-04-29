@@ -139,6 +139,8 @@ pub struct ExperimentStepToml {
 pub struct SummaryToml {
     /// Summary identifier; surfaced in the dashboard.
     pub name: String,
+    /// Step that emits the measurement.
+    pub step: String,
     /// Measurement name (as emitted by the forager) to aggregate over.
     pub measurement: String,
     /// How to combine multiple matching values. Omit when the filter is
@@ -200,6 +202,7 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
         .into_iter()
         .map(|c| SummaryDef {
             name: c.name,
+            step: c.step,
             measurement: c.measurement,
             aggregation: c.aggregation,
             filter: c.filter,

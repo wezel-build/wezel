@@ -71,6 +71,7 @@ package = "my-crate"
 
 [[summaries]]
 name = "total-llvm-lines"
+step = "measure-llvm"
 measurement = "llvm-lines"
 aggregation = "sum"
 filter = { unit = "lines" }
@@ -78,6 +79,7 @@ bisect = true
 
 [[summaries]]
 name = "total-copies"
+step = "measure-llvm"
 measurement = "llvm-lines"
 aggregation = "sum"
 filter = { unit = "copies" }

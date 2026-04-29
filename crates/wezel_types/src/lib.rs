@@ -196,6 +196,8 @@ pub enum Aggregation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummaryDef {
     pub name: String,
+    /// Step the measurement was emitted by.
+    pub step: String,
     /// Measurement name to aggregate over.
     pub measurement: String,
     /// How to combine multiple matching values. Omit when the filter is
@@ -243,10 +245,12 @@ impl SummaryDef {
     /// did not specify how to combine them.
     pub fn compute(
         &self,
-        measurements: &[ForagerPluginOutput],
+        steps: &[ForagerStepReport],
     ) -> Result<Option<f64>, SummaryError> {
-        let mut values: Vec<f64> = measurements
+        let mut values: Vec<f64> = steps
             .iter()
+            .filter(|s| s.step == self.step)
+            .flat_map(|s| &s.measurements)
             .filter(|m| m.name == self.measurement)
             .filter(|m| {
                 self.filter

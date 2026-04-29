@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
-use wezel_types::{ForagerPluginOutput, ForagerRunReport, ForagerStepReport, SummaryDef};
+use wezel_types::{ForagerRunReport, ForagerStepReport, SummaryDef};
 
 use crate::git;
 use crate::{ExperimentToml, Workspace, fetch, invoke_forager, parse_experiment};
@@ -31,14 +31,9 @@ pub fn compute_summaries(
     step_reports: &[ForagerStepReport],
     summary_defs: &[SummaryDef],
 ) -> HashMap<String, SummaryValue> {
-    let all_measurements: Vec<&ForagerPluginOutput> =
-        step_reports.iter().flat_map(|r| &r.measurements).collect();
-    // SummaryDef::compute takes &[ForagerPluginOutput], so collect owned refs.
-    let all_owned: Vec<ForagerPluginOutput> = all_measurements.into_iter().cloned().collect();
-
     let mut result = HashMap::new();
     for def in summary_defs {
-        match def.compute(&all_owned) {
+        match def.compute(step_reports) {
             Ok(Some(value)) => {
                 result.insert(
                     def.name.clone(),

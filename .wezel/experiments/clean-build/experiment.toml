@@ -1,22 +1,12 @@
 name = "incremental-build"
 description = "Measures incremental build cost of adding a function"
 
-# Step 1: build the baseline (no patch applied)
 [[steps]]
 name = "baseline"
 tool = "cargo"
 command = "build"
 build_target = "workspace"
 
-# Step 2: apply add-one-fn.patch and rebuild
-[[steps]]
-name = "add-one-fn"
-tool = "cargo"
-# apply-diff = true
-command = "build"
-build_target = "workspace"
-
-# Step 3: measure LLVM IR line count (no patch applied for this step)
 [[steps]]
 name = "measure-llvm"
 tool = "llvm-lines"
@@ -25,6 +15,7 @@ package = "wezel_types"
 # Conclusions derived from measurements for regression detection.
 [[summaries]]
 name = "total-llvm-lines"
+step = "measure-llvm"
 measurement = "llvm-lines"
 aggregation = "sum"
 filter = { unit = "lines" }
@@ -32,7 +23,14 @@ bisect = true
 
 [[summaries]]
 name = "total-llvm-copies"
+step = "measure-llvm"
 measurement = "llvm-lines"
 aggregation = "sum"
 filter = { unit = "copies" }
+bisect = false
+
+[[summaries]]
+name = "build-time"
+step = "baseline"
+measurement = "time_ms"
 bisect = false
