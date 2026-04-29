@@ -4,9 +4,10 @@
 //! project config. Wezel is moot without a config, so `Workspace::discover`
 //! fails when one isn't found.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::Config;
 
@@ -55,5 +56,54 @@ impl Workspace {
             .parent()
             .map(|p| p.to_path_buf())
             .context("current exe has no parent directory")
+    }
+}
+
+/// Per-run isolated checkout. Foragers run inside this directory so a build's
+/// `target/` never leaks into the user's working tree and step patches don't
+/// touch tracked files in-place.
+pub struct Scratch {
+    dir: tempfile::TempDir,
+}
+
+impl Scratch {
+    /// Clone `source` into a fresh tempdir and check out `commit_sha`
+    /// detached. Local clones use git's default hardlinking when possible, so
+    /// this is much cheaper than a network clone.
+    pub fn create(source: &Path, commit_sha: &str) -> Result<Self> {
+        let dir = tempfile::Builder::new()
+            .prefix("wezel-scratch-")
+            .tempdir()
+            .context("creating scratch tempdir")?;
+
+        let status = Command::new("git")
+            .arg("clone")
+            .arg("--local")
+            .arg("--no-checkout")
+            .arg(source)
+            .arg(dir.path())
+            .status()
+            .context("spawning git clone")?;
+        if !status.success() {
+            bail!("git clone into {} failed", dir.path().display());
+        }
+
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .arg("checkout")
+            .arg("--detach")
+            .arg(commit_sha)
+            .status()
+            .context("spawning git checkout")?;
+        if !status.success() {
+            bail!("git checkout {commit_sha} in scratch failed");
+        }
+
+        Ok(Self { dir })
+    }
+
+    pub fn path(&self) -> &Path {
+        self.dir.path()
     }
 }
