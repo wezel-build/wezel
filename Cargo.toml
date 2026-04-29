@@ -37,6 +37,7 @@ schemars = "0.8"
 sha2 = "0.10"
 hex = "0.4"
 tempfile = "3"
+indicatif = "0.17"
 
 # The profile that 'dist' will build with
 [profile.dist]

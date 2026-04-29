@@ -607,7 +607,8 @@ fn run_experiment_and_compare(
 ) -> Result<ExperimentResult> {
     log::info!("running experiment: {experiment_name}");
 
-    let (step_reports, summary_defs) = run::run_experiment(experiment_name, workspace, fetcher)?;
+    let (step_reports, summary_defs) =
+        run::run_experiment(experiment_name, workspace, fetcher, None)?;
     let computed = compute_summaries(&step_reports, &summary_defs);
     let commit = git::current_sha(&workspace.project_dir)?;
 
@@ -810,7 +811,8 @@ fn run_bisection_step(
     );
 
     git::checkout_detached(&workspace.project_dir, midpoint)?;
-    let (step_reports, summary_defs) = run::run_experiment(experiment_name, workspace, fetcher)?;
+    let (step_reports, summary_defs) =
+        run::run_experiment(experiment_name, workspace, fetcher, None)?;
     let computed = compute_summaries(&step_reports, &summary_defs);
 
     // Compare midpoint value against known-good.

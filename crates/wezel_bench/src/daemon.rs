@@ -175,7 +175,7 @@ fn run_loop(
         git::checkout_detached(&workspace.project_dir, &job.commit_sha)
             .with_context(|| format!("checkout {} for job {}", job.commit_sha, job_id))?;
 
-        let result = run_experiment(&job.experiment_name, workspace, fetcher.as_deref_mut());
+        let result = run_experiment(&job.experiment_name, workspace, fetcher.as_deref_mut(), None);
 
         // Submit results to Burrow and update the queue job status.
         let (patch_body, finished) = match result {
