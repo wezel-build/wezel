@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use anyhow::{Context, Result, bail};
 use owo_colors::OwoColorize;
@@ -55,8 +55,8 @@ pub fn run_lint(
         let experiment_name = entry.file_name().to_string_lossy().to_string();
 
         // Parse the TOML.
-        let steps = match parse_experiment(&experiment_dir) {
-            Ok(exp) => exp.steps,
+        let (steps, summaries) = match parse_experiment(&experiment_dir) {
+            Ok(exp) => (exp.steps, exp.summaries),
             Err(e) => {
                 results.push(ExperimentResult {
                     name: experiment_name,
@@ -71,6 +71,32 @@ pub fn run_lint(
         };
 
         let mut diagnostics = Vec::new();
+
+        // Summaries on the same step must agree on `samples` — the runner
+        // takes one snapshot per step, so a divergent count would be
+        // ambiguous.
+        let mut samples_by_step: HashMap<&str, BTreeSet<usize>> = HashMap::new();
+        for summary in &summaries {
+            samples_by_step
+                .entry(summary.step.as_str())
+                .or_default()
+                .insert(summary.samples);
+        }
+        for (step, counts) in &samples_by_step {
+            if counts.len() > 1 {
+                let rendered = counts
+                    .iter()
+                    .map(|n| n.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                diagnostics.push(LintDiagnostic {
+                    step: (*step).to_string(),
+                    message: format!(
+                        "summaries disagree on `samples` ({rendered}); all summaries on a step must use the same value"
+                    ),
+                });
+            }
+        }
 
         for step in &steps {
             // Check patch file exists when declared.

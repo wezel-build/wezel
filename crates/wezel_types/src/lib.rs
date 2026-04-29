@@ -210,6 +210,16 @@ pub struct SummaryDef {
     /// Whether to trigger bisection on regression (default true).
     #[serde(default = "bool_true")]
     pub bisect: bool,
+    /// Number of forager invocations of `step` to perform. The runner takes
+    /// one snapshot before iter 1 and restores it before each later iter, so
+    /// samples are i.i.d. Lint enforces a single value per step (across all
+    /// summaries that reference it). Default 1.
+    #[serde(default = "one")]
+    pub samples: usize,
+}
+
+fn one() -> usize {
+    1
 }
 
 fn bool_true() -> bool {

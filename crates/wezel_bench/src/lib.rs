@@ -153,6 +153,14 @@ pub struct SummaryToml {
     /// Trigger bisection when this summary regresses.
     #[serde(default = "bool_true")]
     pub bisect: bool,
+    /// Number of forager invocations of `step` to take. Lint requires all
+    /// summaries on the same step to agree. Default 1.
+    #[serde(default = "one_usize")]
+    pub samples: usize,
+}
+
+fn one_usize() -> usize {
+    1
 }
 
 /// Render the JSON Schema for `experiment.toml`.
@@ -207,6 +215,7 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
             aggregation: c.aggregation,
             filter: c.filter,
             bisect: c.bisect,
+            samples: c.samples,
         })
         .collect();
 
