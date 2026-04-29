@@ -130,11 +130,7 @@ impl Snapshot {
             .status()
             .context("spawning cp -a for snapshot")?;
         if !status.success() {
-            bail!(
-                "cp -a {} {} failed",
-                source.display(),
-                dest.display()
-            );
+            bail!("cp -a {} {} failed", source.display(), dest.display());
         }
         Ok(Self { holder })
     }
@@ -150,11 +146,9 @@ impl Snapshot {
             let p = entry.path();
             let ft = entry.file_type()?;
             if ft.is_dir() && !ft.is_symlink() {
-                std::fs::remove_dir_all(&p)
-                    .with_context(|| format!("removing {}", p.display()))?;
+                std::fs::remove_dir_all(&p).with_context(|| format!("removing {}", p.display()))?;
             } else {
-                std::fs::remove_file(&p)
-                    .with_context(|| format!("removing {}", p.display()))?;
+                std::fs::remove_file(&p).with_context(|| format!("removing {}", p.display()))?;
             }
         }
         let mut snap_contents = self.holder.path().join("snap").into_os_string();
@@ -166,11 +160,7 @@ impl Snapshot {
             .status()
             .context("spawning cp -a for restore")?;
         if !status.success() {
-            bail!(
-                "cp -a {:?} {} failed",
-                snap_contents,
-                target.display()
-            );
+            bail!("cp -a {:?} {} failed", snap_contents, target.display());
         }
         Ok(())
     }
