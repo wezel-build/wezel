@@ -6,7 +6,8 @@ use serde::Serialize;
 use wezel_types::{ForagerRunReport, ForagerStepReport, SummaryDef};
 
 use crate::git;
-use crate::{ExperimentToml, Workspace, fetch, invoke_forager, parse_experiment};
+use crate::workspace::Scratch;
+use crate::{Config, ExperimentToml, Workspace, fetch, invoke_forager, parse_experiment};
 
 /// JSON output for `wezel experiment run --output-format json`.
 #[derive(Debug, Serialize)]
@@ -142,17 +143,30 @@ pub fn run_experiment(
     let experiment = parse_experiment(&experiment_dir)?;
     let commit_sha = git::current_sha(&workspace.project_dir)?;
 
+    // Isolate the run: fresh clone of the user's repo at `commit_sha`, into
+    // a tempdir that's removed when `scratch` drops. Foragers run inside
+    // this scratch checkout so `target/` and step patches never touch the
+    // user's working tree.
+    let scratch = Scratch::create(&workspace.project_dir, &commit_sha)?;
+    log::debug!("scratch checkout at {}", scratch.path().display());
+    let scratch_workspace = Workspace {
+        project_dir: scratch.path().to_path_buf(),
+        plugin_dir: workspace.plugin_dir.clone(),
+        config: Config::load(scratch.path())?,
+    };
+
     // Run each step.
     let mut step_reports: Vec<ForagerStepReport> = Vec::new();
 
     for step in &experiment.steps {
         log::info!("step '{}' [forager={}]", step.name, step.forager);
 
-        // Apply patch if the step declares one.
+        // Apply patch if the step declares one. Patch files come from the
+        // user's experiment dir; they're applied inside the scratch checkout.
         if let Some(ref patch_stem) = step.diff {
             let patch_path = experiment_dir.join(format!("{patch_stem}.patch"));
             log::info!("  applying patch: {}", patch_path.display());
-            git::apply_patch(&workspace.project_dir, &patch_path)
+            git::apply_patch(&scratch_workspace.project_dir, &patch_path)
                 .with_context(|| format!("applying patch for step '{}'", step.name))?;
         }
 
@@ -161,7 +175,7 @@ pub fn run_experiment(
             &step.forager,
             &step.name,
             &step.inputs,
-            workspace,
+            &scratch_workspace,
             fetcher.as_deref_mut(),
         );
 

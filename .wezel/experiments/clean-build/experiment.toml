@@ -1,4 +1,3 @@
-name = "incremental-build"
 description = "Measures incremental build cost of adding a function"
 
 [[steps]]
