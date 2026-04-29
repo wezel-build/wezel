@@ -118,6 +118,7 @@ tool = "test-metric"
 
 [[summaries]]
 name = "total"
+step = "measure"
 measurement = "test-metric"
 aggregation = "sum"
 bisect = true
