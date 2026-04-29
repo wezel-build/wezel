@@ -255,15 +255,44 @@ cmd = "true"
 name = "a"
 step = "step1"
 measurement = "time_ms"
+aggregation = "mean"
 samples = 5
 
 [[summaries]]
 name = "b"
 step = "step1"
 measurement = "other"
+aggregation = "mean"
 samples = 5
 "#,
     );
     fx.run_lint()
         .expect("lint should pass when summaries on a step agree on samples");
+}
+
+#[test]
+fn lint_fails_when_sampled_summary_lacks_aggregation() {
+    let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
+    fx.lock_forager("exec");
+    fx.install_fake_forager("exec");
+    fx.add_experiment(
+        "e1",
+        r#"description = "test"
+[[steps]]
+name = "step1"
+tool = "exec"
+cmd = "true"
+
+[[summaries]]
+name = "a"
+step = "step1"
+measurement = "time_ms"
+samples = 5
+"#,
+    );
+    let err = fx.run_lint().unwrap_err().to_string();
+    assert!(
+        err.contains("error"),
+        "expected lint to fail when sampled summary has no aggregation, got: {err}"
+    );
 }
