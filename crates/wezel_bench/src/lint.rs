@@ -98,6 +98,21 @@ pub fn run_lint(
             }
         }
 
+        // A summary with samples > 1 must declare how to combine the values.
+        // Otherwise the runner gets multiple matches and silently drops the
+        // summary — which looks indistinguishable from sampling not running.
+        for summary in &summaries {
+            if summary.samples > 1 && summary.aggregation.is_none() {
+                diagnostics.push(LintDiagnostic {
+                    step: summary.step.clone(),
+                    message: format!(
+                        "summary `{}` has samples = {} but no `aggregation`; pick mean/median/min/max/sum",
+                        summary.name, summary.samples
+                    ),
+                });
+            }
+        }
+
         for step in &steps {
             // Check patch file exists when declared.
             if let Some(ref patch_stem) = step.diff {
