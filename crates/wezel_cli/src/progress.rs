@@ -46,10 +46,7 @@ impl RunReporter for IndicatifReporter {
 
         let mut state = self.state.lock().unwrap();
         state.name_width = steps.iter().map(|s| s.name.len()).max().unwrap_or(0);
-        state.plan = steps
-            .iter()
-            .map(|s| (s.name.clone(), s.samples))
-            .collect();
+        state.plan = steps.iter().map(|s| (s.name.clone(), s.samples)).collect();
     }
 
     fn step_started(&self, step: &str) {

@@ -179,7 +179,11 @@ pub fn run_experiment(
         .iter()
         .map(|s| StepPlan {
             name: s.name.clone(),
-            samples: step_samples.get(s.name.as_str()).copied().unwrap_or(1).max(1),
+            samples: step_samples
+                .get(s.name.as_str())
+                .copied()
+                .unwrap_or(1)
+                .max(1),
         })
         .collect();
     if let Some(r) = reporter {
