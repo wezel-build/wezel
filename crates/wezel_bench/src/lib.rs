@@ -393,11 +393,13 @@ pub enum StepError {
     #[error("failed to spawn `{binary}`: {reason}")]
     SpawnFailed { binary: String, reason: String },
 
-    #[error("step '{step}': `{binary}` exited with {status}")]
+    #[error("step '{step}': `{binary}` exited with {status}{}", fmt_captured(.stdout, .stderr))]
     PluginFailed {
         step: String,
         binary: String,
         status: std::process::ExitStatus,
+        stdout: String,
+        stderr: String,
     },
 
     #[error("step '{step}': `{binary}` did not write FORAGER_OUT")]
@@ -411,6 +413,21 @@ impl StepError {
     pub fn is_hard(&self) -> bool {
         matches!(self, Self::PluginNotFound { .. } | Self::SpawnFailed { .. })
     }
+}
+
+fn fmt_captured(stdout: &str, stderr: &str) -> String {
+    let mut s = String::new();
+    let stderr = stderr.trim();
+    let stdout = stdout.trim();
+    if !stderr.is_empty() {
+        s.push_str("\n--- stderr ---\n");
+        s.push_str(stderr);
+    }
+    if !stdout.is_empty() {
+        s.push_str("\n--- stdout ---\n");
+        s.push_str(stdout);
+    }
+    s
 }
 
 pub fn invoke_forager(
@@ -444,22 +461,26 @@ pub fn invoke_forager(
     std::fs::write(&inputs_path, serde_json::to_string(inputs).unwrap())
         .map_err(|e| StepError::Other(anyhow::anyhow!("writing FORAGER_INPUTS: {e}")))?;
 
-    let status = Command::new(&binary)
+    let output = Command::new(&binary)
         .env("FORAGER_INPUTS", &inputs_path)
         .env("FORAGER_OUT", &out_path)
         .env("FORAGER_STEP", step_name)
         .current_dir(&workspace.project_dir)
-        .status()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
         .map_err(|e| StepError::SpawnFailed {
             binary: binary_name.clone(),
             reason: e.to_string(),
         })?;
 
-    if !status.success() {
+    if !output.status.success() {
         return Err(StepError::PluginFailed {
             step: step_name.to_string(),
             binary: binary_name,
-            status,
+            status: output.status,
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         });
     }
 
