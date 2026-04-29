@@ -1,5 +1,12 @@
 version = 1
 
+[tools.foragers.cargo]
+github = "wezel-build/forager_cargo"
+tag = "nightly-2026-04-28-68aa42a"
+
+[tools.foragers.cargo.assets]
+aarch64-apple-darwin = "sha256:e760186c288bab94306869983a91c4158d1728865d8f85a71472cabcd73b7d6b"
+
 [tools.foragers.exec]
 github = "wezel-build/forager_exec"
 tag = "nightly-2026-04-28-6e41053"
