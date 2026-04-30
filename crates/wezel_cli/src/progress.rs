@@ -61,10 +61,7 @@ impl RunReporter for IndicatifReporter {
 
         let mut state = self.state.lock().unwrap();
         state.name_width = steps.iter().map(|s| s.name.len()).max().unwrap_or(0);
-        state.plan = steps
-            .iter()
-            .map(|s| (s.name.clone(), s.samples))
-            .collect();
+        state.plan = steps.iter().map(|s| (s.name.clone(), s.samples)).collect();
     }
 
     fn step_started(&self, step: &str) {
@@ -153,11 +150,9 @@ fn running_style() -> ProgressStyle {
 }
 
 fn done_style() -> ProgressStyle {
-    ProgressStyle::with_template(
-        "  {prefix:.green}  [{bar:24.green/green}] {pos}/{len}  {msg}",
-    )
-    .unwrap()
-    .progress_chars("== ")
+    ProgressStyle::with_template("  {prefix:.green}  [{bar:24.green/green}] {pos}/{len}  {msg}")
+        .unwrap()
+        .progress_chars("== ")
 }
 
 fn format_dur(d: Duration) -> String {
