@@ -189,10 +189,7 @@ fn standalone_creates_baseline_on_first_run() {
     let json = serde_json::to_value(result).unwrap();
     assert_eq!(json["action"], "baseline_created");
 
-    let baseline_raw = git(
-        &fixture.work_dir,
-        &["show", "origin/wezel/data:baselines/basic.json"],
-    );
+    let baseline_raw = read_baseline_via_head(&fixture.work_dir, "basic");
     let baseline: serde_json::Value = serde_json::from_str(&baseline_raw).unwrap();
     assert_eq!(baseline["summaries"]["total"], 100.0);
 }
@@ -223,12 +220,29 @@ fn standalone_updates_baseline_when_no_regression() {
     assert_eq!(json["action"], "baseline_updated");
 
     git(&fixture.work_dir, &["fetch", "origin"]);
-    let baseline_raw = git(
-        &fixture.work_dir,
-        &["show", "origin/wezel/data:baselines/basic.json"],
-    );
+    let baseline_raw = read_baseline_via_head(&fixture.work_dir, "basic");
     let baseline: serde_json::Value = serde_json::from_str(&baseline_raw).unwrap();
     assert_eq!(baseline["summaries"]["total"], serde_json::json!(105.0));
+}
+
+fn read_baseline_via_head(work_dir: &Path, experiment: &str) -> String {
+    let head = git(
+        work_dir,
+        &[
+            "show",
+            &format!("origin/wezel/data:baselines/{experiment}/HEAD"),
+        ],
+    );
+    git(
+        work_dir,
+        &[
+            "show",
+            &format!(
+                "origin/wezel/data:baselines/{experiment}/{}.json",
+                head.trim()
+            ),
+        ],
+    )
 }
 
 #[test]

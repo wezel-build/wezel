@@ -3,6 +3,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use wezel_types::ForagerStepReport;
 
 use crate::Workspace;
 use crate::fetch;
@@ -16,6 +17,8 @@ pub struct Baseline {
     pub commit: String,
     pub timestamp: String,
     pub summaries: HashMap<String, f64>,
+    #[serde(default)]
+    pub measurements: Vec<ForagerStepReport>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -124,11 +127,36 @@ impl<'a> DataBranch<'a> {
     }
 
     fn read_baseline(&self, experiment: &str) -> Result<Option<Baseline>> {
-        let path = format!("baselines/{experiment}.json");
+        let head_path = format!("baselines/{experiment}/HEAD");
+        let sha = match self.read_file(&head_path)? {
+            Some(s) => s.trim().to_string(),
+            None => return Ok(None),
+        };
+        if sha.is_empty() {
+            return Ok(None);
+        }
+        let path = format!("baselines/{experiment}/{sha}.json");
         match self.read_file(&path)? {
             Some(raw) => Ok(Some(serde_json::from_str(&raw)?)),
             None => Ok(None),
         }
+    }
+
+    fn write_baseline(&self, experiment: &str, baseline: &Baseline) -> Result<()> {
+        let json = serde_json::to_string_pretty(baseline)?;
+        let sha = &baseline.commit;
+        let short = &sha[..7.min(sha.len())];
+        self.write_file(
+            &format!("baselines/{experiment}/{sha}.json"),
+            &json,
+            &format!("baseline: {experiment} @ {short}"),
+        )?;
+        self.write_file(
+            &format!("baselines/{experiment}/HEAD"),
+            sha,
+            &format!("baseline-head: {experiment} -> {short}"),
+        )?;
+        Ok(())
     }
 
     fn read_active_bisection(&self, experiment: &str) -> Result<Option<BisectionState>> {
@@ -622,16 +650,9 @@ fn run_experiment_and_compare(
                 commit: commit.clone(),
                 timestamp: now_rfc3339(),
                 summaries: computed.iter().map(|(k, v)| (k.clone(), v.value)).collect(),
+                measurements: step_reports.clone(),
             };
-            let json = serde_json::to_string_pretty(&baseline)?;
-            db.write_file(
-                &format!("baselines/{experiment_name}.json"),
-                &json,
-                &format!(
-                    "baseline: {experiment_name} @ {}",
-                    &commit[..7.min(commit.len())]
-                ),
-            )?;
+            db.write_baseline(experiment_name, &baseline)?;
             Ok(ExperimentResult {
                 experiment: experiment_name.to_string(),
                 action: Action::BaselineCreated,
@@ -680,16 +701,9 @@ fn run_experiment_and_compare(
                     commit: commit.clone(),
                     timestamp: now_rfc3339(),
                     summaries: computed.iter().map(|(k, v)| (k.clone(), v.value)).collect(),
+                    measurements: step_reports.clone(),
                 };
-                let json = serde_json::to_string_pretty(&new_baseline)?;
-                db.write_file(
-                    &format!("baselines/{experiment_name}.json"),
-                    &json,
-                    &format!(
-                        "update: {experiment_name} @ {}",
-                        &commit[..7.min(commit.len())]
-                    ),
-                )?;
+                db.write_baseline(experiment_name, &new_baseline)?;
                 Ok(ExperimentResult {
                     experiment: experiment_name.to_string(),
                     action: Action::BaselineUpdated,
