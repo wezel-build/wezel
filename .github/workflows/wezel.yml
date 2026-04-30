@@ -1,0 +1,36 @@
+name: Wezel
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wezel-standalone
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Configure git identity
+        run: |
+          git config user.name  "wezel-bot"
+          git config user.email "wezel-bot@users.noreply.github.com"
+      - uses: Swatinem/rust-cache@v2
+      - name: Build wezel
+        run: cargo build --release -p wezel_cli
+      - name: Install foragers from wezel.lock
+        run: ./target/release/wezel tool sync --project-dir .
+      - name: Run standalone daemon
+        run: ./target/release/wezel experiment daemon standalone --repo-dir . --branch main
