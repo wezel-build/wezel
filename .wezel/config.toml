@@ -9,3 +9,6 @@ github = "wezel-build/forager_llvm_lines"
 
 [tools.foragers.cargo]
 github = "wezel-build/forager_cargo"
+
+[tools.foragers.filesize]
+github = "wezel-build/forager_filesize"
