@@ -25,6 +25,10 @@ pub struct StepPlan {
 pub trait RunReporter: Send + Sync {
     fn run_started(&self, _experiment: &str, _commit: &str, _steps: &[StepPlan]) {}
     fn step_started(&self, _step: &str) {}
+    /// Forager invocation is about to start. Paired with `sample_done`. Use
+    /// these brackets to measure forager-only time (excluding snapshot copy /
+    /// restore between samples).
+    fn sample_started(&self, _step: &str, _iter: usize, _samples: usize) {}
     fn sample_done(&self, _step: &str, _iter: usize, _samples: usize) {}
     fn step_finished(&self, _step: &str) {}
     fn run_finished(&self) {}
@@ -249,6 +253,9 @@ pub fn run_experiment(
                     })?;
             }
             log::debug!("  iter {iter}/{samples}");
+            if let Some(r) = reporter {
+                r.sample_started(&step.name, iter, samples);
+            }
             match invoke_forager(
                 &step.forager,
                 &step.name,
