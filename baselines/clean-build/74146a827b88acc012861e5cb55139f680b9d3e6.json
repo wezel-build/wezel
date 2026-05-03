@@ -1,8 +1,8 @@
 {
   "commit": "74146a827b88acc012861e5cb55139f680b9d3e6",
-  "timestamp": "2026-05-02T07:48:41+0000",
+  "timestamp": "2026-05-03T08:05:28+0000",
   "summaries": {
-    "build-time": 28522.0
+    "build-time": 30615.2
   },
   "measurements": [
     {
@@ -10,23 +10,23 @@
       "measurements": [
         {
           "name": "time_ms",
-          "value": 28874
+          "value": 30950
         },
         {
           "name": "time_ms",
-          "value": 28211
+          "value": 30546
         },
         {
           "name": "time_ms",
-          "value": 28736
+          "value": 30438
         },
         {
           "name": "time_ms",
-          "value": 28302
+          "value": 30811
         },
         {
           "name": "time_ms",
-          "value": 28487
+          "value": 30331
         }
       ]
     },
