@@ -36,6 +36,7 @@ pub enum StorageTarget {
 }
 
 impl StorageTarget {
+    #[expect(dead_code, reason = "referenced via #[serde(default = \"...\")]")]
     fn default_target() -> StorageTarget {
         StorageTarget::DataBranch("wezel/data".to_owned())
     }
