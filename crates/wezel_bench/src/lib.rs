@@ -90,7 +90,7 @@ impl ProjectConfig {
         // server_url: env var takes precedence, then config file.
         let target = std::env::var("WEZEL_BURROW_URL")
             .ok()
-            .and_then(|s| (!s.is_empty()).then(|| StorageTarget::ServerUrl(s)))
+            .and_then(|s| (!s.is_empty()).then_some(StorageTarget::ServerUrl(s)))
             .unwrap_or(resolved.target);
         Ok(ProjectConfig {
             project_id: resolved.project_id,
