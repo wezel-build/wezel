@@ -80,7 +80,7 @@ pub fn run_start(
     poll_interval: u64,
     fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> Result<()> {
-    let Some(ref server_url) = workspace.config.server_url else {
+    let Some(server_url) = workspace.config.target.server_url() else {
         bail!(
             "server_url not configured — set WEZEL_BURROW_URL or add server_url to .wezel/config.toml (or use --standalone mode)"
         );
@@ -91,7 +91,7 @@ pub fn run_start(
     let mut status = DaemonStatus {
         pid: std::process::id(),
         upstream: project_upstream.clone(),
-        server_url: server_url.clone(),
+        server_url: server_url.to_owned(),
         started_at: now_rfc3339(),
         current_job: None,
         recent: Vec::new(),

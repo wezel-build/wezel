@@ -8,6 +8,7 @@ mod progress;
 mod queue;
 mod shell;
 
+use anyhow::Context as _;
 use log::{debug, warn};
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
@@ -700,36 +701,42 @@ fn main() -> ExitCode {
                     wezel_bench::lint::run_lint(&ws, Some(&mut caching))
                 })())
             }
-            ExperimentCmd::Daemon { cmd: daemon_cmd } => match daemon_cmd {
-                ExperimentDaemonCmd::Start {
-                    repo_dir,
-                    poll_interval,
-                } => run_result((|| -> anyhow::Result<()> {
-                    let ws = make_workspace(repo_dir)?;
-                    let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
-                    wezel_bench::daemon::run_start(&ws, poll_interval, Some(&mut fetcher))
-                })()),
-                ExperimentDaemonCmd::Standalone {
-                    repo_dir,
-                    branch,
-                    threshold,
-                } => run_result((|| -> anyhow::Result<()> {
-                    let ws = make_workspace(repo_dir)?;
-                    let data_branch = ws.config.data_branch.clone();
-                    let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
-                    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
-                    let report = wezel_bench::standalone::run_standalone(
-                        &ws,
-                        &data_branch,
-                        &branch,
+            ExperimentCmd::Daemon { cmd: daemon_cmd } => {
+                match daemon_cmd {
+                    ExperimentDaemonCmd::Start {
+                        repo_dir,
+                        poll_interval,
+                    } => run_result((|| -> anyhow::Result<()> {
+                        let ws = make_workspace(repo_dir)?;
+                        let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
+                        wezel_bench::daemon::run_start(&ws, poll_interval, Some(&mut fetcher))
+                    })()),
+                    ExperimentDaemonCmd::Standalone {
+                        repo_dir,
+                        branch,
                         threshold,
-                        Some(&mut caching),
+                    } => {
+                        run_result((|| -> anyhow::Result<()> {
+                            let ws = make_workspace(repo_dir)?;
+                            let data_branch = ws.config.target.data_branch().map(ToOwned::to_owned).context(
+                        "Standalone mode is not available when Burrow server is configured",
                     )?;
-                    println!("{}", serde_json::to_string_pretty(&report).unwrap());
-                    Ok(())
-                })()),
-                ExperimentDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
-            },
+                            let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
+                            let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
+                            let report = wezel_bench::standalone::run_standalone(
+                                &ws,
+                                &data_branch,
+                                &branch,
+                                threshold,
+                                Some(&mut caching),
+                            )?;
+                            println!("{}", serde_json::to_string_pretty(&report).unwrap());
+                            Ok(())
+                        })())
+                    }
+                    ExperimentDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
+                }
+            }
             ExperimentCmd::Schema => {
                 println!(
                     "{}",

@@ -7,7 +7,7 @@ use wezel_types::{ForagerRunReport, ForagerStepReport, SummaryDef};
 
 use crate::git;
 use crate::workspace::{Scratch, Snapshot};
-use crate::{Config, ExperimentToml, Workspace, fetch, invoke_forager, parse_experiment};
+use crate::{ExperimentToml, ProjectConfig, Workspace, fetch, invoke_forager, parse_experiment};
 
 /// One entry in the up-front plan handed to a `RunReporter` so it can size
 /// progress UI before any step actually starts.
@@ -203,7 +203,7 @@ pub fn run_experiment(
     let scratch_workspace = Workspace {
         project_dir: scratch.path().to_path_buf(),
         plugin_dir: workspace.plugin_dir.clone(),
-        config: Config::load(scratch.path())?,
+        config: ProjectConfig::load(scratch.path())?,
     };
 
     // Run each step.
