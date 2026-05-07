@@ -3,11 +3,12 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
-use wezel_types::ForagerStepReport;
+use wezel_types::{ForagerStepReport, SummaryDef};
 
 use crate::Workspace;
 use crate::fetch;
 use crate::git;
+use crate::parse_experiment;
 use crate::run::{self, SummaryValue, compute_summaries};
 
 // ── State types ──────────────────────────────────────────────────────────────
@@ -135,6 +136,10 @@ impl<'a> DataBranch<'a> {
         if sha.is_empty() {
             return Ok(None);
         }
+        self.read_baseline_at_sha(experiment, &sha)
+    }
+
+    fn read_baseline_at_sha(&self, experiment: &str, sha: &str) -> Result<Option<Baseline>> {
         let path = format!("baselines/{experiment}/{sha}.json");
         match self.read_file(&path)? {
             Some(raw) => Ok(Some(serde_json::from_str(&raw)?)),
@@ -143,19 +148,31 @@ impl<'a> DataBranch<'a> {
     }
 
     fn write_baseline(&self, experiment: &str, baseline: &Baseline) -> Result<()> {
-        let json = serde_json::to_string_pretty(baseline)?;
         let sha = &baseline.commit;
         let short = &sha[..7.min(sha.len())];
-        self.write_file(
-            &format!("baselines/{experiment}/{sha}.json"),
-            &json,
-            &format!("baseline: {experiment} @ {short}"),
-        )?;
-        self.write_file(
-            &format!("baselines/{experiment}/HEAD"),
-            sha,
-            &format!("baseline-head: {experiment} -> {short}"),
-        )?;
+
+        let baseline_path = format!("baselines/{experiment}/{sha}.json");
+        if self.read_file(&baseline_path)?.is_none() {
+            let json = serde_json::to_string_pretty(baseline)?;
+            self.write_file(
+                &baseline_path,
+                &json,
+                &format!("baseline: {experiment} @ {short}"),
+            )?;
+        }
+
+        let head_path = format!("baselines/{experiment}/HEAD");
+        let head_already_current = self
+            .read_file(&head_path)?
+            .map(|s| s.trim() == sha.as_str())
+            .unwrap_or(false);
+        if !head_already_current {
+            self.write_file(
+                &head_path,
+                sha,
+                &format!("baseline-head: {experiment} -> {short}"),
+            )?;
+        }
         Ok(())
     }
 
@@ -626,6 +643,31 @@ fn list_experiment_names(repo_dir: &std::path::Path) -> Result<Vec<String>> {
     Ok(names)
 }
 
+/// Run an experiment, or reuse the cached measurements when a baseline file
+/// already exists for `commit` on the data branch.
+fn run_or_load_cached(
+    workspace: &Workspace,
+    db: &DataBranch,
+    experiment_name: &str,
+    commit: &str,
+    fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
+) -> Result<(Vec<ForagerStepReport>, Vec<SummaryDef>)> {
+    if let Some(baseline) = db.read_baseline_at_sha(experiment_name, commit)? {
+        log::info!(
+            "reusing cached measurements for {experiment_name}@{}",
+            &commit[..7.min(commit.len())]
+        );
+        let experiment_dir = workspace
+            .project_dir
+            .join(".wezel")
+            .join("experiments")
+            .join(experiment_name);
+        let experiment = parse_experiment(&experiment_dir)?;
+        return Ok((baseline.measurements, experiment.summaries));
+    }
+    run::run_experiment(experiment_name, workspace, fetcher, None)
+}
+
 fn run_experiment_and_compare(
     workspace: &Workspace,
     db: &DataBranch,
@@ -635,10 +677,10 @@ fn run_experiment_and_compare(
 ) -> Result<ExperimentResult> {
     log::info!("running experiment: {experiment_name}");
 
-    let (step_reports, summary_defs) =
-        run::run_experiment(experiment_name, workspace, fetcher, None)?;
-    let computed = compute_summaries(&step_reports, &summary_defs);
     let commit = git::current_sha(&workspace.project_dir)?;
+    let (step_reports, summary_defs) =
+        run_or_load_cached(workspace, db, experiment_name, &commit, fetcher)?;
+    let computed = compute_summaries(&step_reports, &summary_defs);
 
     // Read existing baseline.
     let existing_baseline = db.read_baseline(experiment_name)?;
@@ -826,7 +868,7 @@ fn run_bisection_step(
 
     git::checkout_detached(&workspace.project_dir, midpoint)?;
     let (step_reports, summary_defs) =
-        run::run_experiment(experiment_name, workspace, fetcher, None)?;
+        run_or_load_cached(workspace, db, experiment_name, midpoint, fetcher)?;
     let computed = compute_summaries(&step_reports, &summary_defs);
 
     // Compare midpoint value against known-good.

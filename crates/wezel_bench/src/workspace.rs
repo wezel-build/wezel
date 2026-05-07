@@ -9,7 +9,7 @@ use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
-use crate::Config;
+use crate::ProjectConfig;
 
 #[derive(Debug)]
 pub struct Workspace {
@@ -17,7 +17,7 @@ pub struct Workspace {
     /// Where forager binaries live. Tests pass a tempdir; the CLI passes
     /// the dir of the running wezel binary.
     pub plugin_dir: PathBuf,
-    pub config: Config,
+    pub config: ProjectConfig,
 }
 
 impl Workspace {
@@ -25,7 +25,7 @@ impl Workspace {
     /// caller-chosen plugin store directory.
     pub fn discover(project_dir: PathBuf, plugin_dir: PathBuf) -> Result<Self> {
         let canonical_project_dir = std::fs::canonicalize(&project_dir)?;
-        let config = Config::load(&canonical_project_dir)?;
+        let config = ProjectConfig::load(&canonical_project_dir)?;
         Ok(Self {
             project_dir,
             plugin_dir,

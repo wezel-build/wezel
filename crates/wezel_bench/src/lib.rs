@@ -18,29 +18,42 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use wezel_types::{Aggregation, ExperimentDef, ForagerPluginEnvelope, StepDef, SummaryDef};
 
-// ── Config ────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-struct ProjectConfig {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProjectConfig {
     pub project_id: uuid::Uuid,
     pub name: String,
-    #[serde(default)]
-    pub server_url: Option<String>,
-    #[serde(default)]
-    pub data_branch: Option<String>,
+    #[serde(default = "StorageTarget::default_target")]
+    pub target: StorageTarget,
+    /// External tool sources declared under `[tools]` in `.wezel/config.toml`.
     #[serde(default)]
     pub tools: ToolsSection,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Config {
-    pub project_id: uuid::Uuid,
-    pub name: String,
-    pub server_url: Option<String>,
-    /// Branch used for standalone state storage (default: "wezel/data").
-    pub data_branch: String,
-    /// External tool sources declared under `[tools]` in `.wezel/config.toml`.
-    pub tools: ToolsSection,
+#[serde(rename_all = "snake_case")]
+pub enum StorageTarget {
+    ServerUrl(String),
+    DataBranch(String),
+}
+
+impl StorageTarget {
+    fn default_target() -> StorageTarget {
+        StorageTarget::DataBranch("wezel/data".to_owned())
+    }
+    pub fn server_url(&self) -> Option<&str> {
+        if let Self::ServerUrl(url) = &self {
+            Some(url)
+        } else {
+            None
+        }
+    }
+    pub fn data_branch(&self) -> Option<&str> {
+        if let Self::DataBranch(branch) = &self {
+            Some(branch)
+        } else {
+            None
+        }
+    }
 }
 
 /// Umbrella for declared external binaries — foragers today, with room for
@@ -64,8 +77,8 @@ pub struct ToolSource {
     pub tag: Option<String>,
 }
 
-impl Config {
-    pub fn load(project_dir: &Path) -> Result<Config> {
+impl ProjectConfig {
+    pub fn load(project_dir: &Path) -> Result<ProjectConfig> {
         let config_path = project_dir.join(".wezel").join("config.toml");
         if !config_path.is_file() {
             bail!("no .wezel/config.toml found at {}", config_path.display());
@@ -75,18 +88,14 @@ impl Config {
         let resolved: ProjectConfig = toml::from_str(&raw)
             .with_context(|| format!("Failed parsing {}", config_path.display()))?;
         // server_url: env var takes precedence, then config file.
-        let server_url = std::env::var("WEZEL_BURROW_URL")
+        let target = std::env::var("WEZEL_BURROW_URL")
             .ok()
-            .filter(|s| !s.is_empty())
-            .or_else(|| resolved.server_url.filter(|s| !s.is_empty()));
-        Ok(Config {
+            .and_then(|s| (!s.is_empty()).then_some(StorageTarget::ServerUrl(s)))
+            .unwrap_or(resolved.target);
+        Ok(ProjectConfig {
             project_id: resolved.project_id,
             name: resolved.name,
-            server_url,
-            data_branch: resolved
-                .data_branch
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "wezel/data".to_string()),
+            target,
             tools: resolved.tools,
         })
     }
