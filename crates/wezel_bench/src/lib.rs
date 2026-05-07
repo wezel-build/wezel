@@ -22,9 +22,10 @@ use wezel_types::{Aggregation, ExperimentDef, ForagerPluginEnvelope, StepDef, Su
 pub struct ProjectConfig {
     pub project_id: uuid::Uuid,
     pub name: String,
-    #[serde(flatten, default = "StorageTarget::default_target")]
+    #[serde(default = "StorageTarget::default_target")]
     pub target: StorageTarget,
     /// External tool sources declared under `[tools]` in `.wezel/config.toml`.
+    #[serde(default)]
     pub tools: ToolsSection,
 }
 
@@ -36,7 +37,6 @@ pub enum StorageTarget {
 }
 
 impl StorageTarget {
-    #[expect(dead_code, reason = "referenced via #[serde(default = \"...\")]")]
     fn default_target() -> StorageTarget {
         StorageTarget::DataBranch("wezel/data".to_owned())
     }
