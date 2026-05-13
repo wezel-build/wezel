@@ -106,8 +106,7 @@ impl Drop for LintFixture {
 fn experiment_with_step(tool: &str, extra: &str) -> String {
     format!(
         r#"description = "test"
-[[steps]]
-name = "step1"
+[step.step1]
 tool = "{tool}"
 {extra}
 "#
@@ -213,22 +212,11 @@ fn lint_fails_when_summaries_disagree_on_samples() {
     fx.add_experiment(
         "e1",
         r#"description = "test"
-[[steps]]
-name = "step1"
+[step.step1]
 tool = "exec"
 cmd = "true"
-
-[[summaries]]
-name = "a"
-step = "step1"
-measurement = "time_ms"
-samples = 5
-
-[[summaries]]
-name = "b"
-step = "step1"
-measurement = "time_ms"
-samples = 10
+summary.a = { measurement = "time_ms", samples = 5 }
+summary.b = { measurement = "time_ms", samples = 10 }
 "#,
     );
     let err = fx.run_lint().unwrap_err().to_string();
@@ -246,24 +234,11 @@ fn lint_passes_when_summaries_agree_on_samples() {
     fx.add_experiment(
         "e1",
         r#"description = "test"
-[[steps]]
-name = "step1"
+[step.step1]
 tool = "exec"
 cmd = "true"
-
-[[summaries]]
-name = "a"
-step = "step1"
-measurement = "time_ms"
-aggregation = "mean"
-samples = 5
-
-[[summaries]]
-name = "b"
-step = "step1"
-measurement = "other"
-aggregation = "mean"
-samples = 5
+summary.a = { measurement = "time_ms", aggregation = "mean", samples = 5 }
+summary.b = { measurement = "other", aggregation = "mean", samples = 5 }
 "#,
     );
     fx.run_lint()
@@ -278,16 +253,10 @@ fn lint_fails_when_sampled_summary_lacks_aggregation() {
     fx.add_experiment(
         "e1",
         r#"description = "test"
-[[steps]]
-name = "step1"
+[step.step1]
 tool = "exec"
 cmd = "true"
-
-[[summaries]]
-name = "a"
-step = "step1"
-measurement = "time_ms"
-samples = 5
+summary.a = { measurement = "time_ms", samples = 5 }
 "#,
     );
     let err = fx.run_lint().unwrap_err().to_string();
