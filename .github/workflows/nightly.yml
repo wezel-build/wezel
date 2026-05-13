@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      tag: ${{ steps.version.outputs.tag }}
+      cargo_version: ${{ steps.version.outputs.cargo_version }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -23,13 +25,35 @@ jobs:
       - name: Install dist
         shell: bash
         run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.31.0/cargo-dist-installer.sh | sh"
+      - id: version
+        shell: bash
+        run: |
+          BASE_VERSION=$(grep -m1 '^version' crates/wezel_cli/Cargo.toml | sed -E 's/.*"(.+)".*/\1/')
+          DATETIME=$(date -u +%Y%m%d%H%M%S)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          CARGO_VERSION="${BASE_VERSION}-pre.${DATETIME}+${SHORT_SHA}"
+          TAG="v${CARGO_VERSION}"
+          echo "cargo_version=${CARGO_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Nightly tag: ${TAG}"
+      - name: Pin wezel_cli to nightly version
+        shell: bash
+        run: |
+          sed -i.bak -E "s/^version = .*/version = \"${{ steps.version.outputs.cargo_version }}\"/" crates/wezel_cli/Cargo.toml
+          rm crates/wezel_cli/Cargo.toml.bak
+          grep '^version' crates/wezel_cli/Cargo.toml
       - id: plan
         run: |
-          dist plan --output-format=json > plan.json
+          dist plan --tag="${{ steps.version.outputs.tag }}" --output-format=json > plan.json
           echo "matrix=$(jq -c '.ci.github.artifacts_matrix' plan.json)" >> "$GITHUB_OUTPUT"
+      - name: Cache dist
+        uses: actions/upload-artifact@v6
+        with:
+          name: cargo-dist-cache
+          path: ~/.cargo/bin/dist
 
-  build:
-    name: build (${{ join(matrix.targets, ', ') }})
+  build-local:
+    name: build-local (${{ join(matrix.targets, ', ') }})
     needs: plan
     if: ${{ fromJson(needs.plan.outputs.matrix).include != null }}
     strategy:
@@ -53,11 +77,16 @@ jobs:
       - name: Install dependencies
         run: |
           ${{ matrix.packages_install }}
+      - name: Pin wezel_cli to nightly version
+        shell: bash
+        run: |
+          sed -i.bak -E "s/^version = .*/version = \"${{ needs.plan.outputs.cargo_version }}\"/" crates/wezel_cli/Cargo.toml
+          rm crates/wezel_cli/Cargo.toml.bak
       - uses: Swatinem/rust-cache@v2
         with:
           key: nightly-${{ join(matrix.targets, '-') }}
-      - name: Build
-        run: dist build --output-format=json ${{ matrix.dist_args }} > dist-manifest.json
+      - name: Build local artifacts
+        run: dist build --tag="${{ needs.plan.outputs.tag }}" --output-format=json ${{ matrix.dist_args }} > dist-manifest.json
       - name: Collect artifacts
         shell: bash
         run: |
@@ -69,12 +98,53 @@ jobs:
           cp dist-manifest.json "upload/dist-manifest-${{ join(matrix.targets, '-') }}.json"
       - uses: actions/upload-artifact@v6
         with:
-          name: nightly-${{ join(matrix.targets, '-') }}
+          name: nightly-local-${{ join(matrix.targets, '-') }}
+          path: upload/*
+
+  build-global:
+    needs: [plan, build-local]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install cached dist
+        uses: actions/download-artifact@v7
+        with:
+          name: cargo-dist-cache
+          path: ~/.cargo/bin/
+      - run: chmod +x ~/.cargo/bin/dist
+      - name: Pin wezel_cli to nightly version
+        shell: bash
+        run: |
+          sed -i.bak -E "s/^version = .*/version = \"${{ needs.plan.outputs.cargo_version }}\"/" crates/wezel_cli/Cargo.toml
+          rm crates/wezel_cli/Cargo.toml.bak
+      - name: Fetch local artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: nightly-local-*
+          path: target/distrib/
+          merge-multiple: true
+      - name: Build global artifacts
+        shell: bash
+        run: |
+          dist build --tag="${{ needs.plan.outputs.tag }}" --output-format=json --artifacts=global > dist-manifest.json
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          mkdir -p upload
+          jq --raw-output ".upload_files[]" dist-manifest.json | while read -r f; do
+            [ -f "$f" ] && cp "$f" upload/
+          done
+          cp dist-manifest.json upload/dist-manifest-global.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: nightly-global
           path: upload/*
 
   release:
-    needs: [plan, build]
-    if: ${{ always() && needs.build.result == 'success' }}
+    needs: [plan, build-local, build-global]
+    if: ${{ always() && needs.build-local.result == 'success' && needs.build-global.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -86,10 +156,8 @@ jobs:
       - name: Merge dist manifests
         shell: bash
         run: |
-          # Merge per-target dist-manifest-*.json into a single dist-manifest.json.
-          # Each manifest has a top-level "artifacts" object; merge them all.
           python3 -c "
-          import json, glob, sys
+          import json, glob
 
           merged_artifacts = {}
           releases = {}
@@ -113,17 +181,16 @@ jobs:
           json.dump(result, open('artifacts/dist-manifest.json', 'w'), indent=2)
           print(f'Merged {len(merged_artifacts)} artifacts from {len(releases)} releases')
           "
-          # Remove per-target manifests from upload
           rm -f artifacts/dist-manifest-*.json
       - name: Create nightly release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.plan.outputs.tag }}
         shell: bash
         run: |
-          COMMIT_SHA=$(git rev-parse --short HEAD)
-          TAG="nightly-$(date -u +%Y-%m-%d)-${COMMIT_SHA}"
+          SHORT_SHA=$(git rev-parse --short HEAD)
           gh release create "$TAG" \
             --prerelease \
-            --title "Nightly $(date -u +%Y-%m-%d) (${COMMIT_SHA})" \
-            --notes "Automated nightly build from \`main\` at ${COMMIT_SHA}." \
+            --title "Nightly $(date -u +%Y-%m-%d) (${SHORT_SHA})" \
+            --notes "Automated nightly build from \`main\` at ${SHORT_SHA}." \
             artifacts/*
