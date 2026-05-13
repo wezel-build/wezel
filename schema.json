@@ -23,44 +23,8 @@
       ],
       "description": "Either a boolean (uses `<step.name>.patch`) or an explicit patch filename."
     },
-    "ExperimentStepToml": {
-      "additionalProperties": true,
-      "description": "A single step in the experiment. The `tool` field selects a forager plugin; remaining fields are passed to the plugin via `FORAGER_INPUTS` as JSON.",
-      "properties": {
-        "apply-diff": {
-          "anyOf": [
-            {
-              "$ref": "#/definitions/DiffField"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Apply a patch before running this step. `true` uses `<name>.patch`; a string overrides the filename."
-        },
-        "description": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "description": "Step identifier. Also the default patch filename stem when `apply-diff = true`.",
-          "type": "string"
-        },
-        "tool": {
-          "description": "Forager plugin name (resolves to `forager-<tool>`). Required.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "tool"
-      ],
-      "type": "object"
-    },
-    "SummaryToml": {
-      "description": "Aggregates a set of measurements into a single scalar tracked for regressions.",
+    "EmbeddedSummaryToml": {
+      "description": "Summary definition embedded under a step. The summary's `name` and `step` fields are recovered from the map keys (`step.<step>.summary.<name>`).",
       "properties": {
         "aggregation": {
           "anyOf": [
@@ -91,31 +55,59 @@
           "description": "Measurement name (as emitted by the forager) to aggregate over.",
           "type": "string"
         },
-        "name": {
-          "description": "Summary identifier; surfaced in the dashboard.",
-          "type": "string"
-        },
         "samples": {
           "default": 1,
-          "description": "Number of forager invocations of `step` to take. Lint requires all summaries on the same step to agree. Default 1.",
+          "description": "Number of forager invocations of the step to take. Lint requires all summaries on the same step to agree. Default 1.",
           "format": "uint",
           "minimum": 0.0,
           "type": "integer"
+        }
+      },
+      "required": [
+        "measurement"
+      ],
+      "type": "object"
+    },
+    "ExperimentStepToml": {
+      "additionalProperties": true,
+      "description": "A single step in the experiment. The `tool` field selects a forager plugin; remaining fields are passed to the plugin via `FORAGER_INPUTS` as JSON.",
+      "properties": {
+        "apply-diff": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DiffField"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Apply a patch before running this step. `true` uses `<step name>.patch`; a string overrides the filename."
         },
-        "step": {
-          "description": "Step that emits the measurement.",
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "additionalProperties": {
+            "$ref": "#/definitions/EmbeddedSummaryToml"
+          },
+          "description": "Summaries emitted by this step, keyed by summary name.",
+          "type": "object"
+        },
+        "tool": {
+          "description": "Forager plugin name (resolves to `forager-<tool>`). Required.",
           "type": "string"
         }
       },
       "required": [
-        "measurement",
-        "name",
-        "step"
+        "tool"
       ],
       "type": "object"
     }
   },
-  "description": "Top-level shape of `.wezel/experiments/<name>/experiment.toml`.",
+  "description": "Top-level shape of `.wezel/experiments/<name>/experiment.toml`.\n\nSteps are a map keyed by step name; insertion order is preserved by the `preserve_order` feature on the `toml` crate plus `IndexMap` here.",
   "properties": {
     "description": {
       "description": "Human-readable description of what the experiment measures.",
@@ -124,23 +116,16 @@
         "null"
       ]
     },
-    "steps": {
-      "description": "Ordered list of forager steps. Patches are cumulative across steps.",
-      "items": {
+    "step": {
+      "additionalProperties": {
         "$ref": "#/definitions/ExperimentStepToml"
       },
-      "type": "array"
-    },
-    "summaries": {
-      "description": "Named scalars derived from measurements, used for regression detection.",
-      "items": {
-        "$ref": "#/definitions/SummaryToml"
-      },
-      "type": "array"
+      "description": "Ordered map of step name → step definition. Patches are cumulative.",
+      "type": "object"
     }
   },
   "required": [
-    "steps"
+    "step"
   ],
   "title": "Wezel experiment.toml",
   "type": "object"

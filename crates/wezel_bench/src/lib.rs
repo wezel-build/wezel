@@ -14,6 +14,7 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use wezel_types::{Aggregation, ExperimentDef, ForagerPluginEnvelope, StepDef, SummaryDef};
@@ -104,16 +105,17 @@ impl ProjectConfig {
 // ── Experiment TOML parsing ──────────────────────────────────────────────────
 
 /// Top-level shape of `.wezel/experiments/<name>/experiment.toml`.
+///
+/// Steps are a map keyed by step name; insertion order is preserved by the
+/// `preserve_order` feature on the `toml` crate plus `IndexMap` here.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[schemars(title = "Wezel experiment.toml")]
 pub struct ExperimentToml {
     /// Human-readable description of what the experiment measures.
     pub description: Option<String>,
-    /// Ordered list of forager steps. Patches are cumulative across steps.
-    pub steps: Vec<ExperimentStepToml>,
-    /// Named scalars derived from measurements, used for regression detection.
-    #[serde(default)]
-    pub summaries: Vec<SummaryToml>,
+    /// Ordered map of step name → step definition. Patches are cumulative.
+    #[schemars(with = "HashMap<String, ExperimentStepToml>")]
+    pub step: IndexMap<String, ExperimentStepToml>,
 }
 
 /// Either a boolean (uses `<step.name>.patch`) or an explicit patch filename.
@@ -128,28 +130,27 @@ pub enum DiffField {
 /// remaining fields are passed to the plugin via `FORAGER_INPUTS` as JSON.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExperimentStepToml {
-    /// Step identifier. Also the default patch filename stem when `apply-diff = true`.
-    pub name: String,
     /// Forager plugin name (resolves to `forager-<tool>`). Required.
     pub tool: String,
     pub description: Option<String>,
-    /// Apply a patch before running this step. `true` uses `<name>.patch`; a string overrides the filename.
+    /// Apply a patch before running this step. `true` uses `<step name>.patch`; a string overrides the filename.
     #[serde(rename = "apply-diff")]
     #[schemars(rename = "apply-diff")]
     pub apply_diff: Option<DiffField>,
+    /// Summaries emitted by this step, keyed by summary name.
+    #[serde(default)]
+    #[schemars(with = "HashMap<String, EmbeddedSummaryToml>")]
+    pub summary: IndexMap<String, EmbeddedSummaryToml>,
     /// Remaining fields are forwarded as forager inputs (e.g. `cmd`/`env`/`cwd` for `exec`, `package` for `llvm-lines`).
     #[serde(flatten)]
     #[schemars(with = "HashMap<String, serde_json::Value>")]
     pub rest: HashMap<String, toml::Value>,
 }
 
-/// Aggregates a set of measurements into a single scalar tracked for regressions.
+/// Summary definition embedded under a step. The summary's `name` and `step`
+/// fields are recovered from the map keys (`step.<step>.summary.<name>`).
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct SummaryToml {
-    /// Summary identifier; surfaced in the dashboard.
-    pub name: String,
-    /// Step that emits the measurement.
-    pub step: String,
+pub struct EmbeddedSummaryToml {
     /// Measurement name (as emitted by the forager) to aggregate over.
     pub measurement: String,
     /// How to combine multiple matching values. Omit when the filter is
@@ -162,7 +163,7 @@ pub struct SummaryToml {
     /// Trigger bisection when this summary regresses.
     #[serde(default = "bool_true")]
     pub bisect: bool,
-    /// Number of forager invocations of `step` to take. Lint requires all
+    /// Number of forager invocations of the step to take. Lint requires all
     /// summaries on the same step to agree. Default 1.
     #[serde(default = "one_usize")]
     pub samples: usize,
@@ -189,8 +190,9 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
     let experiment: ExperimentToml =
         toml::from_str(&raw).with_context(|| format!("parsing {}", toml_path.display()))?;
 
-    let mut steps = Vec::with_capacity(experiment.steps.len());
-    for raw_step in experiment.steps {
+    let mut steps = Vec::with_capacity(experiment.step.len());
+    let mut summaries = Vec::new();
+    for (step_name, raw_step) in experiment.step {
         let forager = raw_step.tool;
 
         let inputs_map: serde_json::Map<String, serde_json::Value> = raw_step
@@ -200,33 +202,31 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
             .collect::<Result<_>>()?;
 
         let diff = match raw_step.apply_diff {
-            Some(DiffField::Bool(true)) => Some(raw_step.name.clone()),
+            Some(DiffField::Bool(true)) => Some(step_name.clone()),
             Some(DiffField::Bool(false)) | None => None,
             Some(DiffField::Name(s)) => Some(s),
         };
 
+        for (summary_name, s) in raw_step.summary {
+            summaries.push(SummaryDef {
+                name: summary_name,
+                step: step_name.clone(),
+                measurement: s.measurement,
+                aggregation: s.aggregation,
+                filter: s.filter,
+                bisect: s.bisect,
+                samples: s.samples,
+            });
+        }
+
         steps.push(StepDef {
-            name: raw_step.name,
+            name: step_name,
             forager,
             description: raw_step.description,
             diff,
             inputs: serde_json::Value::Object(inputs_map),
         });
     }
-
-    let summaries = experiment
-        .summaries
-        .into_iter()
-        .map(|c| SummaryDef {
-            name: c.name,
-            step: c.step,
-            measurement: c.measurement,
-            aggregation: c.aggregation,
-            filter: c.filter,
-            bisect: c.bisect,
-            samples: c.samples,
-        })
-        .collect();
 
     Ok(ExperimentDef {
         name: experiment_dir
@@ -239,6 +239,50 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
         steps,
         summaries,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Step + summary order must follow source order, not alphabetical. The
+    /// step names below are reverse-alphabetical so a BTreeMap-backed parser
+    /// would visibly fail this test.
+    #[test]
+    fn preserves_source_order() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("experiment.toml"),
+            r#"
+description = "ordering check"
+
+[step.zzz-first]
+tool = "exec"
+cmd = "true"
+summary.zzz-sum = { measurement = "m1" }
+summary.aaa-sum = { measurement = "m2" }
+
+[step.aaa-second]
+tool = "exec"
+cmd = "true"
+"#,
+        )
+        .unwrap();
+
+        let exp = parse_experiment(tmp.path()).unwrap();
+        let step_names: Vec<_> = exp.steps.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(step_names, vec!["zzz-first", "aaa-second"]);
+
+        let summary_keys: Vec<_> = exp
+            .summaries
+            .iter()
+            .map(|s| (s.step.as_str(), s.name.as_str()))
+            .collect();
+        assert_eq!(
+            summary_keys,
+            vec![("zzz-first", "zzz-sum"), ("zzz-first", "aaa-sum")]
+        );
+    }
 }
 
 fn toml_to_json(v: toml::Value) -> Result<serde_json::Value> {

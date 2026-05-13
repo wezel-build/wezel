@@ -1,37 +1,13 @@
 description = "Measures incremental build cost of adding a function"
 
-[[steps]]
-name = "baseline"
+[step.baseline]
 tool = "cargo"
 command = "build"
 build_target = "workspace"
+summary.build-time = { measurement = "time_ms", aggregation = "mean", bisect = false, samples = 5 }
 
-[[steps]]
-name = "measure-llvm"
+[step.measure-llvm]
 tool = "llvm-lines"
 package = "wezel_types"
-
-# Conclusions derived from measurements for regression detection.
-[[summaries]]
-name = "total-llvm-lines"
-step = "measure-llvm"
-measurement = "llvm-lines"
-aggregation = "sum"
-filter = { summary_unit = "lines" }
-bisect = true
-
-[[summaries]]
-name = "total-llvm-copies"
-step = "measure-llvm"
-measurement = "llvm-lines"
-aggregation = "sum"
-filter = { summary_unit = "copies" }
-bisect = false
-
-[[summaries]]
-name = "build-time"
-step = "baseline"
-measurement = "time_ms"
-aggregation = "mean"
-bisect = false
-samples = 5
+summary.total-llvm-lines = { measurement = "llvm-lines", filter = { summary_unit = "lines" } }
+summary.total-llvm-copies = { measurement = "llvm-lines", filter = { summary_unit = "copies" }, bisect = false }

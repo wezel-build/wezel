@@ -1,18 +1,10 @@
 description = "Measures release-binary size of the wezel CLI"
 
-[[steps]]
-name = "build-release"
+[step.build-release]
 tool = "exec"
 cmd = "cargo build --release --workspace"
 
-[[steps]]
-name = "measure-size"
+[step.measure-size]
 tool = "filesize"
 glob = "target/release/wezel"
-
-[[summaries]]
-name = "wezel-binary-size"
-step = "measure-size"
-measurement = "target/release/wezel"
-aggregation = "sum"
-bisect = true
+summary.wezel-binary-size = { measurement = "target/release/wezel" }

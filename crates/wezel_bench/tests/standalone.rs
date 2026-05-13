@@ -109,19 +109,11 @@ impl TestFixture {
         fs::write(
             exp_dir.join("experiment.toml"),
             r#"
-name = "basic"
 description = "Test experiment"
 
-[[steps]]
-name = "measure"
+[step.measure]
 tool = "test-metric"
-
-[[summaries]]
-name = "total"
-step = "measure"
-measurement = "test-metric"
-aggregation = "sum"
-bisect = true
+summary.total = { measurement = "test-metric", aggregation = "sum", bisect = true }
 "#,
         )
         .unwrap();
