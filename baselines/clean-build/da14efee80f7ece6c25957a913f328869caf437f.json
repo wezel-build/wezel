@@ -1,0 +1,38 @@
+{
+  "commit": "da14efee80f7ece6c25957a913f328869caf437f",
+  "timestamp": "2026-05-14T08:42:42+0000",
+  "summaries": {
+    "build-time": 28975.2
+  },
+  "measurements": [
+    {
+      "step": "baseline",
+      "measurements": [
+        {
+          "name": "time_ms",
+          "value": 28902
+        },
+        {
+          "name": "time_ms",
+          "value": 29034
+        },
+        {
+          "name": "time_ms",
+          "value": 28950
+        },
+        {
+          "name": "time_ms",
+          "value": 28971
+        },
+        {
+          "name": "time_ms",
+          "value": 29019
+        }
+      ]
+    },
+    {
+      "step": "measure-llvm",
+      "measurements": []
+    }
+  ]
+}
