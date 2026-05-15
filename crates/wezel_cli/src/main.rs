@@ -558,7 +558,7 @@ fn print_human_report(
     experiment: &str,
     commit: &str,
     steps: &[wezel_types::ForagerStepReport],
-    summaries: &std::collections::HashMap<String, wezel_bench::run::SummaryValue>,
+    summaries: &indexmap::IndexMap<String, wezel_bench::run::SummaryValue>,
     verbose: bool,
 ) {
     println!("Experiment: {experiment}");

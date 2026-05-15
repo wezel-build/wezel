@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
+use indexmap::IndexMap;
 use serde::Serialize;
 use wezel_types::{ForagerRunReport, ForagerStepReport, SummaryDef};
 
@@ -40,7 +41,7 @@ pub struct ExperimentRunOutput {
     pub experiment: String,
     pub commit: String,
     pub steps: Vec<ForagerStepReport>,
-    pub summaries: HashMap<String, SummaryValue>,
+    pub summaries: IndexMap<String, SummaryValue>,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,8 +57,8 @@ pub struct SummaryValue {
 pub fn compute_summaries(
     step_reports: &[ForagerStepReport],
     summary_defs: &[SummaryDef],
-) -> HashMap<String, SummaryValue> {
-    let mut result = HashMap::new();
+) -> IndexMap<String, SummaryValue> {
+    let mut result = IndexMap::new();
     for def in summary_defs {
         match def.compute(step_reports) {
             Ok(Some(value)) => {

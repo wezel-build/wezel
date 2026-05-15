@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use wezel_types::{ForagerStepReport, SummaryDef};
 
@@ -17,7 +17,7 @@ use crate::run::{self, SummaryValue, compute_summaries};
 pub struct Baseline {
     pub commit: String,
     pub timestamp: String,
-    pub summaries: HashMap<String, f64>,
+    pub summaries: IndexMap<String, f64>,
     #[serde(default)]
     pub measurements: Vec<ForagerStepReport>,
 }
@@ -765,7 +765,7 @@ struct Regression {
 
 fn detect_regression(
     baseline: &Baseline,
-    current: &HashMap<String, SummaryValue>,
+    current: &IndexMap<String, SummaryValue>,
     threshold: f64,
 ) -> Option<Regression> {
     // Return the first bisect-eligible summary that exceeds the threshold.

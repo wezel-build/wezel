@@ -2,8 +2,7 @@
 //!
 //! These mirror the data model consumed by the Anthill frontend.
 
-use std::collections::HashMap;
-
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 // ── Project ──────────────────────────────────────────────────────────────────
@@ -98,8 +97,8 @@ pub struct Measurement {
     pub status: MeasurementStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub tags: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub tags: IndexMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -148,8 +147,8 @@ pub struct Bisection {
     pub status: BisectionStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub culprit_sha: Option<String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub identity_tags: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub identity_tags: IndexMap<String, String>,
 }
 
 // ── Forager runner types ─────────────────────────────────────────────────────
@@ -205,8 +204,8 @@ pub struct SummaryDef {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aggregation: Option<Aggregation>,
     /// Tag key=value filters applied before aggregation.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub filter: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub filter: IndexMap<String, String>,
     /// Whether to trigger bisection on regression (default true).
     #[serde(default = "bool_true")]
     pub bisect: bool,
@@ -321,8 +320,8 @@ pub struct ForagerJob {
 pub struct ForagerPluginOutput {
     pub name: String,
     pub value: serde_json::Value,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub tags: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub tags: IndexMap<String, String>,
 }
 
 /// Envelope written by a forager plugin to `FORAGER_OUT`.
@@ -362,7 +361,7 @@ pub struct ForagerRunReport {
 pub struct ExperimentPrRequest {
     pub experiment_name: String,
     /// Map of repo-relative path → file content.
-    pub files: std::collections::HashMap<String, String>,
+    pub files: IndexMap<String, String>,
 }
 
 /// Response from `POST /api/project/{id}/experiment/pr`.
