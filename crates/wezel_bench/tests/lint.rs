@@ -44,9 +44,23 @@ impl LintFixture {
         dir
     }
 
-    /// Install a fake forager binary into the plugin store, plus the schema
-    /// sidecar that the real installer would have written.
+    /// Install a fake forager binary into the plugin store with an exec-shaped
+    /// inputs schema (single required `cmd: string` field). Use
+    /// [`Self::install_fake_forager_with_inputs`] for other schemas.
     fn install_fake_forager(&self, name: &str) {
+        self.install_fake_forager_with_inputs(
+            name,
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "cmd": { "type": "string" }
+                },
+                "required": ["cmd"]
+            }),
+        );
+    }
+
+    fn install_fake_forager_with_inputs(&self, name: &str, inputs: serde_json::Value) {
         let path = self.plugin_dir.join(format!("forager-{name}"));
         fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
         #[cfg(unix)]
@@ -58,25 +72,29 @@ impl LintFixture {
         let sidecar = wezel_types::ForagerSchema {
             name: name.into(),
             description: format!("fake {name}"),
-            inputs: serde_json::json!({"type": "object"}),
+            inputs,
             measurements_doc: String::new(),
         };
         fs::write(&schema_path, serde_json::to_string(&sidecar).unwrap()).unwrap();
     }
 
     /// Write a minimal lockfile entry for `name` so lint's hard-fail-on-
-    /// missing-lockfile gate is satisfied.
+    /// missing-lockfile gate is satisfied. Appends if the lockfile already
+    /// exists so callers can lock multiple foragers without clobbering.
     fn lock_forager(&self, name: &str) {
         let lock_path = self.project_dir.join(".wezel/wezel.lock");
-        let body = format!(
-            r#"version = 1
-
+        let mut body = if lock_path.is_file() {
+            fs::read_to_string(&lock_path).unwrap()
+        } else {
+            "version = 1\n".to_string()
+        };
+        body.push_str(&format!(
+            r#"
 [tools.foragers.{name}]
 github = "acme/forager_{name}"
 tag = "v0.0.0"
 "#,
-            name = name,
-        );
+        ));
         fs::write(&lock_path, body).unwrap();
     }
 
@@ -266,4 +284,84 @@ summary.a = { measurement = "time_ms", samples = 5 }
         err.contains("error"),
         "expected lint to fail when sampled summary has no aggregation, got: {err}"
     );
+}
+
+#[test]
+fn lint_rejects_unknown_input_field() {
+    let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
+    fx.lock_forager("exec");
+    fx.install_fake_forager("exec");
+    fx.add_experiment(
+        "e1",
+        &experiment_with_step("exec", "cmd = \"true\"\ncommnd = \"typo\""),
+    );
+    let err = fx.run_lint().unwrap_err().to_string();
+    assert!(
+        err.contains("error"),
+        "expected lint to reject unknown input field, got: {err}"
+    );
+}
+
+#[test]
+fn lint_rejects_missing_required_input() {
+    let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
+    fx.lock_forager("exec");
+    fx.install_fake_forager("exec");
+    // `cmd` is required by the exec-shaped fixture schema.
+    fx.add_experiment("e1", &experiment_with_step("exec", ""));
+    let err = fx.run_lint().unwrap_err().to_string();
+    assert!(
+        err.contains("error"),
+        "expected lint to reject step without required input, got: {err}"
+    );
+}
+
+#[test]
+fn lint_rejects_wrong_input_type() {
+    let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
+    fx.lock_forager("exec");
+    fx.install_fake_forager("exec");
+    // `cmd` must be a string per the fixture schema; pass an integer.
+    fx.add_experiment("e1", &experiment_with_step("exec", "cmd = 5"));
+    let err = fx.run_lint().unwrap_err().to_string();
+    assert!(
+        err.contains("error"),
+        "expected lint to reject wrong-type input, got: {err}"
+    );
+}
+
+#[test]
+fn lint_passes_with_valid_inputs() {
+    let fx = LintFixture::new(
+        "[tools.foragers.cargo]\ngithub = \"acme/forager_cargo\"\n[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n",
+    );
+    fx.lock_forager("cargo");
+    fx.lock_forager("exec");
+    fx.install_fake_forager("exec");
+    fx.install_fake_forager_with_inputs(
+        "cargo",
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "command": { "type": "string" },
+                "build_target": { "type": "string" }
+            },
+            "required": ["command", "build_target"]
+        }),
+    );
+    fx.add_experiment(
+        "e1",
+        r#"description = "test"
+[step.build]
+tool = "cargo"
+command = "build"
+build_target = "workspace"
+
+[step.run]
+tool = "exec"
+cmd = "echo done"
+"#,
+    );
+    fx.run_lint()
+        .expect("lint should pass when every step's inputs satisfy the forager schema");
 }

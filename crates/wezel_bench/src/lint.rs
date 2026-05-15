@@ -3,7 +3,50 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use anyhow::{Context, Result, bail};
 use owo_colors::OwoColorize;
 
+use wezel_types::{ForagerSchema, StepDef};
+
 use crate::{Workspace, fetch, lockfile, parse_experiment};
+
+/// Validate a step's forager-specific inputs against the forager's cached
+/// JSON Schema. The schema's `additionalProperties` is forced to `false` at
+/// the root so typo'd or wrong-tool field names are flagged — that's the
+/// editor's blind spot when tombi treats `oneOf` variants as a union.
+fn validate_step_inputs(step: &StepDef, sidecar: &ForagerSchema) -> Vec<LintDiagnostic> {
+    let mut inputs_schema = sidecar.inputs.clone();
+    if let Some(root) = inputs_schema.as_object_mut() {
+        root.insert(
+            "additionalProperties".into(),
+            serde_json::Value::Bool(false),
+        );
+    }
+    let validator = match jsonschema::draft7::new(&inputs_schema) {
+        Ok(v) => v,
+        Err(e) => {
+            return vec![LintDiagnostic {
+                step: step.name.clone(),
+                message: format!(
+                    "cached schema for `forager-{}` failed to compile ({e}) — run `wezel tool sync` to refresh",
+                    step.forager,
+                ),
+            }];
+        }
+    };
+    validator
+        .iter_errors(&step.inputs)
+        .map(|err| {
+            let path = err.instance_path().to_string();
+            let where_at = if path.is_empty() {
+                String::new()
+            } else {
+                format!(" at `{}`", path.trim_start_matches('/').replace('/', "."))
+            };
+            LintDiagnostic {
+                step: step.name.clone(),
+                message: format!("input{where_at}: {err}"),
+            }
+        })
+        .collect()
+}
 
 struct LintDiagnostic {
     step: String,
@@ -187,8 +230,11 @@ pub fn run_lint(
             // never invokes the binary for schema discovery.
             let schema_path = workspace.schema_path(&step.forager);
             match std::fs::read_to_string(&schema_path) {
-                Ok(raw) => {
-                    if let Err(e) = serde_json::from_str::<wezel_types::ForagerSchema>(&raw) {
+                Ok(raw) => match serde_json::from_str::<wezel_types::ForagerSchema>(&raw) {
+                    Ok(sidecar) => {
+                        diagnostics.extend(validate_step_inputs(step, &sidecar));
+                    }
+                    Err(e) => {
                         diagnostics.push(LintDiagnostic {
                             step: step.name.clone(),
                             message: format!(
@@ -197,7 +243,7 @@ pub fn run_lint(
                             ),
                         });
                     }
-                }
+                },
                 Err(e) => {
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),

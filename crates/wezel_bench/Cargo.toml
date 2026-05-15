@@ -25,4 +25,5 @@ uuid = { workspace = true }
 wezel_types = { workspace = true }
 owo-colors = { version = "4.3.0", features = ["supports-colors"] }
 schemars = { workspace = true }
+jsonschema = { workspace = true }
 tempfile = { workspace = true }
