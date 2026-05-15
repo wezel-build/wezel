@@ -75,43 +75,6 @@
           "if": {
             "properties": {
               "tool": {
-                "const": "llvm-lines"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "package": {
-                "description": "Package name (required for workspaces).",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "summary": {
-                "additionalProperties": {
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/EmbeddedSummaryToml"
-                    },
-                    {
-                      "properties": {
-                        "measurement": {
-                          "description": "**`llvm-lines`** — count of LLVM IR lines (or monomorphisation copies) for a function (u64). Filter tags:\n- `summary_unit = \"lines\"` or `\"copies\"` — crate-wide totals (one row each).\n- `function = \"<symbol>\"` + `unit = \"lines\"`|`\"copies\"` — per-function rows."
-                        }
-                      }
-                    }
-                  ]
-                },
-                "type": "object"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "tool": {
                 "const": "cargo"
               }
             }
@@ -155,43 +118,6 @@
             "required": [
               "build_target",
               "command"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "tool": {
-                "const": "filesize"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "glob": {
-                "description": "Glob pattern, evaluated against the experiment workspace cwd.",
-                "type": "string"
-              },
-              "summary": {
-                "additionalProperties": {
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/EmbeddedSummaryToml"
-                    },
-                    {
-                      "properties": {
-                        "measurement": {
-                          "description": "One measurement per matched file. The measurement name is the file's path (relative to cwd); the value is its size in bytes."
-                        }
-                      }
-                    }
-                  ]
-                },
-                "type": "object"
-              }
-            },
-            "required": [
-              "glob"
             ]
           }
         },
@@ -245,6 +171,80 @@
             "required": [
               "cmd"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tool": {
+                "const": "filesize"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "glob": {
+                "description": "Glob pattern, evaluated against the experiment workspace cwd.",
+                "type": "string"
+              },
+              "summary": {
+                "additionalProperties": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/EmbeddedSummaryToml"
+                    },
+                    {
+                      "properties": {
+                        "measurement": {
+                          "description": "One measurement per matched file. The measurement name is the file's path (relative to cwd); the value is its size in bytes."
+                        }
+                      }
+                    }
+                  ]
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "glob"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tool": {
+                "const": "llvm-lines"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "package": {
+                "description": "Package name (required for workspaces).",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "summary": {
+                "additionalProperties": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/EmbeddedSummaryToml"
+                    },
+                    {
+                      "properties": {
+                        "measurement": {
+                          "description": "**`llvm-lines`** — count of LLVM IR lines (or monomorphisation copies) for a function (u64). Filter tags:\n- `summary_unit = \"lines\"` or `\"copies\"` — crate-wide totals (one row each).\n- `function = \"<symbol>\"` + `unit = \"lines\"`|`\"copies\"` — per-function rows."
+                        }
+                      }
+                    }
+                  ]
+                },
+                "type": "object"
+              }
+            }
           }
         }
       ],

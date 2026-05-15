@@ -9,7 +9,7 @@ pub mod workspace;
 
 pub use workspace::Workspace;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::process::Command;
 
@@ -67,7 +67,7 @@ pub struct ToolsSection {
     /// field of an experiment step (e.g. `tool = "exec"` looks up
     /// `[tools.foragers.exec]`).
     #[serde(default)]
-    pub foragers: HashMap<String, ToolSource>,
+    pub foragers: BTreeMap<String, ToolSource>,
 }
 
 /// Where to obtain a tool binary. Currently only GitHub releases.
