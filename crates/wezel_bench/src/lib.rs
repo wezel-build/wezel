@@ -221,11 +221,7 @@ fn forager_branch(forager: &ForagerSchema) -> serde_json::Value {
     // Splice the forager's input properties as flat keys of the step. They
     // live on the step directly because ExperimentStepToml uses serde(flatten)
     // for forager inputs.
-    if let Some(input_props) = forager
-        .inputs
-        .get("properties")
-        .and_then(|v| v.as_object())
-    {
+    if let Some(input_props) = forager.inputs.get("properties").and_then(|v| v.as_object()) {
         for (k, v) in input_props {
             then_props.insert(k.clone(), v.clone());
         }

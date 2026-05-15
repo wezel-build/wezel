@@ -272,12 +272,11 @@ fn write_schema_sidecar(
             out.status
         )));
     }
-    let parsed: wezel_types::ForagerSchema =
-        serde_json::from_slice(&out.stdout).map_err(|e| {
-            FetchError::Other(anyhow::anyhow!(
-                "forager-{forager_name} --schema produced invalid output: {e}"
-            ))
-        })?;
+    let parsed: wezel_types::ForagerSchema = serde_json::from_slice(&out.stdout).map_err(|e| {
+        FetchError::Other(anyhow::anyhow!(
+            "forager-{forager_name} --schema produced invalid output: {e}"
+        ))
+    })?;
     if parsed.name != forager_name {
         return Err(FetchError::Other(anyhow::anyhow!(
             "forager-{forager_name} --schema reports name `{}` — binary/schema mismatch",

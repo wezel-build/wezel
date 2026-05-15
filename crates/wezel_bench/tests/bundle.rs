@@ -37,7 +37,12 @@ fn bundle_has_one_branch_per_forager() {
     assert_eq!(branches.len(), 2);
     let tool_consts: Vec<&str> = branches
         .iter()
-        .map(|b| b.pointer("/if/properties/tool/const").unwrap().as_str().unwrap())
+        .map(|b| {
+            b.pointer("/if/properties/tool/const")
+                .unwrap()
+                .as_str()
+                .unwrap()
+        })
         .collect();
     assert_eq!(tool_consts, ["exec", "cargo"]);
 }
