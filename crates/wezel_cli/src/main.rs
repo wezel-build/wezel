@@ -539,7 +539,7 @@ fn run_result(result: anyhow::Result<()>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("wezel: {e}");
+            eprintln!("wezel: {e:#}");
             ExitCode::FAILURE
         }
     }
