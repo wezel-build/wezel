@@ -103,6 +103,29 @@ tag = "v0.0.0"
             .expect("workspace discovery")
     }
 
+    /// Write `.wezel/schema.json` to match what `wezel tool sync` would
+    /// produce against the currently-installed fake foragers. Lint now
+    /// checks bundle freshness, so tests that expect a clean pass need this
+    /// before calling [`Self::run_lint`].
+    fn write_bundle(&self) {
+        let ws = self.workspace();
+        let sidecars: Vec<wezel_types::ForagerSchema> = ws
+            .config
+            .tools
+            .foragers
+            .keys()
+            .map(|name| {
+                let raw = fs::read_to_string(ws.schema_path(name)).expect("sidecar present");
+                serde_json::from_str(&raw).expect("sidecar parses")
+            })
+            .collect();
+        let bundle = wezel_bench::build_bundle(sidecars);
+        let body = serde_json::to_string_pretty(&bundle).unwrap();
+        let path = ws.bundle_schema_path();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, body).unwrap();
+    }
+
     fn run_lint(&self) -> anyhow::Result<()> {
         let ws = self.workspace();
         wezel_bench::lint::run_lint(&ws, None)
@@ -214,10 +237,42 @@ fn lint_fails_when_schema_sidecar_missing() {
 }
 
 #[test]
+fn lint_fails_when_schema_bundle_missing() {
+    let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
+    fx.lock_forager("exec");
+    fx.install_fake_forager("exec");
+    fx.add_experiment("e1", &experiment_with_step("exec", "cmd = \"true\""));
+    // Note: no .wezel/schema.json written.
+    let err = fx.run_lint().unwrap_err().to_string();
+    assert!(
+        err.contains("error"),
+        "expected lint to fail on missing schema bundle, got: {err}"
+    );
+}
+
+#[test]
+fn lint_fails_when_schema_bundle_stale() {
+    let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
+    fx.lock_forager("exec");
+    fx.install_fake_forager("exec");
+    fx.add_experiment("e1", &experiment_with_step("exec", "cmd = \"true\""));
+    // Write a bundle whose contents won't match a fresh build.
+    let wezel_dir = fx.project_dir.join(".wezel");
+    fs::create_dir_all(&wezel_dir).unwrap();
+    fs::write(wezel_dir.join("schema.json"), "{}").unwrap();
+    let err = fx.run_lint().unwrap_err().to_string();
+    assert!(
+        err.contains("error"),
+        "expected lint to fail on stale schema bundle, got: {err}"
+    );
+}
+
+#[test]
 fn lint_passes_when_declared_locked_and_installed() {
     let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
     fx.lock_forager("exec");
     fx.install_fake_forager("exec");
+    fx.write_bundle();
     fx.add_experiment("e1", &experiment_with_step("exec", "cmd = \"true\""));
     fx.run_lint()
         .expect("lint should pass on a clean experiment");
@@ -258,6 +313,7 @@ summary.a = { measurement = "time_ms", aggregation = "mean", samples = 5 }
 summary.b = { measurement = "other", aggregation = "mean", samples = 5 }
 "#,
     );
+    fx.write_bundle();
     fx.run_lint()
         .expect("lint should pass when summaries on a step agree on samples");
 }
@@ -356,6 +412,7 @@ build_target = "workspace"
 cmd = "echo done"
 "#,
     );
+    fx.write_bundle();
     fx.run_lint()
         .expect("lint should pass when every step's inputs satisfy the forager schema");
 }

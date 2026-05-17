@@ -178,8 +178,10 @@ fn one_usize() -> usize {
     1
 }
 
-/// Render the JSON Schema for `experiment.toml`.
-pub fn experiment_schema() -> serde_json::Value {
+/// Render the JSON Schema for `experiment.toml`. Internal helper used by
+/// [`build_bundle`] to seed the schemars-derived base; the editor-facing
+/// schema lives in `.wezel/schema.json` and includes per-tool subschemas.
+fn experiment_schema() -> serde_json::Value {
     let schema = schemars::schema_for!(ExperimentToml);
     serde_json::to_value(schema).expect("schema serialization is infallible")
 }

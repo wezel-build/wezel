@@ -43,26 +43,7 @@ jobs:
         run: |
           export PATH="$PWD/target/debug:$PATH"
           wezel tool sync --project-dir .
-      - name: Check .wezel/schema.json is up to date
-        run: |
-          if ! git diff --exit-code .wezel/schema.json; then
-            echo "::error::.wezel/schema.json is out of date. Run \`wezel tool sync\` and commit the result." >&2
-            exit 1
-          fi
       - name: Lint experiments
         run: |
           export PATH="$PWD/target/debug:$PATH"
           wezel exp lint --project-dir .
-
-  wezel-schema:
-    name: Wezel experiment schema
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo run -p wezel_cli --quiet -- experiment schema > /tmp/schema.json
-      - run: |
-          if ! diff -u schema.json /tmp/schema.json; then
-            echo "::error::schema.json is out of date. Run \`wezel experiment schema > schema.json\` and commit the result." >&2
-            exit 1
-          fi

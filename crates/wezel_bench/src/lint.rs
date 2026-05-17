@@ -5,7 +5,34 @@ use owo_colors::OwoColorize;
 
 use wezel_types::{ForagerSchema, StepDef};
 
-use crate::{Workspace, fetch, lockfile, parse_experiment};
+use crate::{Workspace, build_bundle, fetch, lockfile, parse_experiment};
+
+/// Returns true when `.wezel/schema.json` doesn't match what `wezel tool
+/// sync` would produce right now (or is missing). Sidecar problems are
+/// returned as "not stale" so the existing per-step diagnostics own that
+/// failure mode — we don't want to double-report the same root cause.
+fn bundle_is_stale(workspace: &Workspace) -> bool {
+    let bundle_path = workspace.bundle_schema_path();
+    let Ok(on_disk) = std::fs::read_to_string(&bundle_path) else {
+        return true;
+    };
+    let mut sidecars = Vec::new();
+    for name in workspace.config.tools.foragers.keys() {
+        let path = workspace.schema_path(name);
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            return false;
+        };
+        let Ok(schema) = serde_json::from_str::<ForagerSchema>(&raw) else {
+            return false;
+        };
+        sidecars.push(schema);
+    }
+    let expected = build_bundle(sidecars);
+    let Ok(expected_pretty) = serde_json::to_string_pretty(&expected) else {
+        return false;
+    };
+    on_disk.trim_end() != expected_pretty.trim_end()
+}
 
 /// Validate a step's forager-specific inputs against the forager's cached
 /// JSON Schema. The schema's `additionalProperties` is forced to `false` at
@@ -264,8 +291,11 @@ pub fn run_lint(
         });
     }
 
+    let bundle_stale = bundle_is_stale(workspace);
+
     // Render output.
-    let total_errors: usize = results.iter().map(|r| r.diagnostics.len()).sum();
+    let total_errors: usize =
+        results.iter().map(|r| r.diagnostics.len()).sum::<usize>() + usize::from(bundle_stale);
     let total_experiments = results.len();
 
     for result in &results {
@@ -298,6 +328,14 @@ pub fn run_lint(
                 }
             }
         }
+    }
+
+    if bundle_stale {
+        println!("  {} {}", "schema bundle".bold(), "FAIL".red().bold());
+        eprintln!(
+            "    {} .wezel/schema.json is out of date — run `wezel tool sync` and commit the result",
+            "-".red(),
+        );
     }
 
     println!();
