@@ -126,8 +126,7 @@ impl Drop for LintFixture {
 fn experiment_with_step(tool: &str, extra: &str) -> String {
     format!(
         r#"description = "test"
-[step.step1]
-tool = "{tool}"
+[step.{tool}.step1]
 {extra}
 "#
     )
@@ -232,8 +231,7 @@ fn lint_fails_when_summaries_disagree_on_samples() {
     fx.add_experiment(
         "e1",
         r#"description = "test"
-[step.step1]
-tool = "exec"
+[step.exec.step1]
 cmd = "true"
 summary.a = { measurement = "time_ms", samples = 5 }
 summary.b = { measurement = "time_ms", samples = 10 }
@@ -254,8 +252,7 @@ fn lint_passes_when_summaries_agree_on_samples() {
     fx.add_experiment(
         "e1",
         r#"description = "test"
-[step.step1]
-tool = "exec"
+[step.exec.step1]
 cmd = "true"
 summary.a = { measurement = "time_ms", aggregation = "mean", samples = 5 }
 summary.b = { measurement = "other", aggregation = "mean", samples = 5 }
@@ -273,8 +270,7 @@ fn lint_fails_when_sampled_summary_lacks_aggregation() {
     fx.add_experiment(
         "e1",
         r#"description = "test"
-[step.step1]
-tool = "exec"
+[step.exec.step1]
 cmd = "true"
 summary.a = { measurement = "time_ms", samples = 5 }
 "#,
@@ -352,13 +348,11 @@ fn lint_passes_with_valid_inputs() {
     fx.add_experiment(
         "e1",
         r#"description = "test"
-[step.build]
-tool = "cargo"
+[step.cargo.build]
 command = "build"
 build_target = "workspace"
 
-[step.run]
-tool = "exec"
+[step.exec.run]
 cmd = "echo done"
 "#,
     );

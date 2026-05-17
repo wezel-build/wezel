@@ -11,17 +11,15 @@ An example experiment, straight from our repository is [an experiment measuring 
 description = "Measures release-binary size of the wezel CLI"
 
 # Each experiment runs in a fresh copy of your repository, hence we need to run the build first.
-[step.build-release]
-# Tools are responsible for executing actions on your behalf. Here we're using `exec` step to execute a program on our behalf. 
-# `exec` does not produce any outcomes by itself.
-tool = "exec"
-# Each step has it's own schema for arguments it accepts. `exec` accepts `cmd`, `env` and `cwd`.
+# A step is keyed `[step.<tool>.<step_name>]` — `exec` here is the tool, `build-release` is the step name.
+# `exec` executes a program on your behalf and produces no outcomes by itself.
+[step.exec.build-release]
+# Each tool has its own schema for the arguments it accepts. `exec` accepts `cmd`, `env` and `cwd`.
 cmd = "cargo build --release --workspace"
 
-# Steps are ran sequentially, so `measure-size` runs after a successful execution of `build-release` step.
-[step.measure-size]
-# `measure-size` uses another tool called `filesize`. The outcome of that tool is a set of file sizes for all files matching a provided glob.
-tool = "filesize"
+# Steps are ran sequentially in source order, so `measure-size` runs after a successful execution of `build-release` step.
+# `filesize` produces one outcome per matched file (its size in bytes). It accepts a single argument: `glob`.
+[step.filesize.measure-size]
 glob = "target/release/wezel"
 # Finally, we need to extract a metric value that we can bisect over:
 # we want to find an exact commit that causes a regression in the size of target/release/wezel.

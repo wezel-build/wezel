@@ -16,7 +16,7 @@ fn fake_forager(name: &str, doc: &str, properties: serde_json::Value) -> Forager
 }
 
 #[test]
-fn bundle_has_one_branch_per_forager() {
+fn bundle_has_one_step_property_per_forager() {
     let bundle = build_bundle([
         fake_forager(
             "exec",
@@ -30,25 +30,31 @@ fn bundle_has_one_branch_per_forager() {
         ),
     ]);
 
-    let branches = bundle
-        .pointer("/definitions/ExperimentStepToml/allOf")
-        .and_then(|v| v.as_array())
-        .expect("allOf branches exist");
-    assert_eq!(branches.len(), 2);
-    let tool_consts: Vec<&str> = branches
-        .iter()
-        .map(|b| {
-            b.pointer("/if/properties/tool/const")
-                .unwrap()
-                .as_str()
-                .unwrap()
-        })
-        .collect();
-    assert_eq!(tool_consts, ["exec", "cargo"]);
+    let step_props = bundle
+        .pointer("/properties/step/properties")
+        .and_then(|v| v.as_object())
+        .expect("step.properties exists");
+    assert!(step_props.contains_key("exec"));
+    assert!(step_props.contains_key("cargo"));
+
+    // Unknown tools should be flagged in the editor.
+    assert_eq!(
+        bundle.pointer("/properties/step/additionalProperties"),
+        Some(&serde_json::Value::Bool(false)),
+    );
+
+    // Each tool entry points at a per-tool definition.
+    let exec_ref = bundle
+        .pointer("/properties/step/properties/exec/additionalProperties/$ref")
+        .and_then(|v| v.as_str())
+        .expect("exec $ref present");
+    assert_eq!(exec_ref, "#/definitions/Step_exec");
+    assert!(bundle.pointer("/definitions/Step_exec").is_some());
+    assert!(bundle.pointer("/definitions/Step_cargo").is_some());
 }
 
 #[test]
-fn branch_splices_forager_input_properties_flat() {
+fn step_def_combines_common_fields_with_forager_inputs() {
     let bundle = build_bundle([fake_forager(
         "exec",
         "doc",
@@ -58,19 +64,29 @@ fn branch_splices_forager_input_properties_flat() {
         }),
     )]);
 
-    let then_props = bundle
-        .pointer("/definitions/ExperimentStepToml/allOf/0/then/properties")
+    let props = bundle
+        .pointer("/definitions/Step_exec/properties")
         .and_then(|v| v.as_object())
-        .expect("then.properties exists");
-    assert!(then_props.contains_key("cmd"));
-    assert!(then_props.contains_key("cwd"));
-    assert!(then_props.contains_key("summary"));
+        .expect("Step_exec.properties exists");
+    // Common StepBody fields.
+    assert!(props.contains_key("description"));
+    assert!(props.contains_key("apply-diff"));
+    assert!(props.contains_key("summary"));
+    // Forager inputs.
+    assert!(props.contains_key("cmd"));
+    assert!(props.contains_key("cwd"));
 
     let required = bundle
-        .pointer("/definitions/ExperimentStepToml/allOf/0/then/required")
+        .pointer("/definitions/Step_exec/required")
         .and_then(|v| v.as_array())
         .expect("required forwarded");
-    assert_eq!(required[0], "cmd");
+    assert!(required.iter().any(|v| v == "cmd"));
+
+    // Closed door for typos.
+    assert_eq!(
+        bundle.pointer("/definitions/Step_exec/additionalProperties"),
+        Some(&serde_json::Value::Bool(false)),
+    );
 }
 
 #[test]
@@ -82,19 +98,17 @@ fn measurement_description_is_per_forager_doc() {
     )]);
 
     let desc = bundle
-        .pointer("/definitions/ExperimentStepToml/allOf/0/then/properties/summary/additionalProperties/allOf/1/properties/measurement/description")
+        .pointer("/definitions/Step_cargo/properties/summary/additionalProperties/allOf/1/properties/measurement/description")
         .and_then(|v| v.as_str())
         .expect("measurement description spliced");
     assert!(desc.contains("time_ms"));
 }
 
 #[test]
-fn empty_foragers_does_not_inject_allof() {
+fn empty_foragers_returns_base_schema_unchanged() {
     let bundle = build_bundle(std::iter::empty());
-    assert!(
-        bundle
-            .pointer("/definitions/ExperimentStepToml/allOf")
-            .is_none(),
-        "empty foragers list should leave the step def untouched"
-    );
+    // No per-tool defs and no narrowed `step.properties` when there are no
+    // foragers — the schemars-derived base passes through.
+    assert!(bundle.pointer("/properties/step/properties").is_none());
+    assert!(bundle.pointer("/definitions/Step_exec").is_none());
 }

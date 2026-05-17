@@ -1,10 +1,10 @@
+#:schema ../../schema.json
+
 description = "Measures release-binary size of the wezel CLI"
 
-[step.build-release]
-tool = "exec"
+[step.exec.build-release]
 cmd = "cargo build --release --workspace"
 
-[step.measure-size]
-tool = "filesize"
+[step.filesize.measure-size]
 glob = "target/release/wezel"
 summary.wezel-binary-size = { measurement = "target/release/wezel" }

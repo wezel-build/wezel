@@ -1,13 +1,12 @@
+#:schema ../../schema.json
 description = "Measures incremental build cost of adding a function"
 
-[step.baseline]
-tool = "cargo"
+[step.cargo.baseline]
 command = "build"
 build_target = "workspace"
 summary.build-time = { measurement = "time_ms", aggregation = "mean", bisect = false, samples = 5 }
 
-[step.measure-llvm]
-tool = "llvm-lines"
+[step.llvm-lines.measure-llvm]
 package = "wezel_types"
 summary.total-llvm-lines = { measurement = "llvm-lines", filter = { summary_unit = "lines" } }
 summary.total-llvm-copies = { measurement = "llvm-lines", filter = { summary_unit = "copies" }, bisect = false }

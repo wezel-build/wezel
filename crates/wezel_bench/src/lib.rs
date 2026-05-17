@@ -9,7 +9,7 @@ pub mod workspace;
 
 pub use workspace::Workspace;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
 
@@ -108,16 +108,19 @@ impl ProjectConfig {
 
 /// Top-level shape of `.wezel/experiments/<name>/experiment.toml`.
 ///
-/// Steps are a map keyed by step name; insertion order is preserved by the
-/// `preserve_order` feature on the `toml` crate plus `IndexMap` here.
+/// Steps live under `[step.<tool>.<step_name>]`. The outer map is keyed by
+/// tool name and the inner by step name; bodies are wrapped in
+/// `toml::Spanned` so the parser can recover file-line order across reopened
+/// tables.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[schemars(title = "Wezel experiment.toml")]
 pub struct ExperimentToml {
     /// Human-readable description of what the experiment measures.
     pub description: Option<String>,
-    /// Ordered map of step name → step definition. Patches are cumulative.
-    #[schemars(with = "HashMap<String, ExperimentStepToml>")]
-    pub step: IndexMap<String, ExperimentStepToml>,
+    /// `[step.<tool>.<step_name>]`. Two-level map; step names must be unique
+    /// across tools (enforced in [`parse_experiment`]).
+    #[schemars(with = "HashMap<String, HashMap<String, StepBody>>")]
+    pub step: IndexMap<String, IndexMap<String, toml::Spanned<StepBody>>>,
 }
 
 /// Either a boolean (uses `<step.name>.patch`) or an explicit patch filename.
@@ -128,12 +131,11 @@ pub enum DiffField {
     Name(String),
 }
 
-/// A single step in the experiment. The `tool` field selects a forager plugin;
-/// remaining fields are passed to the plugin via `FORAGER_INPUTS` as JSON.
+/// Body of a `[step.<tool>.<step_name>]` table. The tool name is recovered
+/// from the outer key, not a field; flatten-collected `rest` is forwarded to
+/// the forager plugin via `FORAGER_INPUTS` as JSON.
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct ExperimentStepToml {
-    /// Forager plugin name (resolves to `forager-<tool>`). Required.
-    pub tool: String,
+pub struct StepBody {
     pub description: Option<String>,
     /// Apply a patch before running this step. `true` uses `<step name>.patch`; a string overrides the filename.
     #[serde(rename = "apply-diff")]
@@ -143,7 +145,7 @@ pub struct ExperimentStepToml {
     #[serde(default)]
     #[schemars(with = "HashMap<String, EmbeddedSummaryToml>")]
     pub summary: IndexMap<String, EmbeddedSummaryToml>,
-    /// Remaining fields are forwarded as forager inputs (e.g. `cmd`/`env`/`cwd` for `exec`, `package` for `llvm-lines`).
+    /// Forager-specific inputs (e.g. `cmd`/`env`/`cwd` for `exec`, `package` for `llvm-lines`).
     #[serde(flatten)]
     #[schemars(with = "HashMap<String, serde_json::Value>")]
     pub rest: IndexMap<String, toml::Value>,
@@ -183,84 +185,138 @@ pub fn experiment_schema() -> serde_json::Value {
 }
 
 /// Build `.wezel/schema.json` — the experiment-level schema with one
-/// `if`/`then` branch per installed forager.
+/// per-tool subschema rooted at `properties.step.properties.<tool>`.
 ///
-/// The base shape comes from [`experiment_schema`]; for each forager we add a
-/// branch on `$defs/ExperimentStepToml` that activates when `tool == <name>`,
-/// splicing in the forager's flat input properties and overriding the
-/// `description` of `summary.<x>.measurement` with the forager's
-/// `measurements_doc`. Editors keyed off the `tool` discriminator surface
-/// per-forager hints throughout the step.
+/// The base shape comes from [`experiment_schema`]; the schemars-derived
+/// `step.additionalProperties` is replaced by explicit `step.properties`
+/// (one entry per installed forager) with `additionalProperties: false`, so
+/// unknown tool names get flagged in the editor. For each forager we emit a
+/// `Step_<tool>` definition that combines `StepBody`'s common fields with
+/// that forager's `inputs.properties`/`required` and layers
+/// `measurements_doc` onto `summary.<x>.measurement.description`.
 pub fn build_bundle<I>(foragers: I) -> serde_json::Value
 where
     I: IntoIterator<Item = ForagerSchema>,
 {
     let mut bundle = experiment_schema();
-    let Some(step_def) = bundle
-        .pointer_mut("/definitions/ExperimentStepToml")
+
+    let foragers: Vec<ForagerSchema> = foragers.into_iter().collect();
+    if foragers.is_empty() {
+        return bundle;
+    }
+
+    // Pull StepBody out of the definitions so each per-tool def can copy its
+    // common fields (description, apply-diff, summary).
+    let common = bundle
+        .pointer("/definitions/StepBody")
+        .cloned()
+        .expect("schemars-derived schema must define StepBody");
+
+    let mut step_properties = serde_json::Map::new();
+    for forager in &foragers {
+        let def_name = format!("Step_{}", forager.name);
+        let def = build_step_def(&common, forager);
+        if let Some(defs) = bundle
+            .pointer_mut("/definitions")
+            .and_then(|v| v.as_object_mut())
+        {
+            defs.insert(def_name.clone(), def);
+        }
+        step_properties.insert(
+            forager.name.clone(),
+            serde_json::json!({
+                "type": "object",
+                "description": forager.description,
+                "additionalProperties": {
+                    "$ref": format!("#/definitions/{def_name}")
+                }
+            }),
+        );
+    }
+
+    if let Some(step) = bundle
+        .pointer_mut("/properties/step")
         .and_then(|v| v.as_object_mut())
-    else {
-        // experiment_schema is generated from a stable type; this is a
-        // programming error if it ever fires.
-        panic!("experiment schema missing definitions/ExperimentStepToml");
-    };
-
-    let mut branches = Vec::new();
-    for forager in foragers {
-        branches.push(forager_branch(&forager));
+    {
+        // Replace the schemars-derived open `additionalProperties` with the
+        // explicit per-tool properties + a closed door for unknown tools.
+        step.remove("additionalProperties");
+        step.insert(
+            "additionalProperties".into(),
+            serde_json::Value::Bool(false),
+        );
+        step.insert("properties".into(), serde_json::Value::Object(step_properties));
     }
 
-    if !branches.is_empty() {
-        step_def.insert("allOf".into(), serde_json::Value::Array(branches));
+    // StepBody has been inlined into every Step_<tool>; nobody references the
+    // bare definition anymore.
+    if let Some(defs) = bundle
+        .pointer_mut("/definitions")
+        .and_then(|v| v.as_object_mut())
+    {
+        defs.remove("StepBody");
     }
+
     bundle
 }
 
-fn forager_branch(forager: &ForagerSchema) -> serde_json::Value {
-    let mut then_props = serde_json::Map::new();
+fn build_step_def(common: &serde_json::Value, forager: &ForagerSchema) -> serde_json::Value {
+    let mut def = common.clone();
+    let obj = def
+        .as_object_mut()
+        .expect("StepBody definition must be an object");
 
-    // Splice the forager's input properties as flat keys of the step. They
-    // live on the step directly because ExperimentStepToml uses serde(flatten)
-    // for forager inputs.
+    // Lock the schema down — anything that isn't a common field or a known
+    // forager input should surface as an editor diagnostic.
+    obj.insert(
+        "additionalProperties".into(),
+        serde_json::Value::Bool(false),
+    );
+
+    // Merge the forager's input properties into the common ones.
+    let props = obj
+        .entry("properties")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .expect("properties must be an object");
     if let Some(input_props) = forager.inputs.get("properties").and_then(|v| v.as_object()) {
         for (k, v) in input_props {
-            then_props.insert(k.clone(), v.clone());
+            props.insert(k.clone(), v.clone());
         }
     }
 
-    // Override summary entries' measurement.description with this forager's
-    // documentation. We layer the override on top of the base summary schema
-    // via allOf so the existing `aggregation`/`filter`/etc. constraints are
-    // preserved.
-    then_props.insert(
-        "summary".into(),
-        serde_json::json!({
-            "type": "object",
-            "additionalProperties": {
-                "allOf": [
-                    { "$ref": "#/definitions/EmbeddedSummaryToml" },
-                    {
-                        "properties": {
-                            "measurement": {
-                                "description": forager.measurements_doc,
-                            }
-                        }
+    // Layer the forager's measurements_doc onto each summary's measurement
+    // description so editors surface per-tool hints on hover.
+    if let Some(summary_schema) = props.get_mut("summary").and_then(|v| v.as_object_mut())
+        && let Some(additional) = summary_schema.get_mut("additionalProperties")
+    {
+        *additional = serde_json::json!({
+            "allOf": [
+                additional.clone(),
+                {
+                    "properties": {
+                        "measurement": { "description": forager.measurements_doc }
                     }
-                ]
-            }
-        }),
-    );
-
-    let mut then = serde_json::Map::new();
-    then.insert("properties".into(), serde_json::Value::Object(then_props));
-    if let Some(required) = forager.inputs.get("required").cloned() {
-        then.insert("required".into(), required);
+                }
+            ]
+        });
     }
 
-    serde_json::json!({
-        "if": { "properties": { "tool": { "const": forager.name } } },
-        "then": serde_json::Value::Object(then),
-    })
+    // Forward the forager's `required` fields onto the step def.
+    if let Some(required) = forager.inputs.get("required").and_then(|v| v.as_array()) {
+        let existing = obj
+            .entry("required")
+            .or_insert_with(|| serde_json::Value::Array(Vec::new()))
+            .as_array_mut()
+            .expect("required must be an array");
+        for r in required {
+            if !existing.contains(r) {
+                existing.push(r.clone());
+            }
+        }
+    }
+
+    def
 }
 
 fn bool_true() -> bool {
@@ -274,24 +330,50 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
     let experiment: ExperimentToml =
         toml::from_str(&raw).with_context(|| format!("parsing {}", toml_path.display()))?;
 
-    let mut steps = Vec::with_capacity(experiment.step.len());
-    let mut summaries = Vec::new();
-    for (step_name, raw_step) in experiment.step {
-        let forager = raw_step.tool;
+    // Flatten the two-level `step.<tool>.<name>` map and recover source order
+    // from each body's span. TOML merges all entries for an outer key into a
+    // single table, so cross-tool ordering is otherwise lost.
+    let mut entries: Vec<(String, String, usize, StepBody)> = Vec::new();
+    for (tool, steps_for_tool) in experiment.step {
+        for (step_name, spanned_body) in steps_for_tool {
+            let span_start = spanned_body.span().start;
+            entries.push((
+                tool.clone(),
+                step_name,
+                span_start,
+                spanned_body.into_inner(),
+            ));
+        }
+    }
+    entries.sort_by_key(|(_, _, span, _)| *span);
 
-        let inputs_map: serde_json::Map<String, serde_json::Value> = raw_step
+    // Step names must be unique across tools — patch filenames and the
+    // `measurements.step` column in burrow assume globally-unique names.
+    let mut seen: HashSet<String> = HashSet::new();
+    for (_, name, _, _) in &entries {
+        if !seen.insert(name.clone()) {
+            bail!(
+                "step name `{name}` is declared under more than one tool; step names must be unique"
+            );
+        }
+    }
+
+    let mut steps = Vec::with_capacity(entries.len());
+    let mut summaries = Vec::new();
+    for (forager, step_name, _, body) in entries {
+        let inputs_map: serde_json::Map<String, serde_json::Value> = body
             .rest
             .into_iter()
             .map(|(k, v)| Ok((k, toml_to_json(v)?)))
             .collect::<Result<_>>()?;
 
-        let diff = match raw_step.apply_diff {
+        let diff = match body.apply_diff {
             Some(DiffField::Bool(true)) => Some(step_name.clone()),
             Some(DiffField::Bool(false)) | None => None,
             Some(DiffField::Name(s)) => Some(s),
         };
 
-        for (summary_name, s) in raw_step.summary {
+        for (summary_name, s) in body.summary {
             summaries.push(SummaryDef {
                 name: summary_name,
                 step: step_name.clone(),
@@ -306,7 +388,7 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
         steps.push(StepDef {
             name: step_name,
             forager,
-            description: raw_step.description,
+            description: body.description,
             diff,
             inputs: serde_json::Value::Object(inputs_map),
         });
@@ -329,9 +411,10 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
 mod tests {
     use super::*;
 
-    /// Step + summary order must follow source order, not alphabetical. The
-    /// step names below are reverse-alphabetical so a BTreeMap-backed parser
-    /// would visibly fail this test.
+    /// Step + summary order must follow source order, not the tool-grouped
+    /// order that the deserialised two-level map would naturally produce.
+    /// The steps below interleave tools (cargo → exec → cargo) so a parser
+    /// that iterates `step.<tool>` in map order would visibly fail.
     #[test]
     fn preserves_source_order() {
         let tmp = tempfile::tempdir().unwrap();
@@ -340,22 +423,25 @@ mod tests {
             r#"
 description = "ordering check"
 
-[step.zzz-first]
-tool = "exec"
-cmd = "true"
-summary.zzz-sum = { measurement = "m1" }
-summary.aaa-sum = { measurement = "m2" }
+[step.cargo.zzz-first]
+command = "build"
+build_target = "workspace"
+summary.zzz-sum = { measurement = "time_ms" }
+summary.aaa-sum = { measurement = "time_ms" }
 
-[step.aaa-second]
-tool = "exec"
+[step.exec.middle]
 cmd = "true"
+
+[step.cargo.aaa-third]
+command = "build"
+build_target = "workspace"
 "#,
         )
         .unwrap();
 
         let exp = parse_experiment(tmp.path()).unwrap();
         let step_names: Vec<_> = exp.steps.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(step_names, vec!["zzz-first", "aaa-second"]);
+        assert_eq!(step_names, vec!["zzz-first", "middle", "aaa-third"]);
 
         let summary_keys: Vec<_> = exp
             .summaries
@@ -365,6 +451,32 @@ cmd = "true"
         assert_eq!(
             summary_keys,
             vec![("zzz-first", "zzz-sum"), ("zzz-first", "aaa-sum")]
+        );
+    }
+
+    /// Step names must be unique across tools — same name under two
+    /// different tools collides with patch filenames and burrow's
+    /// `measurements.step` column.
+    #[test]
+    fn rejects_step_name_collision_across_tools() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("experiment.toml"),
+            r#"
+[step.exec.baseline]
+cmd = "true"
+
+[step.cargo.baseline]
+command = "build"
+build_target = "workspace"
+"#,
+        )
+        .unwrap();
+
+        let err = parse_experiment(tmp.path()).unwrap_err().to_string();
+        assert!(
+            err.contains("baseline") && err.contains("more than one tool"),
+            "expected collision error mentioning the step name, got: {err}"
         );
     }
 }

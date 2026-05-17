@@ -111,8 +111,7 @@ impl TestFixture {
             r#"
 description = "Test experiment"
 
-[step.measure]
-tool = "test-metric"
+[step.test-metric.measure]
 summary.total = { measurement = "test-metric", aggregation = "sum", bisect = true }
 "#,
         )

@@ -68,187 +68,135 @@
       ],
       "type": "object"
     },
-    "ExperimentStepToml": {
-      "additionalProperties": true,
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "tool": {
-                "const": "cargo"
-              }
+    "Step_cargo": {
+      "additionalProperties": false,
+      "description": "Body of a `[step.<tool>.<step_name>]` table. The tool name is recovered from the outer key, not a field; flatten-collected `rest` is forwarded to the forager plugin via `FORAGER_INPUTS` as JSON.",
+      "properties": {
+        "apply-diff": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DiffField"
+            },
+            {
+              "type": "null"
             }
-          },
-          "then": {
-            "properties": {
-              "build_target": {
-                "allOf": [
-                  {
-                    "$ref": "#/definitions/PackageSpecifier"
+          ],
+          "description": "Apply a patch before running this step. `true` uses `<step name>.patch`; a string overrides the filename."
+        },
+        "build_target": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PackageSpecifier"
+            }
+          ],
+          "description": "Build target — either a list of package names or the literal string \"workspace\"."
+        },
+        "command": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Command"
+            }
+          ],
+          "description": "Cargo subcommand to invoke (`build`, `bench`, or `test`)."
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "additionalProperties": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/EmbeddedSummaryToml"
+              },
+              {
+                "properties": {
+                  "measurement": {
+                    "description": "**`time_ms`** — how long `cargo <command>` took, in milliseconds."
                   }
-                ],
-                "description": "Build target — either a list of package names or the literal string \"workspace\"."
-              },
-              "command": {
-                "allOf": [
-                  {
-                    "$ref": "#/definitions/Command"
-                  }
-                ],
-                "description": "Cargo subcommand to invoke (`build`, `bench`, or `test`)."
-              },
-              "summary": {
-                "additionalProperties": {
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/EmbeddedSummaryToml"
-                    },
-                    {
-                      "properties": {
-                        "measurement": {
-                          "description": "**`time_ms`** — how long `cargo <command>` took, in milliseconds."
-                        }
-                      }
-                    }
-                  ]
-                },
-                "type": "object"
+                }
               }
-            },
-            "required": [
-              "build_target",
-              "command"
             ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "tool": {
-                "const": "exec"
-              }
-            }
           },
-          "then": {
-            "properties": {
-              "cmd": {
-                "description": "Shell command to run.",
-                "type": "string"
-              },
-              "cwd": {
-                "description": "Working directory override.",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "env": {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "default": {},
-                "description": "Extra environment variables.",
-                "type": "object"
-              },
-              "summary": {
-                "additionalProperties": {
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/EmbeddedSummaryToml"
-                    },
-                    {
-                      "properties": {
-                        "measurement": {
-                          "description": "This forager emits no measurements."
-                        }
-                      }
-                    }
-                  ]
-                },
-                "type": "object"
-              }
-            },
-            "required": [
-              "cmd"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "tool": {
-                "const": "filesize"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "glob": {
-                "description": "Glob pattern, evaluated against the experiment workspace cwd.",
-                "type": "string"
-              },
-              "summary": {
-                "additionalProperties": {
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/EmbeddedSummaryToml"
-                    },
-                    {
-                      "properties": {
-                        "measurement": {
-                          "description": "One measurement per matched file. The measurement name is the file's path (relative to cwd); the value is its size in bytes."
-                        }
-                      }
-                    }
-                  ]
-                },
-                "type": "object"
-              }
-            },
-            "required": [
-              "glob"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "tool": {
-                "const": "llvm-lines"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "package": {
-                "description": "Package name (required for workspaces).",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "summary": {
-                "additionalProperties": {
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/EmbeddedSummaryToml"
-                    },
-                    {
-                      "properties": {
-                        "measurement": {
-                          "description": "**`llvm-lines`** — count of LLVM IR lines (or monomorphisation copies) for a function (u64). Filter tags:\n- `summary_unit = \"lines\"` or `\"copies\"` — crate-wide totals (one row each).\n- `function = \"<symbol>\"` + `unit = \"lines\"`|`\"copies\"` — per-function rows."
-                        }
-                      }
-                    }
-                  ]
-                },
-                "type": "object"
-              }
-            }
-          }
+          "description": "Summaries emitted by this step, keyed by summary name.",
+          "type": "object"
         }
+      },
+      "required": [
+        "build_target",
+        "command"
       ],
-      "description": "A single step in the experiment. The `tool` field selects a forager plugin; remaining fields are passed to the plugin via `FORAGER_INPUTS` as JSON.",
+      "type": "object"
+    },
+    "Step_exec": {
+      "additionalProperties": false,
+      "description": "Body of a `[step.<tool>.<step_name>]` table. The tool name is recovered from the outer key, not a field; flatten-collected `rest` is forwarded to the forager plugin via `FORAGER_INPUTS` as JSON.",
+      "properties": {
+        "apply-diff": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DiffField"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Apply a patch before running this step. `true` uses `<step name>.patch`; a string overrides the filename."
+        },
+        "cmd": {
+          "description": "Shell command to run.",
+          "type": "string"
+        },
+        "cwd": {
+          "description": "Working directory override.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Extra environment variables.",
+          "type": "object"
+        },
+        "summary": {
+          "additionalProperties": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/EmbeddedSummaryToml"
+              },
+              {
+                "properties": {
+                  "measurement": {
+                    "description": "This forager emits no measurements."
+                  }
+                }
+              }
+            ]
+          },
+          "description": "Summaries emitted by this step, keyed by summary name.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "cmd"
+      ],
+      "type": "object"
+    },
+    "Step_filesize": {
+      "additionalProperties": false,
+      "description": "Body of a `[step.<tool>.<step_name>]` table. The tool name is recovered from the outer key, not a field; flatten-collected `rest` is forwarded to the forager plugin via `FORAGER_INPUTS` as JSON.",
       "properties": {
         "apply-diff": {
           "anyOf": [
@@ -267,25 +215,85 @@
             "null"
           ]
         },
+        "glob": {
+          "description": "Glob pattern, evaluated against the experiment workspace cwd.",
+          "type": "string"
+        },
         "summary": {
           "additionalProperties": {
-            "$ref": "#/definitions/EmbeddedSummaryToml"
+            "allOf": [
+              {
+                "$ref": "#/definitions/EmbeddedSummaryToml"
+              },
+              {
+                "properties": {
+                  "measurement": {
+                    "description": "One measurement per matched file. The measurement name is the file's path (relative to cwd); the value is its size in bytes."
+                  }
+                }
+              }
+            ]
           },
           "description": "Summaries emitted by this step, keyed by summary name.",
           "type": "object"
-        },
-        "tool": {
-          "description": "Forager plugin name (resolves to `forager-<tool>`). Required.",
-          "type": "string"
         }
       },
       "required": [
-        "tool"
+        "glob"
       ],
+      "type": "object"
+    },
+    "Step_llvm-lines": {
+      "additionalProperties": false,
+      "description": "Body of a `[step.<tool>.<step_name>]` table. The tool name is recovered from the outer key, not a field; flatten-collected `rest` is forwarded to the forager plugin via `FORAGER_INPUTS` as JSON.",
+      "properties": {
+        "apply-diff": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DiffField"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Apply a patch before running this step. `true` uses `<step name>.patch`; a string overrides the filename."
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package": {
+          "description": "Package name (required for workspaces).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "additionalProperties": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/EmbeddedSummaryToml"
+              },
+              {
+                "properties": {
+                  "measurement": {
+                    "description": "**`llvm-lines`** — count of LLVM IR lines (or monomorphisation copies) for a function (u64). Filter tags:\n- `summary_unit = \"lines\"` or `\"copies\"` — crate-wide totals (one row each).\n- `function = \"<symbol>\"` + `unit = \"lines\"`|`\"copies\"` — per-function rows."
+                  }
+                }
+              }
+            ]
+          },
+          "description": "Summaries emitted by this step, keyed by summary name.",
+          "type": "object"
+        }
+      },
       "type": "object"
     }
   },
-  "description": "Top-level shape of `.wezel/experiments/<name>/experiment.toml`.\n\nSteps are a map keyed by step name; insertion order is preserved by the `preserve_order` feature on the `toml` crate plus `IndexMap` here.",
+  "description": "Top-level shape of `.wezel/experiments/<name>/experiment.toml`.\n\nSteps live under `[step.<tool>.<step_name>]`. The outer map is keyed by tool name and the inner by step name; bodies are wrapped in `toml::Spanned` so the parser can recover file-line order across reopened tables.",
   "properties": {
     "description": {
       "description": "Human-readable description of what the experiment measures.",
@@ -295,10 +303,38 @@
       ]
     },
     "step": {
-      "additionalProperties": {
-        "$ref": "#/definitions/ExperimentStepToml"
+      "additionalProperties": false,
+      "description": "`[step.<tool>.<step_name>]`. Two-level map; step names must be unique across tools (enforced in [`parse_experiment`]).",
+      "properties": {
+        "cargo": {
+          "additionalProperties": {
+            "$ref": "#/definitions/Step_cargo"
+          },
+          "description": "Runs `cargo <command>` and records wall-clock time",
+          "type": "object"
+        },
+        "exec": {
+          "additionalProperties": {
+            "$ref": "#/definitions/Step_exec"
+          },
+          "description": "Executes a shell command; produces no measurements",
+          "type": "object"
+        },
+        "filesize": {
+          "additionalProperties": {
+            "$ref": "#/definitions/Step_filesize"
+          },
+          "description": "Reports byte size of every file matching a glob",
+          "type": "object"
+        },
+        "llvm-lines": {
+          "additionalProperties": {
+            "$ref": "#/definitions/Step_llvm-lines"
+          },
+          "description": "Counts LLVM IR lines via cargo-llvm-lines",
+          "type": "object"
+        }
       },
-      "description": "Ordered map of step name → step definition. Patches are cumulative.",
       "type": "object"
     }
   },
