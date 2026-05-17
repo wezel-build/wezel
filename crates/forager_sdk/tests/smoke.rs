@@ -13,7 +13,7 @@ struct Dummy;
 impl Forager for Dummy {
     const NAME: &'static str = "dummy";
     const DESCRIPTION: &'static str = "test forager";
-    const MEASUREMENTS_DOC: &'static str = "Emits `wall_time` and `rss_peak`.";
+    const OUTCOMES_DOC: &'static str = "Emits `wall_time` and `rss_peak`.";
     type Inputs = DummyInputs;
 
     fn run(_inputs: Self::Inputs) -> anyhow::Result<Vec<ForagerPluginOutput>> {
@@ -29,6 +29,6 @@ fn inputs_schema_is_well_formed() {
 }
 
 #[test]
-fn measurements_doc_is_exposed() {
-    assert!(Dummy::MEASUREMENTS_DOC.contains("wall_time"));
+fn outcomes_doc_is_exposed() {
+    assert!(Dummy::OUTCOMES_DOC.contains("wall_time"));
 }

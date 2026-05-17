@@ -155,8 +155,8 @@ pub struct StepBody {
 /// fields are recovered from the map keys (`step.<step>.summary.<name>`).
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct EmbeddedSummaryToml {
-    /// Measurement name (as emitted by the forager) to aggregate over.
-    pub measurement: String,
+    /// Outcome name (as emitted by the forager) to aggregate over.
+    pub outcome: String,
     /// How to combine multiple matching values. Omit when the filter is
     /// expected to select a single value.
     #[serde(default)]
@@ -195,7 +195,7 @@ fn experiment_schema() -> serde_json::Value {
 /// unknown tool names get flagged in the editor. For each forager we emit a
 /// `Step_<tool>` definition that combines `StepBody`'s common fields with
 /// that forager's `inputs.properties`/`required` and layers
-/// `measurements_doc` onto `summary.<x>.measurement.description`.
+/// `outcomes_doc` onto `summary.<x>.outcome.description`.
 pub fn build_bundle<I>(foragers: I) -> serde_json::Value
 where
     I: IntoIterator<Item = ForagerSchema>,
@@ -290,7 +290,7 @@ fn build_step_def(common: &serde_json::Value, forager: &ForagerSchema) -> serde_
         }
     }
 
-    // Layer the forager's measurements_doc onto each summary's measurement
+    // Layer the forager's outcomes_doc onto each summary's outcome
     // description so editors surface per-tool hints on hover.
     if let Some(summary_schema) = props.get_mut("summary").and_then(|v| v.as_object_mut())
         && let Some(additional) = summary_schema.get_mut("additionalProperties")
@@ -300,7 +300,7 @@ fn build_step_def(common: &serde_json::Value, forager: &ForagerSchema) -> serde_
                 additional.clone(),
                 {
                     "properties": {
-                        "measurement": { "description": forager.measurements_doc }
+                        "outcome": { "description": forager.outcomes_doc }
                     }
                 }
             ]
@@ -382,7 +382,7 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
             summaries.push(SummaryDef {
                 name: summary_name,
                 step: step_name.clone(),
-                measurement: s.measurement,
+                measurement: s.outcome,
                 aggregation: s.aggregation,
                 filter: s.filter,
                 bisect: s.bisect,
@@ -431,8 +431,8 @@ description = "ordering check"
 [step.cargo.zzz-first]
 command = "build"
 build_target = "workspace"
-summary.zzz-sum = { measurement = "time_ms" }
-summary.aaa-sum = { measurement = "time_ms" }
+summary.zzz-sum = { outcome = "time_ms" }
+summary.aaa-sum = { outcome = "time_ms" }
 
 [step.exec.middle]
 cmd = "true"
@@ -759,5 +759,5 @@ pub fn invoke_forager(
     let _ = std::fs::remove_file(&inputs_path);
     let _ = std::fs::remove_file(&out_path);
 
-    Ok(envelope.measurements)
+    Ok(envelope.outcomes)
 }

@@ -328,7 +328,7 @@ pub struct ForagerPluginOutput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForagerPluginEnvelope {
     #[serde(default)]
-    pub measurements: Vec<ForagerPluginOutput>,
+    pub outcomes: Vec<ForagerPluginOutput>,
 }
 
 /// Per-step report included in `ForagerRunReport`.
@@ -384,12 +384,13 @@ pub struct ForagerSchema {
     /// One-line human description shown in CLI listings.
     pub description: String,
     /// JSON Schema for the forager-specific input fields (everything beyond
-    /// `tool = "..."` in a `[step.<x>]` table). Always a JSON Schema object.
+    /// the `[step.<tool>.<name>]` header in a step table). Always a JSON
+    /// Schema object.
     pub inputs: serde_json::Value,
-    /// Free-form Markdown documenting the measurements this forager emits.
-    /// Spliced into the `description` of the `measurement` field in the
-    /// bundled experiment schema so editors surface it on hover.
-    pub measurements_doc: String,
+    /// Free-form Markdown documenting the outcomes this forager emits.
+    /// Spliced into the `description` of the `outcome` field in the bundled
+    /// experiment schema so editors surface it on hover.
+    pub outcomes_doc: String,
 }
 
 // ── Pheromone schema ──────────────────────────────────────────────────────────

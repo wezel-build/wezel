@@ -23,7 +23,7 @@ cmd = "cargo build --release --workspace"
 glob = "target/release/wezel"
 # Finally, we need to extract a metric value that we can bisect over:
 # we want to find an exact commit that causes a regression in the size of target/release/wezel.
-summary.wezel-binary-size = { measurement = "target/release/wezel" }
+summary.wezel-binary-size = { outcome = "target/release/wezel" }
 ```
 
 Running an experiment is as simple as `wezel experiment run EXPERIMENT_NAME`. All experiments need to live in separate directories of `.wezel/experiments/` subdirectory of your project where the name of subdirectory becomes a name of experiment.
