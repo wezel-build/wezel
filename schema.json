@@ -68,9 +68,9 @@
       ],
       "type": "object"
     },
-    "ExperimentStepToml": {
+    "StepBody": {
       "additionalProperties": true,
-      "description": "A single step in the experiment. The `tool` field selects a forager plugin; remaining fields are passed to the plugin via `FORAGER_INPUTS` as JSON.",
+      "description": "Body of a `[step.<tool>.<step_name>]` table. The tool name is recovered from the outer key, not a field; flatten-collected `rest` is forwarded to the forager plugin via `FORAGER_INPUTS` as JSON.",
       "properties": {
         "apply-diff": {
           "anyOf": [
@@ -95,19 +95,12 @@
           },
           "description": "Summaries emitted by this step, keyed by summary name.",
           "type": "object"
-        },
-        "tool": {
-          "description": "Forager plugin name (resolves to `forager-<tool>`). Required.",
-          "type": "string"
         }
       },
-      "required": [
-        "tool"
-      ],
       "type": "object"
     }
   },
-  "description": "Top-level shape of `.wezel/experiments/<name>/experiment.toml`.\n\nSteps are a map keyed by step name; insertion order is preserved by the `preserve_order` feature on the `toml` crate plus `IndexMap` here.",
+  "description": "Top-level shape of `.wezel/experiments/<name>/experiment.toml`.\n\nSteps live under `[step.<tool>.<step_name>]`. The outer map is keyed by tool name and the inner by step name; bodies are wrapped in `toml::Spanned` so the parser can recover file-line order across reopened tables.",
   "properties": {
     "description": {
       "description": "Human-readable description of what the experiment measures.",
@@ -118,9 +111,12 @@
     },
     "step": {
       "additionalProperties": {
-        "$ref": "#/definitions/ExperimentStepToml"
+        "additionalProperties": {
+          "$ref": "#/definitions/StepBody"
+        },
+        "type": "object"
       },
-      "description": "Ordered map of step name → step definition. Patches are cumulative.",
+      "description": "`[step.<tool>.<step_name>]`. Two-level map; step names must be unique across tools (enforced in [`parse_experiment`]).",
       "type": "object"
     }
   },
