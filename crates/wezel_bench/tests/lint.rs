@@ -73,7 +73,7 @@ impl LintFixture {
             name: name.into(),
             description: format!("fake {name}"),
             inputs,
-            measurements_doc: String::new(),
+            outcomes_doc: String::new(),
         };
         fs::write(&schema_path, serde_json::to_string(&sidecar).unwrap()).unwrap();
     }
@@ -288,8 +288,8 @@ fn lint_fails_when_summaries_disagree_on_samples() {
         r#"description = "test"
 [step.exec.step1]
 cmd = "true"
-summary.a = { measurement = "time_ms", samples = 5 }
-summary.b = { measurement = "time_ms", samples = 10 }
+summary.a = { outcome = "time_ms", samples = 5 }
+summary.b = { outcome = "time_ms", samples = 10 }
 "#,
     );
     let err = fx.run_lint().unwrap_err().to_string();
@@ -309,8 +309,8 @@ fn lint_passes_when_summaries_agree_on_samples() {
         r#"description = "test"
 [step.exec.step1]
 cmd = "true"
-summary.a = { measurement = "time_ms", aggregation = "mean", samples = 5 }
-summary.b = { measurement = "other", aggregation = "mean", samples = 5 }
+summary.a = { outcome = "time_ms", aggregation = "mean", samples = 5 }
+summary.b = { outcome = "other", aggregation = "mean", samples = 5 }
 "#,
     );
     fx.write_bundle();
@@ -328,7 +328,7 @@ fn lint_fails_when_sampled_summary_lacks_aggregation() {
         r#"description = "test"
 [step.exec.step1]
 cmd = "true"
-summary.a = { measurement = "time_ms", samples = 5 }
+summary.a = { outcome = "time_ms", samples = 5 }
 "#,
     );
     let err = fx.run_lint().unwrap_err().to_string();

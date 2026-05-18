@@ -7,4 +7,4 @@ cmd = "cargo build --release --workspace"
 
 [step.filesize.measure-size]
 glob = "target/release/wezel"
-summary.wezel-binary-size = { measurement = "target/release/wezel" }
+summary.wezel-binary-size = { outcome = "target/release/wezel" }

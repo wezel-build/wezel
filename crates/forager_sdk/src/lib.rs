@@ -3,7 +3,7 @@
 //! A forager is a binary that the wezel runner invokes once per step. The
 //! binary takes its inputs as JSON via the `FORAGER_INPUTS` env var, runs
 //! whatever procedure it implements, and writes a [`ForagerPluginEnvelope`]
-//! of measurements to the path in `FORAGER_OUT`. It must also respond to a
+//! of outcomes to the path in `FORAGER_OUT`. It must also respond to a
 //! `--schema` flag with its self-description so the wezel CLI can compose
 //! editor-facing JSON Schemas for `experiment.toml`.
 //!
@@ -19,15 +19,16 @@ use wezel_types::{ForagerPluginEnvelope, ForagerPluginOutput, ForagerSchema};
 
 /// Contract implemented by every forager binary.
 pub trait Forager {
-    /// Forager identifier as it appears in `experiment.toml` (`step.<x>.tool = "..."`).
+    /// Forager identifier as it appears in the `[step.<tool>.<name>]` header
+    /// of an experiment TOML file.
     const NAME: &'static str;
     /// One-line description shown in `wezel experiment new` and tool listings.
     const DESCRIPTION: &'static str;
-    /// Markdown documenting the measurements this forager emits (names, value
+    /// Markdown documenting the outcomes this forager emits (names, value
     /// units, available filter tags). Spliced into the `description` of the
-    /// `measurement` field in the bundled `.wezel/schema.json`, so editors
-    /// surface it on hover once a step's `tool` is set.
-    const MEASUREMENTS_DOC: &'static str;
+    /// `outcome` field in the bundled `.wezel/schema.json`, so editors
+    /// surface it on hover once a step's tool is known.
+    const OUTCOMES_DOC: &'static str;
 
     /// Inputs deserialised from `FORAGER_INPUTS`.
     type Inputs: DeserializeOwned + JsonSchema;
@@ -52,7 +53,7 @@ pub fn run<F: Forager>() -> Result<()> {
             name: F::NAME.into(),
             description: F::DESCRIPTION.into(),
             inputs: F::inputs_schema(),
-            measurements_doc: F::MEASUREMENTS_DOC.into(),
+            outcomes_doc: F::OUTCOMES_DOC.into(),
         };
         println!("{}", serde_json::to_string_pretty(&schema)?);
         return Ok(());
@@ -69,9 +70,9 @@ pub fn run<F: Forager>() -> Result<()> {
         .with_context(|| format!("reading {}", inputs_path.display()))?;
     let inputs: F::Inputs = serde_json::from_str(&inputs_raw).context("parsing FORAGER_INPUTS")?;
 
-    let measurements = F::run(inputs)?;
+    let outcomes = F::run(inputs)?;
 
-    let envelope = ForagerPluginEnvelope { measurements };
+    let envelope = ForagerPluginEnvelope { outcomes };
     let body = serde_json::to_string(&envelope).context("serialising envelope")?;
     std::fs::write(&out_path, body).with_context(|| format!("writing {}", out_path.display()))?;
     Ok(())

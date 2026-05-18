@@ -11,7 +11,7 @@ fn fake_forager(name: &str, doc: &str, properties: serde_json::Value) -> Forager
             "properties": properties,
             "required": ["cmd"],
         }),
-        measurements_doc: doc.into(),
+        outcomes_doc: doc.into(),
     }
 }
 
@@ -90,7 +90,7 @@ fn step_def_combines_common_fields_with_forager_inputs() {
 }
 
 #[test]
-fn measurement_description_is_per_forager_doc() {
+fn outcome_description_is_per_forager_doc() {
     let bundle = build_bundle([fake_forager(
         "cargo",
         "**time_ms** — wall-clock duration",
@@ -98,9 +98,9 @@ fn measurement_description_is_per_forager_doc() {
     )]);
 
     let desc = bundle
-        .pointer("/definitions/Step_cargo/properties/summary/additionalProperties/allOf/1/properties/measurement/description")
+        .pointer("/definitions/Step_cargo/properties/summary/additionalProperties/allOf/1/properties/outcome/description")
         .and_then(|v| v.as_str())
-        .expect("measurement description spliced");
+        .expect("outcome description spliced");
     assert!(desc.contains("time_ms"));
 }
 

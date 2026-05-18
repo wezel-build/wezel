@@ -38,7 +38,7 @@ fn create_fake_plugin(dir: &Path) -> PathBuf {
 VALUE=$(cat .test-metric-value 2>/dev/null || echo 100)
 cat > "$FORAGER_OUT" <<ENDJSON
 {
-  "measurements": [
+  "outcomes": [
     {
       "name": "test-metric",
       "value": $VALUE,
@@ -112,7 +112,7 @@ impl TestFixture {
 description = "Test experiment"
 
 [step.test-metric.measure]
-summary.total = { measurement = "test-metric", aggregation = "sum", bisect = true }
+summary.total = { outcome = "test-metric", aggregation = "sum", bisect = true }
 "#,
         )
         .unwrap();
