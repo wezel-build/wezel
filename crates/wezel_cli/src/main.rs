@@ -562,37 +562,91 @@ fn make_workspace(project_dir: PathBuf) -> anyhow::Result<wezel_bench::Workspace
 }
 
 fn print_human_report(
-    experiment: &str,
-    commit: &str,
-    steps: &[wezel_types::ForagerStepReport],
-    summaries: &indexmap::IndexMap<String, wezel_bench::run::SummaryValue>,
+    saved: &wezel_bench::run::SavedRun,
+    summary_defs: &[wezel_types::SummaryDef],
     verbose: bool,
 ) {
-    println!("Experiment: {experiment}");
-    println!("Commit:     {}", &commit[..7.min(commit.len())]);
+    let output = &saved.output;
+    let short = &output.commit[..7.min(output.commit.len())];
+    let branch = saved.branch.as_deref().unwrap_or("(detached)");
+    let dirty = if saved.dirty { " *" } else { "" };
+    let dur = format_duration(saved.duration_ms);
 
-    if verbose {
-        println!("\nMeasurements:");
-        for report in steps {
-            if report.measurements.is_empty() {
-                println!("  {} — (no measurements)", report.step);
+    println!("{}  ·  {short} on {branch}{dirty}  ·  {dur}", output.experiment);
+
+    if output.summaries.is_empty() {
+        println!();
+        println!("(no summaries)");
+    } else {
+        let mut entries: Vec<_> = output.summaries.iter().collect();
+        entries.sort_by(|a, b| a.0.cmp(b.0));
+
+        let name_w = entries
+            .iter()
+            .map(|(n, _)| n.len())
+            .max()
+            .unwrap_or(0)
+            .max("SUMMARY".len());
+
+        println!();
+        println!("{:<name_w$}  VALUE", "SUMMARY");
+        for (name, sv) in entries {
+            let samples = summary_defs
+                .iter()
+                .find(|d| &d.name == name)
+                .map(|d| d.matching_values(&output.steps))
+                .unwrap_or_default();
+            if samples.len() > 1 {
+                let min = samples.iter().cloned().fold(f64::INFINITY, f64::min);
+                let max = samples.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                println!(
+                    "{name:<name_w$}  {}  (n={}, min={}, max={})",
+                    sv.value,
+                    samples.len(),
+                    min,
+                    max,
+                );
             } else {
-                for m in &report.measurements {
-                    println!("  {} — {} = {}", report.step, m.name, m.value);
-                }
+                println!("{name:<name_w$}  {}", sv.value);
             }
         }
     }
 
-    println!("\nSummaries:");
-    if summaries.is_empty() {
-        println!("  (none)");
-    } else {
-        let mut entries: Vec<_> = summaries.iter().collect();
-        entries.sort_by(|a, b| a.0.cmp(b.0));
-        for (name, sv) in entries {
-            println!("  {name} = {}", sv.value);
+    if verbose {
+        println!();
+        println!("Outcomes:");
+        for report in &output.steps {
+            if report.measurements.is_empty() {
+                println!("  {} — (none)", report.step);
+                continue;
+            }
+            for m in &report.measurements {
+                let mut line = format!("  {}.{} = {}", report.step, m.name, m.value);
+                if !m.tags.is_empty() {
+                    let mut tags: Vec<_> = m.tags.iter().collect();
+                    tags.sort_by(|a, b| a.0.cmp(b.0));
+                    let joined: Vec<_> =
+                        tags.iter().map(|(k, v)| format!("{k}={v}")).collect();
+                    line.push_str(&format!(" [{}]", joined.join(", ")));
+                }
+                println!("{line}");
+            }
         }
+    }
+}
+
+fn format_duration(ms: u64) -> String {
+    let s = ms as f64 / 1000.0;
+    if s < 60.0 {
+        format!("{s:.1}s")
+    } else if s < 3600.0 {
+        let m = (s / 60.0) as u64;
+        let rs = s - (m as f64) * 60.0;
+        format!("{m}m{rs:.0}s")
+    } else {
+        let h = (s / 3600.0) as u64;
+        let m = ((s - (h as f64) * 3600.0) / 60.0) as u64;
+        format!("{h}h{m}m")
     }
 }
 
@@ -714,13 +768,7 @@ fn main() -> ExitCode {
                             println!("{}", serde_json::to_string_pretty(&saved.output).unwrap());
                         }
                         OutputFormat::Human => {
-                            print_human_report(
-                                &saved.output.experiment,
-                                &saved.output.commit,
-                                &saved.output.steps,
-                                &saved.output.summaries,
-                                verbose,
-                            );
+                            print_human_report(&saved, &summary_defs, verbose);
                         }
                     }
                     Ok(())
