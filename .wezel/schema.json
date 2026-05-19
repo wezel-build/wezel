@@ -51,8 +51,8 @@
           "description": "Tag key=value filters applied before aggregation.",
           "type": "object"
         },
-        "measurement": {
-          "description": "Measurement name (as emitted by the forager) to aggregate over.",
+        "outcome": {
+          "description": "Outcome name (as emitted by the forager) to aggregate over.",
           "type": "string"
         },
         "samples": {
@@ -64,7 +64,7 @@
         }
       },
       "required": [
-        "measurement"
+        "outcome"
       ],
       "type": "object"
     },
@@ -105,6 +105,14 @@
             "null"
           ]
         },
+        "profile": {
+          "default": null,
+          "description": "Cargo profile to use, propagated as `--profile <value>`. Omit to use the default profile.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "summary": {
           "additionalProperties": {
             "allOf": [
@@ -113,7 +121,7 @@
               },
               {
                 "properties": {
-                  "measurement": {
+                  "outcome": {
                     "description": "**`time_ms`** — how long `cargo <command>` took, in milliseconds."
                   }
                 }
@@ -178,8 +186,8 @@
               },
               {
                 "properties": {
-                  "measurement": {
-                    "description": "This forager emits no measurements."
+                  "outcome": {
+                    "description": "This forager emits no outcomes."
                   }
                 }
               }
@@ -227,8 +235,8 @@
               },
               {
                 "properties": {
-                  "measurement": {
-                    "description": "One measurement per matched file. The measurement name is the file's path (relative to cwd); the value is its size in bytes."
+                  "outcome": {
+                    "description": "One outcome per matched file. The outcome name is the file's path (relative to cwd); the value is its size in bytes."
                   }
                 }
               }
@@ -279,7 +287,7 @@
               },
               {
                 "properties": {
-                  "measurement": {
+                  "outcome": {
                     "description": "**`llvm-lines`** — count of LLVM IR lines (or monomorphisation copies) for a function (u64). Filter tags:\n- `summary_unit = \"lines\"` or `\"copies\"` — crate-wide totals (one row each).\n- `function = \"<symbol>\"` + `unit = \"lines\"`|`\"copies\"` — per-function rows."
                   }
                 }
@@ -317,7 +325,7 @@
           "additionalProperties": {
             "$ref": "#/definitions/Step_exec"
           },
-          "description": "Executes a shell command; produces no measurements",
+          "description": "Executes a shell command; produces no outcomes",
           "type": "object"
         },
         "filesize": {
