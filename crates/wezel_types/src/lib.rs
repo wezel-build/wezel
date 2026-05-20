@@ -247,13 +247,11 @@ impl std::fmt::Display for SummaryError {
 impl std::error::Error for SummaryError {}
 
 impl SummaryDef {
-    /// Compute this summary's value from a slice of plugin measurements.
-    ///
-    /// Returns `Ok(None)` when no measurements match the filter. Returns
-    /// `Err(AmbiguousAggregation)` when multiple values match but the summary
-    /// did not specify how to combine them.
-    pub fn compute(&self, steps: &[ForagerStepReport]) -> Result<Option<f64>, SummaryError> {
-        let mut values: Vec<f64> = steps
+    /// Pre-aggregation values matched by `step` + `measurement` + `filter`.
+    /// Callers wanting distribution data (n, min, max) alongside the scalar
+    /// can take it from here; `compute` reduces this to a single value.
+    pub fn matching_values(&self, steps: &[ForagerStepReport]) -> Vec<f64> {
+        steps
             .iter()
             .filter(|s| s.step == self.step)
             .flat_map(|s| &s.measurements)
@@ -264,7 +262,16 @@ impl SummaryDef {
                     .all(|(k, v)| m.tags.get(k).map(|s| s.as_str()) == Some(v.as_str()))
             })
             .filter_map(|m| m.value.as_f64())
-            .collect();
+            .collect()
+    }
+
+    /// Compute this summary's value from a slice of plugin measurements.
+    ///
+    /// Returns `Ok(None)` when no measurements match the filter. Returns
+    /// `Err(AmbiguousAggregation)` when multiple values match but the summary
+    /// did not specify how to combine them.
+    pub fn compute(&self, steps: &[ForagerStepReport]) -> Result<Option<f64>, SummaryError> {
+        let mut values = self.matching_values(steps);
 
         if values.is_empty() {
             return Ok(None);

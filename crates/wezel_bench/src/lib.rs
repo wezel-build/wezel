@@ -530,6 +530,40 @@ pub mod git {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     }
 
+    /// Current branch name, or `None` when HEAD is detached.
+    pub fn current_branch(project_dir: &Path) -> Result<Option<String>> {
+        let out = Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(project_dir)
+            .stderr(std::process::Stdio::null())
+            .output()
+            .context("running git rev-parse --abbrev-ref HEAD")?;
+        if !out.status.success() {
+            bail!("git rev-parse --abbrev-ref HEAD failed");
+        }
+        let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        Ok(if name == "HEAD" || name.is_empty() {
+            None
+        } else {
+            Some(name)
+        })
+    }
+
+    /// Tracked files modified or staged but not committed. Untracked files are
+    /// ignored (they aren't in HEAD and can't affect a measurement taken at HEAD).
+    pub fn is_dirty(project_dir: &Path) -> Result<bool> {
+        let out = Command::new("git")
+            .args(["status", "--porcelain", "--untracked-files=no"])
+            .current_dir(project_dir)
+            .stderr(std::process::Stdio::null())
+            .output()
+            .context("running git status --porcelain")?;
+        if !out.status.success() {
+            bail!("git status failed");
+        }
+        Ok(!out.stdout.is_empty())
+    }
+
     pub fn upstream(project_dir: &Path) -> Result<String> {
         let out = Command::new("git")
             .args(["remote", "get-url", "origin"])

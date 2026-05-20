@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use indexmap::IndexMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use wezel_types::{ForagerRunReport, ForagerStepReport, SummaryDef};
 
 use crate::git;
@@ -36,7 +36,7 @@ pub trait RunReporter: Send + Sync {
 }
 
 /// JSON output for `wezel experiment run --output-format json`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExperimentRunOutput {
     pub experiment: String,
     pub commit: String,
@@ -44,10 +44,77 @@ pub struct ExperimentRunOutput {
     pub summaries: IndexMap<String, SummaryValue>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SummaryValue {
     pub value: f64,
     pub bisect: bool,
+}
+
+/// On-disk record of one `wezel experiment run` invocation, written to
+/// `.wezel/runs/<experiment>/<id>/run.json`. Bump `schema_version` whenever
+/// the shape changes incompatibly so older runs can be detected and skipped.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SavedRun {
+    pub schema_version: u32,
+    pub wezel_version: String,
+    /// RFC3339 UTC timestamp captured immediately before `run_experiment` started.
+    pub started_at: String,
+    pub duration_ms: u64,
+    /// Whether tracked files were modified at the time the run started. The
+    /// run itself measures HEAD via a scratch clone, so this is informational —
+    /// it tells you the user's tree didn't match the commit that was measured.
+    pub dirty: bool,
+    /// Branch HEAD pointed at, or `None` when detached.
+    pub branch: Option<String>,
+    pub output: ExperimentRunOutput,
+}
+
+/// RFC3339 UTC timestamp using the `date` command — matches the chrono-free
+/// approach in `daemon.rs`. Returns `"unknown"` if `date` is unavailable.
+pub fn utc_timestamp_rfc3339() -> String {
+    std::process::Command::new("date")
+        .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Persist a run under `.wezel/runs/<experiment>/<id>/run.json` and return the
+/// run directory. Creates `.wezel/runs/.gitignore` on first use so saved runs
+/// never get committed.
+pub fn save_run(workspace: &crate::Workspace, run: &SavedRun) -> Result<std::path::PathBuf> {
+    let runs_root = workspace.project_dir.join(".wezel").join("runs");
+    std::fs::create_dir_all(&runs_root)
+        .with_context(|| format!("creating {}", runs_root.display()))?;
+
+    // Self-ignoring gitignore: `*` includes the .gitignore itself, so git
+    // never reports anything under `.wezel/runs/` as untracked.
+    let gi = runs_root.join(".gitignore");
+    if !gi.exists() {
+        std::fs::write(&gi, "*\n").with_context(|| format!("writing {}", gi.display()))?;
+    }
+
+    let exp_dir = runs_root.join(&run.output.experiment);
+    std::fs::create_dir_all(&exp_dir).with_context(|| format!("creating {}", exp_dir.display()))?;
+
+    let short = &run.output.commit[..7.min(run.output.commit.len())];
+    let id = format!("{}-{}", run.started_at.replace(':', "-"), short);
+
+    // Collision guard for same-second runs against the same commit.
+    let mut run_dir = exp_dir.join(&id);
+    let mut suffix = 1;
+    while run_dir.exists() {
+        run_dir = exp_dir.join(format!("{id}-{suffix}"));
+        suffix += 1;
+    }
+    std::fs::create_dir_all(&run_dir).with_context(|| format!("creating {}", run_dir.display()))?;
+
+    let run_json = run_dir.join("run.json");
+    let bytes = serde_json::to_vec_pretty(run).context("serializing SavedRun")?;
+    std::fs::write(&run_json, bytes).with_context(|| format!("writing {}", run_json.display()))?;
+    Ok(run_dir)
 }
 
 /// Compute summary values from step reports using the experiment's summary definitions.
