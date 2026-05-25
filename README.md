@@ -38,4 +38,4 @@ This also means that you can create your own tools to share with the world.
 
 ## License
 
-Dual-licensed under [Apache 2.0](LICENSE-APACHE) and [AGPL](LICENSE-AGPL). See the respective files for details.
+Licensed under [Apache 2.0](LICENSE-APACHE).
