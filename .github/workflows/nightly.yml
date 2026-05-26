@@ -82,6 +82,9 @@ jobs:
         run: |
           sed -i.bak -E "s/^version = .*/version = \"${{ needs.plan.outputs.cargo_version }}\"/" crates/wezel_cli/Cargo.toml
           rm crates/wezel_cli/Cargo.toml.bak
+      - name: Capture build SHA before pinning Cargo.toml dirties the tree
+        shell: bash
+        run: echo "WEZEL_BUILD_SHA=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
           key: nightly-${{ join(matrix.targets, '-') }}

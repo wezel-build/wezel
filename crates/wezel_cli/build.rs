@@ -1,7 +1,14 @@
 use std::process::Command;
 
 fn main() {
-    let sha = git_sha().unwrap_or_else(|| "unknown".to_string());
+    // CI pre-bakes the SHA (e.g. nightly.yml rewrites Cargo.toml before
+    // build, which would otherwise be flagged dirty by `git status`). Honour
+    // the override so release tarballs aren't mislabelled.
+    let sha = std::env::var("WEZEL_BUILD_SHA")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(git_sha)
+        .unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=WEZEL_BUILD_SHA={sha}");
 
     // Rebuild when HEAD moves or any branch ref changes.
