@@ -7,11 +7,11 @@ use wezel_types::{ForagerSchema, StepDef};
 
 use crate::{Workspace, build_bundle, fetch, lockfile, parse_experiment};
 
-/// Returns true when `.wezel/schema.json` doesn't match what `wezel tool
-/// sync` would produce right now (or is missing). Sidecar problems are
+/// Returns true when `.wezel/schema.json` doesn't match what `wezel project
+/// tool sync` would produce right now (or is missing). Sidecar problems are
 /// returned as "not stale" so the existing per-step diagnostics own that
 /// failure mode — we don't want to double-report the same root cause.
-fn bundle_is_stale(workspace: &Workspace) -> bool {
+pub fn bundle_is_stale(workspace: &Workspace) -> bool {
     let bundle_path = workspace.bundle_schema_path();
     let Ok(on_disk) = std::fs::read_to_string(&bundle_path) else {
         return true;
@@ -52,7 +52,7 @@ fn validate_step_inputs(step: &StepDef, sidecar: &ForagerSchema) -> Vec<LintDiag
             return vec![LintDiagnostic {
                 step: step.name.clone(),
                 message: format!(
-                    "cached schema for `forager-{}` failed to compile ({e}) — run `wezel tool sync` to refresh",
+                    "cached schema for `forager-{}` failed to compile ({e}) — run `wezel project tool sync` to refresh",
                     step.forager,
                 ),
             }];
@@ -265,7 +265,7 @@ pub fn run_lint(
                         diagnostics.push(LintDiagnostic {
                             step: step.name.clone(),
                             message: format!(
-                                "cached schema for `forager-{}` does not match the current format ({e}) — run `wezel tool sync` to refresh",
+                                "cached schema for `forager-{}` does not match the current format ({e}) — run `wezel project tool sync` to refresh",
                                 step.forager,
                             ),
                         });
@@ -333,7 +333,7 @@ pub fn run_lint(
     if bundle_stale {
         println!("  {} {}", "schema bundle".bold(), "FAIL".red().bold());
         eprintln!(
-            "    {} .wezel/schema.json is out of date — run `wezel tool sync` and commit the result",
+            "    {} .wezel/schema.json is out of date — run `wezel project tool sync` and commit the result",
             "-".red(),
         );
     }

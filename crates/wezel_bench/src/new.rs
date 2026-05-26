@@ -3,8 +3,7 @@ use std::path::Path;
 use anyhow::{Result, bail};
 
 pub fn create_experiment(name: &str, description: Option<&str>, project_dir: &Path) -> Result<()> {
-    let experiments_dir = project_dir.join(".wezel").join("experiments");
-    let experiment_dir = experiments_dir.join(name);
+    let experiment_dir = project_dir.join(".wezel").join("experiments").join(name);
 
     if experiment_dir.exists() {
         bail!(
@@ -15,15 +14,14 @@ pub fn create_experiment(name: &str, description: Option<&str>, project_dir: &Pa
 
     std::fs::create_dir_all(&experiment_dir)?;
 
-    let mut toml_content = format!("name = \"{name}\"\n");
-    if let Some(d) = description {
-        toml_content.push_str(&format!("description = \"{d}\"\n"));
-    }
+    let mut toml_content = if let Some(d) = description {
+        format!("description = \"{d}\"\n")
+    } else {
+        String::default()
+    };
     toml_content.push_str(
         r#"
-[[steps]]
-name = "build"
-tool = "exec"
+[step.exec.your-step-name]
 cmd = "cargo build"
 "#,
     );

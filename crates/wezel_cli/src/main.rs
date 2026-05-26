@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
-use cmd::{alias_cmd, health_cmd, setup_cmd};
+use cmd::{alias_cmd, health_cmd, init_cmd};
 use flush::flush_events;
 use wezel_types::{BuildEvent, PheromoneOutput};
 
@@ -367,22 +367,26 @@ fn complete_experiments() -> Vec<CompletionCandidate> {
 }
 
 #[derive(Parser)]
-#[command(name = "wezel", about = "Build regression detection")]
+#[command(
+    name = "wezel",
+    about = "Build regression detection",
+    version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("WEZEL_BUILD_SHA"), ")"),
+)]
 struct Cli {
+    /// Project root directory (defaults to current directory).
+    #[arg(long, global = true, env = "WEZEL_PROJECT_DIR", value_name = "DIR")]
+    project_dir: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
-    /// Initialize wezel in the current project.
-    ///
-    /// Creates `.wezel/config.toml` in the current directory.
-    /// Options not passed on the command line are prompted interactively.
-    Setup {
-        /// Burrow API URL to push build timings to.
-        #[arg(long)]
-        server_url: Option<String>,
+    /// Project-scoped commands: initialize and manage external tools.
+    #[command(visible_alias = "p")]
+    Project {
+        #[command(subcommand)]
+        cmd: ProjectCmd,
     },
     /// Active measurement: run experiments across commits.
     #[command(visible_alias = "exp", visible_alias = "e")]
@@ -393,15 +397,31 @@ enum Command {
     /// Enable shell completions for wezel commands.
     Completions,
     /// Passive build observation: aliases, event flushing, health.
+    #[command(hide = true)]
     Observe {
         #[command(subcommand)]
         cmd: ObserveCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProjectCmd {
+    /// Initialize wezel in the current project.
+    ///
+    /// Creates `.wezel/config.toml` in the current directory.
+    /// Options not passed on the command line are prompted interactively.
+    Init {
+        /// Burrow API URL to push build timings to.
+        #[arg(long)]
+        server_url: Option<String>,
     },
     /// Manage external tools declared under `[tools]` in `.wezel/config.toml`.
     Tool {
         #[command(subcommand)]
         cmd: ToolCmd,
     },
+    /// Show the resolved project config, declared tools, and lockfile state.
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -410,29 +430,18 @@ enum ToolCmd {
     ///
     /// Idempotent: tools whose binary and schema sidecar are already present
     /// are skipped.
-    Sync {
-        /// Project root directory (defaults to current directory).
-        #[arg(long)]
-        project_dir: Option<PathBuf>,
-    },
+    Sync,
 }
 
 #[derive(Subcommand)]
 enum ExperimentCmd {
     /// Create a new experiment (interactive wizard).
-    New {
-        /// Project root directory (defaults to current directory).
-        #[arg(long)]
-        project_dir: Option<PathBuf>,
-    },
+    New,
     /// Run an experiment against the current checkout.
     Run {
         /// Experiment name (matches .wezel/experiments/<name>/).
         #[arg(add = ArgValueCandidates::new(complete_experiments))]
         experiment: String,
-        /// Project root directory (defaults to current directory).
-        #[arg(long)]
-        project_dir: Option<PathBuf>,
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
         output_format: OutputFormat,
@@ -450,17 +459,9 @@ enum ExperimentCmd {
         save: bool,
     },
     /// List available experiments.
-    List {
-        /// Project root directory (defaults to current directory).
-        #[arg(long)]
-        project_dir: Option<PathBuf>,
-    },
+    List,
     /// Validate experiment definitions without running them.
-    Lint {
-        /// Project root directory (defaults to current directory).
-        #[arg(long)]
-        project_dir: Option<PathBuf>,
-    },
+    Lint,
     /// Manage the experiment daemon (polls server for jobs).
     Daemon {
         #[command(subcommand)]
@@ -660,9 +661,21 @@ fn main() -> ExitCode {
     clap_complete::CompleteEnv::with_factory(Cli::command).complete();
 
     let cli = Cli::parse();
+    let project_dir = resolve_project_dir(cli.project_dir);
 
     match cli.command {
-        Command::Setup { server_url } => run_result(setup_cmd(server_url.as_deref())),
+        Command::Project { cmd } => match cmd {
+            ProjectCmd::Init { server_url } => {
+                run_result(init_cmd(&project_dir, server_url.as_deref()))
+            }
+            ProjectCmd::Tool { cmd } => match cmd {
+                ToolCmd::Sync => run_result((|| -> anyhow::Result<()> {
+                    let ws = make_workspace(project_dir)?;
+                    tool_sync(&ws)
+                })()),
+            },
+            ProjectCmd::Status => run_result(cmd::status_cmd(&project_dir)),
+        },
 
         Command::Completions => {
             let Some(shell) = shell::Shell::detect() else {
@@ -688,38 +701,35 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
 
-        Command::Experiment { cmd } => match cmd {
-            ExperimentCmd::New { project_dir } => {
-                let project_dir = resolve_project_dir(project_dir);
-                let name: String = dialoguer::Input::new()
-                    .with_prompt("Experiment name")
-                    .interact_text()
-                    .unwrap();
-                let description: String = dialoguer::Input::new()
-                    .with_prompt("Description (optional)")
-                    .allow_empty(true)
-                    .interact_text()
-                    .unwrap();
-                let description = if description.is_empty() {
-                    None
-                } else {
-                    Some(description)
-                };
-                run_result(wezel_bench::new::create_experiment(
-                    &name,
-                    description.as_deref(),
-                    &project_dir,
-                ))
-            }
-            ExperimentCmd::Run {
-                experiment,
-                project_dir,
-                output_format,
-                verbose,
-                save,
-            } => {
-                let project_dir = resolve_project_dir(project_dir);
-                run_result((|| -> anyhow::Result<()> {
+        Command::Experiment { cmd } => {
+            match cmd {
+                ExperimentCmd::New => {
+                    let name: String = dialoguer::Input::new()
+                        .with_prompt("Experiment name")
+                        .interact_text()
+                        .unwrap();
+                    let description: String = dialoguer::Input::new()
+                        .with_prompt("Description (optional)")
+                        .allow_empty(true)
+                        .interact_text()
+                        .unwrap();
+                    let description = if description.is_empty() {
+                        None
+                    } else {
+                        Some(description)
+                    };
+                    run_result(wezel_bench::new::create_experiment(
+                        &name,
+                        description.as_deref(),
+                        &project_dir,
+                    ))
+                }
+                ExperimentCmd::Run {
+                    experiment,
+                    output_format,
+                    verbose,
+                    save,
+                } => run_result((|| -> anyhow::Result<()> {
                     let ws = make_workspace(project_dir)?;
                     let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
                     let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
@@ -774,23 +784,15 @@ fn main() -> ExitCode {
                         }
                     }
                     Ok(())
-                })())
-            }
-            ExperimentCmd::List { project_dir } => {
-                let project_dir = resolve_project_dir(project_dir);
-                run_result(wezel_bench::run::list_experiments(&project_dir))
-            }
-            ExperimentCmd::Lint { project_dir } => {
-                let project_dir = resolve_project_dir(project_dir);
-                run_result((|| -> anyhow::Result<()> {
+                })()),
+                ExperimentCmd::List => run_result(wezel_bench::run::list_experiments(&project_dir)),
+                ExperimentCmd::Lint => run_result((|| -> anyhow::Result<()> {
                     let ws = make_workspace(project_dir)?;
                     let mut fetcher = fetcher::ConfigFetcher::read_only(&ws)?;
                     let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
                     wezel_bench::lint::run_lint(&ws, Some(&mut caching))
-                })())
-            }
-            ExperimentCmd::Daemon { cmd: daemon_cmd } => {
-                match daemon_cmd {
+                })()),
+                ExperimentCmd::Daemon { cmd: daemon_cmd } => match daemon_cmd {
                     ExperimentDaemonCmd::Start {
                         repo_dir,
                         poll_interval,
@@ -823,9 +825,9 @@ fn main() -> ExitCode {
                         })())
                     }
                     ExperimentDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
-                }
+                },
             }
-        },
+        }
 
         Command::Observe { cmd } => match cmd {
             ObserveCmd::Alias {
@@ -853,7 +855,7 @@ fn main() -> ExitCode {
             ObserveCmd::Sync => {
                 let cwd = std::env::current_dir().unwrap_or_default();
                 let Some((_, config)) = config::discover(&cwd) else {
-                    eprintln!("wezel: no project config found (run `wezel setup` first)");
+                    eprintln!("wezel: no project config found (run `wezel project init` first)");
                     return ExitCode::FAILURE;
                 };
                 let Some(ref server_url) = config.server_url else {
@@ -869,24 +871,30 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
         },
-
-        Command::Tool { cmd } => match cmd {
-            ToolCmd::Sync { project_dir } => {
-                let project_dir = resolve_project_dir(project_dir);
-                run_result((|| -> anyhow::Result<()> {
-                    let ws = make_workspace(project_dir)?;
-                    tool_sync(&ws)
-                })())
-            }
-        },
     }
 }
 
 fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
     let foragers: Vec<String> = ws.config.tools.foragers.keys().cloned().collect();
     if foragers.is_empty() {
-        println!("No tools declared under [tools] in .wezel/config.toml.");
+        println!("No tools declared under [tools.foragers] in .wezel/config.toml.");
         return Ok(());
+    }
+
+    let host = wezel_bench::fetch::current_target()
+        .ok_or_else(|| anyhow::anyhow!("current platform is not a recognised target triple"))?;
+    let targets = &ws.config.tools.targets;
+    if targets.is_empty() {
+        anyhow::bail!(
+            "no targets declared. Add `targets = [\"{host}\"]` under [tools] in \
+             .wezel/config.toml (new projects: `wezel project init` does this automatically)"
+        );
+    }
+    if !targets.iter().any(|t| t == host) {
+        anyhow::bail!(
+            "host target `{host}` is not in [tools] targets. Add it so the lockfile \
+             can be populated from this machine."
+        );
     }
 
     let mut fetcher = fetcher::ConfigFetcher::new(ws)?;
@@ -896,10 +904,19 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
         if ws.resolve_plugin(name).is_some() && sidecar_is_current(ws, name) {
             println!("  forager-{name}  up to date");
             skipped += 1;
-            continue;
+        } else {
+            wezel_bench::fetch::PluginFetcher::fetch(&mut fetcher, name)?;
+            installed += 1;
         }
-        wezel_bench::fetch::PluginFetcher::fetch(&mut fetcher, name)?;
-        installed += 1;
+        // Cross-lock every other declared target via the .sha256 sidecar so
+        // wezel.lock is identical on every machine (host was locked by the
+        // install above).
+        for target in targets {
+            if target == host {
+                continue;
+            }
+            fetcher.lock_target(name, target)?;
+        }
     }
 
     write_schema_bundle(ws, &foragers)?;

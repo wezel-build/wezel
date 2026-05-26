@@ -42,7 +42,7 @@ jobs:
       - name: Install foragers from wezel.lock
         run: |
           export PATH="$PWD/target/debug:$PATH"
-          wezel tool sync --project-dir .
+          wezel project tool sync --project-dir .
       - name: Lint experiments
         run: |
           export PATH="$PWD/target/debug:$PATH"

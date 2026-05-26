@@ -65,7 +65,7 @@ pub fn health_cmd() -> anyhow::Result<()> {
             }
         }
         None => {
-            println!("project config: ⚠ no .wezel/config.toml found (run `wezel setup`)");
+            println!("project config: ⚠ no .wezel/config.toml found (run `wezel project init`)");
         }
     }
 

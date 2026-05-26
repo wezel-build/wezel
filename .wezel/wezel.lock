@@ -6,6 +6,9 @@ tag = "nightly-2026-05-19-a2b4aed"
 
 [tools.foragers.cargo.assets]
 aarch64-apple-darwin = "sha256:f16dd217f8775fcf82da03932afab901703217cc030d7a8fb2752f44ddb13907"
+aarch64-unknown-linux-gnu = "sha256:0feabb45b0348b626fa194e8e8fd513671dc81b2cc46b27d8ba127b32c6a6c2c"
+x86_64-apple-darwin = "sha256:6c564a2e7b6ead1247d8044a1194d78f64597df24e3d4a68f1f85c213303886a"
+x86_64-unknown-linux-gnu = "sha256:049da8c9c6a37114c7ba54842b0382403a1b1bc1f440dae2148da6d6928588d2"
 
 [tools.foragers.exec]
 github = "wezel-build/forager_exec"
@@ -13,6 +16,9 @@ tag = "nightly-2026-05-19-6ac3442"
 
 [tools.foragers.exec.assets]
 aarch64-apple-darwin = "sha256:301a379b947a622758e8b17e02bcb78fa7f43121ddff5615ef56699ca61a3e45"
+aarch64-unknown-linux-gnu = "sha256:97ccd8104f8ee79d3f60a59dc75a9b75243603ebe8408acd7e5fc9fd7d53ea52"
+x86_64-apple-darwin = "sha256:2247d9b4d1d10f5b93283b7df07361dda49eec2a23e27c17794629dd4f9b1235"
+x86_64-unknown-linux-gnu = "sha256:49351218a27804961d855a6758c491dab42439dd351024bbd98f628173fa2c17"
 
 [tools.foragers.filesize]
 github = "wezel-build/forager_filesize"
@@ -20,6 +26,9 @@ tag = "nightly-2026-05-19-fafe0da"
 
 [tools.foragers.filesize.assets]
 aarch64-apple-darwin = "sha256:84ac1064324706534f16eeb62807a7b943fa41bcdd8bcdac1d4b65cd6bd51598"
+aarch64-unknown-linux-gnu = "sha256:2e3869d2e53db79856ea22ec3492326142a8ca3de8ea1dbe8ef72c1aa89d0a73"
+x86_64-apple-darwin = "sha256:8857f938c69fc2b9367b9164f5ac0470918c6d95afd533cc2165359bdb949e97"
+x86_64-unknown-linux-gnu = "sha256:ff9de0248889d7649e5e91ec9c85721ed186c0c13588c793c205960e922c220a"
 
 [tools.foragers.llvm-lines]
 github = "wezel-build/forager_llvm_lines"
@@ -27,3 +36,6 @@ tag = "nightly-2026-05-19-85b06bf"
 
 [tools.foragers.llvm-lines.assets]
 aarch64-apple-darwin = "sha256:53324e31f0065750c8d386eab458110e58d8417173e93bd4e5e854972f55dbcc"
+aarch64-unknown-linux-gnu = "sha256:5e0aa05fb09a9464355d7074359eac2e31c1104a4faefb10fe961b83a36f3cfb"
+x86_64-apple-darwin = "sha256:2e6bbaa0b96c430fc5d4c753d525a5cfdf90cdc5dbf02356e6fd0176443d513b"
+x86_64-unknown-linux-gnu = "sha256:6a0cc9ac76aa3da96c98ad058dbefa9b0966cbbd7043ed44f4019a29da32c940"

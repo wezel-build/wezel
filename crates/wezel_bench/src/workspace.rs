@@ -48,7 +48,7 @@ impl Workspace {
     }
 
     /// Path to the project-scoped editor schema bundle. Rewritten on every
-    /// `wezel tool sync`; each experiment.toml references it via `#:schema`.
+    /// `wezel project tool sync`; each experiment.toml references it via `#:schema`.
     pub fn bundle_schema_path(&self) -> PathBuf {
         self.project_dir.join(".wezel").join("schema.json")
     }

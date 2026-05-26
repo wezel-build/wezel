@@ -40,6 +40,77 @@ impl<'ws> ConfigFetcher<'ws> {
             read_only: true,
         })
     }
+
+    /// Record the asset hash for `(name, target)` in `wezel.lock` without
+    /// downloading the binary. Used by `tool sync` to make the lockfile
+    /// platform-complete in a single run — the cargo-dist `.tar.xz.sha256`
+    /// sidecar is ~80 bytes vs. several MB for the full archive.
+    ///
+    /// No-op when the entry already exists at the resolved tag.
+    pub fn lock_target(&mut self, name: &str, target: &str) -> anyhow::Result<()> {
+        let binary_name = format!("forager-{name}");
+        let source = self
+            .workspace
+            .config
+            .tools
+            .foragers
+            .get(name)
+            .ok_or_else(|| anyhow::anyhow!("forager `{name}` not declared in [tools.foragers]"))?;
+
+        let locked = self.lock.tools.foragers.get(name).cloned();
+        let resolved = resolve_release(
+            &source.github,
+            source.tag.as_deref(),
+            locked.as_ref(),
+            &binary_name,
+            target,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        if let Some(l) = &locked
+            && l.tag == resolved.tag
+            && l.assets.contains_key(target)
+        {
+            return Ok(());
+        }
+
+        let sha_url = format!("{}.sha256", resolved.download_url);
+        let body = http_get_bytes(&sha_url, &binary_name)
+            .map_err(|e| anyhow::anyhow!("fetching {sha_url}: {e}"))?;
+        let text =
+            std::str::from_utf8(&body).map_err(|_| anyhow::anyhow!("{sha_url}: non-utf8 body"))?;
+        let hex = text
+            .split_whitespace()
+            .next()
+            .filter(|s| s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()))
+            .ok_or_else(|| anyhow::anyhow!("{sha_url}: unexpected sha256 format"))?
+            .to_lowercase();
+        let lock_key = format!("sha256:{hex}");
+
+        if self.lock.version == 0 {
+            self.lock.version = lockfile::CURRENT_VERSION;
+        }
+        let entry = self
+            .lock
+            .tools
+            .foragers
+            .entry(name.to_string())
+            .or_insert_with(|| LockedTool {
+                github: source.github.clone(),
+                tag: resolved.tag.clone(),
+                assets: BTreeMap::new(),
+            });
+        entry.github = source.github.clone();
+        entry.tag = resolved.tag.clone();
+        entry.assets.insert(target.to_string(), lock_key);
+        lockfile::save(&self.workspace.project_dir, &self.lock)?;
+
+        eprintln!(
+            "Locked `{binary_name}` ({target}) at {} from github.com/{}",
+            resolved.tag, source.github
+        );
+        Ok(())
+    }
 }
 
 impl<'ws> PluginFetcher for ConfigFetcher<'ws> {

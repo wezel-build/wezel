@@ -103,7 +103,7 @@ tag = "v0.0.0"
             .expect("workspace discovery")
     }
 
-    /// Write `.wezel/schema.json` to match what `wezel tool sync` would
+    /// Write `.wezel/schema.json` to match what `wezel project tool sync` would
     /// produce against the currently-installed fake foragers. Lint now
     /// checks bundle freshness, so tests that expect a clean pass need this
     /// before calling [`Self::run_lint`].

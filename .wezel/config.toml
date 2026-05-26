@@ -1,6 +1,14 @@
 project_id = "416d4a8a-4f25-48a3-897e-14697a5a9afa"
 name = "wezel"
 
+[tools]
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnu",
+]
+
 [tools.foragers.exec]
 github = "wezel-build/forager_exec"
 

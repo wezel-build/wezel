@@ -14,7 +14,7 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use wezel_types::{
@@ -63,6 +63,14 @@ impl StorageTarget {
 /// pheromones, explainers, etc. as their installs become first-class.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ToolsSection {
+    /// Target triples the project locks tool binaries for. `wezel project
+    /// tool sync` fetches and hashes the release asset for each entry so
+    /// `wezel.lock` is platform-complete and stable across machines/CI.
+    /// Populated by `wezel project init` with the host triple; users add
+    /// more as needed. An `IndexSet` so duplicates don't reach the lockfile
+    /// while declaration order is preserved.
+    #[serde(default)]
+    pub targets: IndexSet<String>,
     /// Map of forager name → install source. Keys correspond to the `tool`
     /// field of an experiment step (e.g. `tool = "exec"` looks up
     /// `[tools.foragers.exec]`).

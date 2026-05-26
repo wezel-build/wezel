@@ -32,7 +32,7 @@ Running an experiment is as simple as `wezel experiment run EXPERIMENT_NAME`. Al
 Wezel is a CLI that can be installed from GH assets. 
 
 ### Tools
-Tool implementations are not hard-coded. They are external binaries provided by third parties. Before you run wezel in your project, you need to run `wezel setup` in order to generate a `.wezel/config.toml` file. A `tools` section of `config.toml` defines which tools are available in experiments and how they can be obtained by wezel.
+Tool implementations are not hard-coded. They are external binaries provided by third parties. Before you run wezel in your project, you need to run `wezel project init` in order to generate a `.wezel/config.toml` file. A `tools` section of `config.toml` defines which tools are available in experiments and how they can be obtained by wezel.
 See [.wezel/config.toml](.wezel/config.toml) for reference.
 This also means that you can create your own tools to share with the world.
 
