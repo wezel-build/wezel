@@ -65,8 +65,7 @@ impl ProjectConfig {
         }
         let raw = std::fs::read_to_string(&config_path)
             .with_context(|| format!("reading {}", config_path.display()))?;
-        toml::from_str(&raw)
-            .with_context(|| format!("Failed parsing {}", config_path.display()))
+        toml::from_str(&raw).with_context(|| format!("Failed parsing {}", config_path.display()))
     }
 }
 
