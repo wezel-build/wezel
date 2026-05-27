@@ -48,11 +48,10 @@ pub fn health_cmd() -> anyhow::Result<()> {
                 wezel_dir.join("config.toml").display()
             );
             match &config.server_url {
-                Some(url) => println!("  server_url: {url}"),
-                None => println!("  server_url: (not set — standalone mode)"),
+                Some(url) => println!("  WEZEL_BURROW_URL: {url}"),
+                None => println!("  WEZEL_BURROW_URL: (not set)"),
             }
             println!("  username: {}", config.username);
-            println!("  data_branch: {}", config.data_branch);
 
             // 4. Ping server
             if let Some(ref url) = config.server_url {

@@ -11,15 +11,12 @@ pub fn status_cmd(project_dir: &Path) -> Result<()> {
 
     println!("project:  {} ({})", ws.config.name, ws.config.project_id);
     println!("config:   {}", config_path.display());
-    let target = match (
-        ws.config.target.server_url(),
-        ws.config.target.data_branch(),
-    ) {
-        (Some(url), _) => format!("server {url}"),
-        (_, Some(branch)) => format!("data branch {branch}"),
-        _ => "(none)".to_string(),
-    };
-    println!("target:   {target}");
+    let burrow = std::env::var("WEZEL_BURROW_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(|url| format!("server {url} (WEZEL_BURROW_URL)"))
+        .unwrap_or_else(|| "(WEZEL_BURROW_URL not set)".to_string());
+    println!("burrow:   {burrow}");
 
     let lock = lockfile::load(&ws.project_dir)?;
     let lockfile_present = lockfile::path(&ws.project_dir).is_file();

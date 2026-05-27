@@ -1,10 +1,8 @@
-pub mod daemon;
 pub mod fetch;
 pub mod lint;
 pub mod lockfile;
 pub mod new;
 pub mod run;
-pub mod standalone;
 pub mod workspace;
 
 pub use workspace::Workspace;
@@ -25,38 +23,9 @@ use wezel_types::{
 pub struct ProjectConfig {
     pub project_id: uuid::Uuid,
     pub name: String,
-    #[serde(default = "StorageTarget::default_target")]
-    pub target: StorageTarget,
     /// External tool sources declared under `[tools]` in `.wezel/config.toml`.
     #[serde(default)]
     pub tools: ToolsSection,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StorageTarget {
-    ServerUrl(String),
-    DataBranch(String),
-}
-
-impl StorageTarget {
-    fn default_target() -> StorageTarget {
-        StorageTarget::DataBranch("wezel/data".to_owned())
-    }
-    pub fn server_url(&self) -> Option<&str> {
-        if let Self::ServerUrl(url) = &self {
-            Some(url)
-        } else {
-            None
-        }
-    }
-    pub fn data_branch(&self) -> Option<&str> {
-        if let Self::DataBranch(branch) = &self {
-            Some(branch)
-        } else {
-            None
-        }
-    }
 }
 
 /// Umbrella for declared external binaries — foragers today, with room for
@@ -96,19 +65,8 @@ impl ProjectConfig {
         }
         let raw = std::fs::read_to_string(&config_path)
             .with_context(|| format!("reading {}", config_path.display()))?;
-        let resolved: ProjectConfig = toml::from_str(&raw)
-            .with_context(|| format!("Failed parsing {}", config_path.display()))?;
-        // server_url: env var takes precedence, then config file.
-        let target = std::env::var("WEZEL_BURROW_URL")
-            .ok()
-            .and_then(|s| (!s.is_empty()).then_some(StorageTarget::ServerUrl(s)))
-            .unwrap_or(resolved.target);
-        Ok(ProjectConfig {
-            project_id: resolved.project_id,
-            name: resolved.name,
-            target,
-            tools: resolved.tools,
-        })
+        toml::from_str(&raw)
+            .with_context(|| format!("Failed parsing {}", config_path.display()))
     }
 }
 

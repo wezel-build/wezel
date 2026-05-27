@@ -7,7 +7,6 @@ use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 
 /// Fields valid in `~/.wezel/config.toml` (global scope).
-/// `server_url` is intentionally absent — it must be set per-project.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GlobalConfig {
     pub username: Option<String>,
@@ -20,7 +19,6 @@ pub struct ProjectConfig {
     pub project_id: uuid::Uuid,
     /// Human-readable project name.
     pub name: String,
-    pub server_url: Option<String>,
     pub username: Option<String>,
     /// Override where pheromone binaries are stored (default: `{exe_dir}/pheromones/`).
     pub pheromone_dir: Option<String>,
@@ -29,8 +27,6 @@ pub struct ProjectConfig {
     /// List of registry URIs for experiment adapters.
     /// Each entry can be any valid URI (https://, file://, etc.).
     pub registries: Option<Vec<String>>,
-    /// Branch used for standalone state storage (default: "wezel/data").
-    pub data_branch: Option<String>,
     /// `[tools]` umbrella — only the bits init/sync need from this side. The
     /// canonical schema lives in `wezel_bench::ToolsSection`; foragers are
     /// read through that.
@@ -58,6 +54,8 @@ impl ToolsConfig {
 pub struct Config {
     pub project_id: uuid::Uuid,
     pub name: String,
+    /// Burrow URL for this invocation. Sourced from `WEZEL_BURROW_URL`; never
+    /// persisted to any `config.toml`.
     pub server_url: Option<String>,
     pub username: String,
     /// Where pheromone binaries live.
@@ -66,8 +64,6 @@ pub struct Config {
     pub queue_dir: Option<String>,
     /// Configured registry URIs.
     pub registries: Vec<String>,
-    /// Branch used for standalone state storage (default: "wezel/data").
-    pub data_branch: String,
 }
 
 /// Walk up from `start` looking for a `.wezel/config.toml`.
@@ -99,8 +95,8 @@ pub fn discover(start: &Path) -> Option<(PathBuf, Config)> {
 /// Build a `Config` by layering:
 ///   1. defaults (username = whoami)
 ///   2. `~/.wezel/config.toml`  (global — username only)
-///   3. project `.wezel/config.toml` (server_url + username)
-///   4. `WEZEL_BURROW_URL` env var (overrides config file server_url)
+///   3. project `.wezel/config.toml`
+///   4. `WEZEL_BURROW_URL` env var (sole source for server_url)
 ///
 /// `project_id` is read directly from the project config — it is never
 /// inherited from the global config or defaults.
@@ -131,11 +127,9 @@ fn load(project_config_path: &Path) -> Option<Config> {
 
     let resolved: ProjectConfig = figment.extract().ok()?;
 
-    // server_url: env var takes precedence, then config file.
     let server_url = std::env::var("WEZEL_BURROW_URL")
         .ok()
-        .filter(|s| !s.is_empty())
-        .or_else(|| resolved.server_url.filter(|s| !s.is_empty()));
+        .filter(|s| !s.is_empty());
 
     Some(Config {
         project_id,
@@ -148,10 +142,6 @@ fn load(project_config_path: &Path) -> Option<Config> {
         pheromone_dir: resolved.pheromone_dir,
         queue_dir: resolved.queue_dir,
         registries: resolved.registries.unwrap_or_default(),
-        data_branch: resolved
-            .data_branch
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "wezel/data".to_string()),
     })
 }
 
