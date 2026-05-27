@@ -21,8 +21,8 @@ pub struct StepPlan {
 /// Receives lifecycle events during `run_experiment`. Default impls are noops
 /// so renderers can override only what they need.
 ///
-/// Pass `None` for headless callers (daemon, standalone bisect) and a real
-/// implementation (e.g. indicatif-backed) from interactive CLI commands.
+/// Pass `None` for headless callers and a real implementation (e.g.
+/// indicatif-backed) from interactive CLI commands.
 pub trait RunReporter: Send + Sync {
     fn run_started(&self, _experiment: &str, _commit: &str, _steps: &[StepPlan]) {}
     fn step_started(&self, _step: &str) {}

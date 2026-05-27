@@ -462,41 +462,6 @@ enum ExperimentCmd {
     List,
     /// Validate experiment definitions without running them.
     Lint,
-    /// Manage the experiment daemon (polls server for jobs).
-    Daemon {
-        #[command(subcommand)]
-        cmd: ExperimentDaemonCmd,
-    },
-}
-
-#[derive(Subcommand)]
-enum ExperimentDaemonCmd {
-    /// Start polling the server for queued experiment jobs and run them.
-    Start {
-        /// Path to the repository to check out and run experiments in.
-        #[arg(long)]
-        repo_dir: PathBuf,
-        /// Seconds to wait between polls when no job is available.
-        #[arg(long, default_value = "10")]
-        poll_interval: u64,
-    },
-    /// Run a single standalone pass (no Burrow server).
-    ///
-    /// Executes all experiments against the target branch, manages state on
-    /// a data branch, performs bisection if needed, and outputs a JSON report.
-    Standalone {
-        /// Path to the repository.
-        #[arg(long)]
-        repo_dir: PathBuf,
-        /// Branch to track for regressions.
-        #[arg(long, default_value = "main")]
-        branch: String,
-        /// Regression threshold as a percentage.
-        #[arg(long, default_value = "10")]
-        threshold: f64,
-    },
-    /// Show current experiment daemon status and active job.
-    Status,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -701,133 +666,97 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
 
-        Command::Experiment { cmd } => {
-            match cmd {
-                ExperimentCmd::New => {
-                    let name: String = dialoguer::Input::new()
-                        .with_prompt("Experiment name")
-                        .interact_text()
-                        .unwrap();
-                    let description: String = dialoguer::Input::new()
-                        .with_prompt("Description (optional)")
-                        .allow_empty(true)
-                        .interact_text()
-                        .unwrap();
-                    let description = if description.is_empty() {
-                        None
-                    } else {
-                        Some(description)
-                    };
-                    run_result(wezel_bench::new::create_experiment(
-                        &name,
-                        description.as_deref(),
-                        &project_dir,
-                    ))
-                }
-                ExperimentCmd::Run {
-                    experiment,
-                    output_format,
-                    verbose,
-                    save,
-                } => run_result((|| -> anyhow::Result<()> {
-                    let ws = make_workspace(project_dir)?;
-                    let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
-                    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
-                    let reporter = (output_format == OutputFormat::Human)
-                        .then(progress::IndicatifReporter::new);
-
-                    let branch = wezel_bench::git::current_branch(&ws.project_dir)
-                        .ok()
-                        .flatten();
-                    let dirty = wezel_bench::git::is_dirty(&ws.project_dir).unwrap_or(false);
-                    let started_at = wezel_bench::run::utc_timestamp_rfc3339();
-                    let t0 = std::time::Instant::now();
-
-                    let (steps, summary_defs) = wezel_bench::run::run_experiment(
-                        &experiment,
-                        &ws,
-                        Some(&mut caching),
-                        reporter
-                            .as_ref()
-                            .map(|r| r as &dyn wezel_bench::run::RunReporter),
-                    )?;
-                    let duration_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
-                    let commit = wezel_bench::git::current_sha(&ws.project_dir)?;
-                    let summaries = wezel_bench::run::compute_summaries(&steps, &summary_defs);
-
-                    let saved = wezel_bench::run::SavedRun {
-                        schema_version: 1,
-                        wezel_version: env!("CARGO_PKG_VERSION").to_string(),
-                        started_at,
-                        duration_ms,
-                        dirty,
-                        branch,
-                        output: wezel_bench::run::ExperimentRunOutput {
-                            experiment,
-                            commit,
-                            steps,
-                            summaries,
-                        },
-                    };
-
-                    if save {
-                        let dir = wezel_bench::run::save_run(&ws, &saved)?;
-                        eprintln!("Saved: {}", dir.display());
-                    }
-
-                    match output_format {
-                        OutputFormat::Json => {
-                            println!("{}", serde_json::to_string_pretty(&saved.output).unwrap());
-                        }
-                        OutputFormat::Human => {
-                            print_human_report(&saved, &summary_defs, verbose);
-                        }
-                    }
-                    Ok(())
-                })()),
-                ExperimentCmd::List => run_result(wezel_bench::run::list_experiments(&project_dir)),
-                ExperimentCmd::Lint => run_result((|| -> anyhow::Result<()> {
-                    let ws = make_workspace(project_dir)?;
-                    let mut fetcher = fetcher::ConfigFetcher::read_only(&ws)?;
-                    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
-                    wezel_bench::lint::run_lint(&ws, Some(&mut caching))
-                })()),
-                ExperimentCmd::Daemon { cmd: daemon_cmd } => match daemon_cmd {
-                    ExperimentDaemonCmd::Start {
-                        repo_dir,
-                        poll_interval,
-                    } => run_result((|| -> anyhow::Result<()> {
-                        let ws = make_workspace(repo_dir)?;
-                        let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
-                        wezel_bench::daemon::run_start(&ws, poll_interval, Some(&mut fetcher))
-                    })()),
-                    ExperimentDaemonCmd::Standalone {
-                        repo_dir,
-                        branch,
-                        threshold,
-                    } => {
-                        run_result((|| -> anyhow::Result<()> {
-                            let ws = make_workspace(repo_dir)?;
-                            let data_branch = ws.config.target.data_branch().map(ToOwned::to_owned).context(
-                        "Standalone mode is not available when Burrow server is configured",
-                    )?;
-                            let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
-                            let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
-                            let report = wezel_bench::standalone::run_standalone(
-                                &ws,
-                                &data_branch,
-                                &branch,
-                                threshold,
-                                Some(&mut caching),
-                            )?;
-                            println!("{}", serde_json::to_string_pretty(&report).unwrap());
-                            Ok(())
-                        })())
-                    }
-                    ExperimentDaemonCmd::Status => run_result(wezel_bench::daemon::run_status()),
-                },
+        Command::Experiment { cmd } => match cmd {
+            ExperimentCmd::New => {
+                let name: String = dialoguer::Input::new()
+                    .with_prompt("Experiment name")
+                    .interact_text()
+                    .unwrap();
+                let description: String = dialoguer::Input::new()
+                    .with_prompt("Description (optional)")
+                    .allow_empty(true)
+                    .interact_text()
+                    .unwrap();
+                let description = if description.is_empty() {
+                    None
+                } else {
+                    Some(description)
+                };
+                run_result(wezel_bench::new::create_experiment(
+                    &name,
+                    description.as_deref(),
+                    &project_dir,
+                ))
             }
-        }
+            ExperimentCmd::Run {
+                experiment,
+                output_format,
+                verbose,
+                save,
+            } => run_result((|| -> anyhow::Result<()> {
+                let ws = make_workspace(project_dir)?;
+                let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
+                let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
+                let reporter =
+                    (output_format == OutputFormat::Human).then(progress::IndicatifReporter::new);
+
+                let branch = wezel_bench::git::current_branch(&ws.project_dir)
+                    .ok()
+                    .flatten();
+                let dirty = wezel_bench::git::is_dirty(&ws.project_dir).unwrap_or(false);
+                let started_at = wezel_bench::run::utc_timestamp_rfc3339();
+                let t0 = std::time::Instant::now();
+
+                let (steps, summary_defs) = wezel_bench::run::run_experiment(
+                    &experiment,
+                    &ws,
+                    Some(&mut caching),
+                    reporter
+                        .as_ref()
+                        .map(|r| r as &dyn wezel_bench::run::RunReporter),
+                )?;
+                let duration_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
+                let commit = wezel_bench::git::current_sha(&ws.project_dir)?;
+                let summaries = wezel_bench::run::compute_summaries(&steps, &summary_defs);
+
+                let saved = wezel_bench::run::SavedRun {
+                    schema_version: 1,
+                    wezel_version: env!("CARGO_PKG_VERSION").to_string(),
+                    started_at,
+                    duration_ms,
+                    dirty,
+                    branch,
+                    output: wezel_bench::run::ExperimentRunOutput {
+                        experiment,
+                        commit,
+                        steps,
+                        summaries,
+                    },
+                };
+
+                if save {
+                    let dir = wezel_bench::run::save_run(&ws, &saved)?;
+                    eprintln!("Saved: {}", dir.display());
+                }
+
+                match output_format {
+                    OutputFormat::Json => {
+                        println!("{}", serde_json::to_string_pretty(&saved.output).unwrap());
+                    }
+                    OutputFormat::Human => {
+                        print_human_report(&saved, &summary_defs, verbose);
+                    }
+                }
+                Ok(())
+            })()),
+            ExperimentCmd::List => run_result(wezel_bench::run::list_experiments(&project_dir)),
+            ExperimentCmd::Lint => run_result((|| -> anyhow::Result<()> {
+                let ws = make_workspace(project_dir)?;
+                let mut fetcher = fetcher::ConfigFetcher::read_only(&ws)?;
+                let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
+                wezel_bench::lint::run_lint(&ws, Some(&mut caching))
+            })()),
+        },
 
         Command::Observe { cmd } => match cmd {
             ObserveCmd::Alias {
