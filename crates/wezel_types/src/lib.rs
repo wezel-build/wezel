@@ -307,14 +307,16 @@ impl SummaryDef {
     }
 }
 
-/// A forager job with claim token, returned by `POST /api/forager/jobs/next`.
+/// A forager job returned by `POST /api/forager/jobs/next`. Authentication
+/// is via the caller's `wez_live_…` API token (Authorization header) — no
+/// per-job claim token; `id` is the queue row id, used as the round-trip
+/// handle on `POST /api/forager/run`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ForagerJob {
     pub id: u64,
-    pub token: String,
     pub commit_sha: String,
-    pub project_id: u64,
+    pub project_id: uuid::Uuid,
     pub project_upstream: String,
     pub experiment_name: String,
     /// Set when this job is part of a bisection run.
@@ -347,17 +349,33 @@ pub struct ForagerStepReport {
     pub measurements: Vec<ForagerPluginOutput>,
 }
 
-/// Body of `POST /api/forager/run`.
+/// Body of `POST /api/forager/run`. Auth is via the caller's `wez_live_…`
+/// API token. `job_id` identifies which queue entry's results are being
+/// reported; the server resolves `(commit, experiment, bisection_id)` from
+/// that row, so the report no longer needs to carry them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ForagerRunReport {
-    pub token: String,
+    pub job_id: u64,
     pub steps: Vec<ForagerStepReport>,
     /// Conclusion definitions from the experiment TOML.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub summaries: Vec<SummaryDef>,
-    /// Forwarded from the job; lets burrow progress a bisection.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bisection_id: Option<u64>,
+}
+
+/// Response from `POST /api/forager/run`.
+///
+/// `queue_pending` tells the *wezel-cli runner* (not the forager plugin
+/// itself) whether the server still has unclaimed work for this org/project
+/// — a hint that wezel-cli can dispatch its own workflow again rather than
+/// waiting for the next scheduled poll. The actual dispatch logic lives in
+/// wezel-cli; the field stays `false` in this spec and is wired up in a
+/// follow-up.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForagerRunResponse {
+    pub status: String,
+    pub queue_pending: bool,
 }
 
 // ── Experiment PR ────────────────────────────────────────────────────────────
