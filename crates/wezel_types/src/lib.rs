@@ -2,7 +2,10 @@
 //!
 //! These mirror the data model consumed by the Anthill frontend.
 
+use std::collections::HashMap;
+
 use indexmap::IndexMap;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 // ── Project ──────────────────────────────────────────────────────────────────
@@ -187,6 +190,80 @@ pub enum Aggregation {
     Median,
     Max,
     Min,
+}
+
+// ── Experiment TOML parsing ──────────────────────────────────────────────────
+
+/// Top-level shape of `.wezel/experiments/<name>/experiment.toml`.
+///
+/// Steps live under `[step.<tool>.<step_name>]`. The outer map is keyed by
+/// tool name and the inner by step name; bodies are wrapped in
+/// `toml::Spanned` so the parser can recover file-line order across reopened
+/// tables.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(title = "Wezel experiment.toml")]
+pub struct ExperimentToml {
+    /// Human-readable description of what the experiment measures.
+    pub description: Option<String>,
+    /// `[step.<tool>.<step_name>]`. Two-level map; step names must be unique
+    /// across tools (enforced in [`parse_experiment`]).
+    #[schemars(with = "HashMap<String, HashMap<String, StepBody>>")]
+    pub step: IndexMap<String, IndexMap<String, toml::Spanned<StepBody>>>,
+}
+
+/// Either a boolean (uses `<step.name>.patch`) or an explicit patch filename.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum DiffField {
+    Bool(bool),
+    Name(String),
+}
+
+/// Body of a `[step.<tool>.<step_name>]` table. The tool name is recovered
+/// from the outer key, not a field; flatten-collected `rest` is forwarded to
+/// the forager plugin via `FORAGER_INPUTS` as JSON.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct StepBody {
+    pub description: Option<String>,
+    /// Apply a patch before running this step. `true` uses `<step name>.patch`; a string overrides the filename.
+    #[serde(rename = "apply-diff")]
+    #[schemars(rename = "apply-diff")]
+    pub apply_diff: Option<DiffField>,
+    /// Summaries emitted by this step, keyed by summary name.
+    #[serde(default)]
+    #[schemars(with = "HashMap<String, EmbeddedSummaryToml>")]
+    pub summary: IndexMap<String, EmbeddedSummaryToml>,
+    /// Forager-specific inputs (e.g. `cmd`/`env`/`cwd` for `exec`, `package` for `llvm-lines`).
+    #[serde(flatten)]
+    #[schemars(with = "HashMap<String, serde_json::Value>")]
+    pub rest: IndexMap<String, toml::Value>,
+}
+
+/// Summary definition embedded under a step. The summary's `name` and `step`
+/// fields are recovered from the map keys (`step.<step>.summary.<name>`).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct EmbeddedSummaryToml {
+    /// Outcome name (as emitted by the forager) to aggregate over.
+    pub outcome: String,
+    /// How to combine multiple matching values. Omit when the filter is
+    /// expected to select a single value.
+    #[serde(default)]
+    pub aggregation: Option<Aggregation>,
+    /// Tag key=value filters applied before aggregation.
+    #[serde(default)]
+    #[schemars(with = "HashMap<String, String>")]
+    pub filter: IndexMap<String, String>,
+    /// Trigger bisection when this summary regresses.
+    #[serde(default = "bool_true")]
+    pub bisect: bool,
+    /// Number of forager invocations of the step to take. Lint requires all
+    /// summaries on the same step to agree. Default 1.
+    #[serde(default = "one_usize")]
+    pub samples: usize,
+}
+
+fn one_usize() -> usize {
+    1
 }
 
 /// A named scalar derived from measurements, used for regression detection.

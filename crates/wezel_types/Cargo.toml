@@ -12,3 +12,4 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 schemars = { workspace = true }
 indexmap = { workspace = true }
+toml = { workspace = true }
