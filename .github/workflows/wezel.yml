@@ -1,0 +1,30 @@
+name: Wezel
+
+# Dogfood: drain wezel's own experiment-run queue via the Wezel GitHub Action.
+# Each run claims one queued experiment from the API, measures the claimed
+# commit, and reports back; the action self-dispatches while runs remain, so a
+# regression's bisection converges without waiting for the next tick. The cron
+# is just a heartbeat that picks up anything enqueued since the last drain.
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write          # required for the action's self-dispatch
+
+concurrency:
+  group: wezel-runner
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wezel-build/gh-action@main
+        with:
+          token: ${{ secrets.WEZEL_TOKEN }}
