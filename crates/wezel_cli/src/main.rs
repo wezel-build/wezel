@@ -6,6 +6,7 @@ mod flush;
 mod pheromone_mgr;
 mod progress;
 mod queue;
+mod runner;
 mod shell;
 
 use anyhow::Context as _;
@@ -462,6 +463,14 @@ enum ExperimentCmd {
     List,
     /// Validate experiment definitions without running them.
     Lint,
+    /// Claim and run the next queued experiment run from the server.
+    ///
+    /// Claims one pending run for this repo, measures the claimed commit
+    /// (cloning it cleanly — never touching the working tree), reports the
+    /// results, and exits. Intended for scheduled runners: one run per
+    /// invocation. Requires `WEZEL_API_URL` and a `WEZEL_API_TOKEN`
+    /// (`wez_live_…`) with run-queue access.
+    Next,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -525,6 +534,78 @@ fn resolve_project_dir(project_dir: Option<PathBuf>) -> PathBuf {
 fn make_workspace(project_dir: PathBuf) -> anyhow::Result<wezel_bench::Workspace> {
     let plugin_dir = wezel_bench::Workspace::default_plugin_dir()?;
     wezel_bench::Workspace::discover(project_dir, plugin_dir)
+}
+
+/// Claim, run, and report a single queued experiment run.
+///
+/// One run per invocation (a scheduled runner re-invokes to drain the queue).
+/// A measurement failure marks the run `failed` on the server and still returns
+/// `Ok(())` so the process exits 0 — the next invocation proceeds. Only
+/// infrastructure errors (no config/token, unreachable server) bubble up as a
+/// nonzero exit.
+fn next_cmd(project_dir: PathBuf) -> anyhow::Result<()> {
+    let ws = make_workspace(project_dir)?;
+
+    let (_, config) = config::discover(&ws.project_dir)
+        .context("no .wezel/config.toml found — run `wezel project init`")?;
+    let server_url = config
+        .server_url
+        .as_deref()
+        .context("server URL not configured (set WEZEL_API_URL)")?;
+    let token = config
+        .api_token
+        .as_deref()
+        .context("API token not configured (set WEZEL_API_TOKEN)")?;
+
+    let client = runner::RunnerClient::new(server_url, token);
+    let Some(run) = client.claim()? else {
+        println!("No queued runs.");
+        return Ok(());
+    };
+    let short = &run.commit_sha[..7.min(run.commit_sha.len())];
+    println!(
+        "Claimed run {} — experiment '{}' @ {short}",
+        run.id, run.experiment_name
+    );
+
+    // Measure the claimed commit from a clean clone (never the working tree).
+    let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
+    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
+    let outcome = wezel_bench::run::run_experiment_at(
+        &run.experiment_name,
+        &ws.project_dir,
+        &run.commit_sha,
+        &ws.plugin_dir,
+        Some(&mut caching),
+        None,
+    );
+
+    let (steps, summaries) = match outcome {
+        Ok(v) => v,
+        Err(e) => {
+            // Reported as failed so the row leaves `running`; exit 0 so the
+            // next scheduled invocation continues draining the queue.
+            let detail = format!("{e:#}");
+            warn!("run {} failed: {detail}", run.id);
+            if let Err(status_err) = client.set_status(run.id, "failed", Some(&detail)) {
+                warn!("could not mark run {} failed: {status_err:#}", run.id);
+            }
+            eprintln!("Run {} failed: {detail}", run.id);
+            return Ok(());
+        }
+    };
+
+    let report = wezel_types::ExperimentRunReport {
+        run_id: run.id,
+        steps,
+        summaries,
+    };
+    client.report(&report).context("reporting run results")?;
+    client
+        .set_status(run.id, "complete", None)
+        .context("marking run complete")?;
+    println!("Reported run {} ({} step(s)).", run.id, report.steps.len());
+    Ok(())
 }
 
 fn print_human_report(
@@ -750,6 +831,7 @@ fn main() -> ExitCode {
                 Ok(())
             })()),
             ExperimentCmd::List => run_result(wezel_bench::run::list_experiments(&project_dir)),
+            ExperimentCmd::Next => run_result(next_cmd(project_dir)),
             ExperimentCmd::Lint => run_result((|| -> anyhow::Result<()> {
                 let ws = make_workspace(project_dir)?;
                 let mut fetcher = fetcher::ConfigFetcher::read_only(&ws)?;
@@ -789,7 +871,7 @@ fn main() -> ExitCode {
                 };
                 let Some(ref server_url) = config.server_url else {
                     eprintln!(
-                        "wezel: server_url not configured (set WEZEL_BURROW_URL or add server_url to .wezel/config.toml)"
+                        "wezel: server_url not configured (set WEZEL_API_URL or add server_url to .wezel/config.toml)"
                     );
                     return ExitCode::FAILURE;
                 };

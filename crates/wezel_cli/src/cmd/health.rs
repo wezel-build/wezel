@@ -48,8 +48,8 @@ pub fn health_cmd() -> anyhow::Result<()> {
                 wezel_dir.join("config.toml").display()
             );
             match &config.server_url {
-                Some(url) => println!("  WEZEL_BURROW_URL: {url}"),
-                None => println!("  WEZEL_BURROW_URL: (not set)"),
+                Some(url) => println!("  WEZEL_API_URL: {url}"),
+                None => println!("  WEZEL_API_URL: (not set)"),
             }
             println!("  username: {}", config.username);
 
