@@ -76,6 +76,10 @@ impl Scratch {
     /// Clone `source` into a fresh tempdir and check out `commit_sha`
     /// detached. Local clones use git's default hardlinking when possible, so
     /// this is much cheaper than a network clone.
+    ///
+    /// Measures exactly the committed `commit_sha` — the caller's uncommitted
+    /// changes are not carried over. Use [`Scratch::create_with_worktree`] when
+    /// measuring the current checkout's working tree.
     pub fn create(source: &Path, commit_sha: &str) -> Result<Self> {
         let dir = tempfile::Builder::new()
             .prefix("wezel-scratch-")
@@ -109,9 +113,83 @@ impl Scratch {
         Ok(Self { dir })
     }
 
+    /// Like [`Scratch::create`], but after checking out `commit_sha` it overlays
+    /// `source`'s uncommitted working-tree state onto the clone: modified and
+    /// untracked files (respecting `.gitignore`, so build dirs like `target/`
+    /// stay out) are copied in, and files deleted from the worktree are removed.
+    ///
+    /// This lets `wezel experiment run` measure local edits without first
+    /// committing them. `commit_sha` should be the source's current `HEAD`, so
+    /// the overlaid diff lines up with the checked-out tree.
+    pub fn create_with_worktree(source: &Path, commit_sha: &str) -> Result<Self> {
+        let scratch = Self::create(source, commit_sha)?;
+        overlay_worktree(source, scratch.path())?;
+        Ok(scratch)
+    }
+
     pub fn path(&self) -> &Path {
         self.dir.path()
     }
+}
+
+/// Copy `source`'s uncommitted working-tree changes onto an already
+/// checked-out `dest` clone. See [`Scratch::create_with_worktree`].
+fn overlay_worktree(source: &Path, dest: &Path) -> Result<()> {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    // `--untracked-files=all` lists untracked files individually (not their
+    // parent dir) and respects `.gitignore`; `--no-renames` keeps each record a
+    // single path so the NUL-separated parse stays simple.
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(source)
+        .args([
+            "status",
+            "--porcelain",
+            "-z",
+            "--untracked-files=all",
+            "--no-renames",
+        ])
+        .output()
+        .context("running git status for worktree overlay")?;
+    if !out.status.success() {
+        bail!("git status for worktree overlay failed");
+    }
+
+    // Each `-z` record is `XY <path>`: two status columns, a space, then the
+    // repo-relative path, terminated by NUL.
+    for record in out.stdout.split(|&b| b == 0) {
+        if record.len() < 4 {
+            continue; // trailing empty record
+        }
+        let rel = Path::new(OsStr::from_bytes(&record[3..]));
+        let src = source.join(rel);
+        let dst = dest.join(rel);
+
+        // `symlink_metadata` so a dangling symlink still counts as present.
+        if src.symlink_metadata().is_ok() {
+            if let Some(parent) = dst.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("creating {}", parent.display()))?;
+            }
+            let status = Command::new("cp")
+                .arg("-a")
+                .arg(&src)
+                .arg(&dst)
+                .status()
+                .context("spawning cp -a for worktree overlay")?;
+            if !status.success() {
+                bail!("cp -a {} {} failed", src.display(), dst.display());
+            }
+        } else if dst.symlink_metadata().is_ok() {
+            // Deleted from the worktree — drop it from the clone. git reports
+            // deletions per file, so `dst` is a file or symlink, never a dir.
+            std::fs::remove_file(&dst).with_context(|| format!("removing {}", dst.display()))?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Side-stash of a project directory's contents, used to make sampled steps

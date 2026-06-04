@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use wezel_types::{ExperimentRunReport, ExperimentRunStep, SummaryDef};
+use wezel_types::{ExperimentRunStep, SummaryDef};
 
 use crate::git;
 use crate::workspace::{Scratch, Snapshot};
@@ -146,30 +146,6 @@ pub fn compute_summaries(
     result
 }
 
-pub struct BurrowSession {
-    agent: ureq::Agent,
-    server_url: String,
-}
-
-impl BurrowSession {
-    pub fn new(server_url: &str) -> Self {
-        Self {
-            agent: ureq::AgentBuilder::new()
-                .timeout(std::time::Duration::from_secs(30))
-                .build(),
-            server_url: server_url.to_string(),
-        }
-    }
-
-    pub fn submit(&self, report: &ExperimentRunReport) -> Result<()> {
-        self.agent
-            .post(&format!("{}/api/runs/report", self.server_url))
-            .send_json(report)
-            .context("submitting run report to Burrow")?;
-        Ok(())
-    }
-}
-
 pub fn list_experiments(project_dir: &Path) -> Result<()> {
     let experiments_dir = project_dir.join(".wezel").join("experiments");
     if !experiments_dir.is_dir() {
@@ -211,17 +187,74 @@ pub fn list_experiments(project_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Run an experiment and return the step reports plus conclusion definitions.
+/// Run an experiment against the current checkout and return the step reports
+/// plus conclusion definitions.
 ///
-/// This function is pure execution — it knows nothing about Burrow.  The
-/// caller (daemon or CLI) decides whether/how to submit results.
+/// Clones the project at `HEAD` into scratch, overlaying uncommitted
+/// working-tree edits, so the measured tree matches what the user is looking
+/// at. The experiment definition is read from that clone.
+///
+/// This function is pure execution — it knows nothing about Burrow. The caller
+/// decides whether/how to submit results.
 pub fn run_experiment(
     experiment_name: &str,
     workspace: &Workspace,
+    fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
+    reporter: Option<&dyn RunReporter>,
+) -> Result<(Vec<ExperimentRunStep>, Vec<SummaryDef>)> {
+    let commit_sha = git::current_sha(&workspace.project_dir)?;
+    let scratch = Scratch::create_with_worktree(&workspace.project_dir, &commit_sha)?;
+    run_in_scratch(
+        experiment_name,
+        scratch,
+        &commit_sha,
+        &workspace.plugin_dir,
+        fetcher,
+        reporter,
+    )
+}
+
+/// Run an experiment at a specific committed `sha`, cloning the repo from
+/// `repo_src`. Used by the run queue (`wezel experiment next`).
+///
+/// Unlike [`run_experiment`], the working tree is never consulted: both the
+/// code and the experiment definition come from `sha`'s committed tree, so a
+/// bisection across commits where the definition changed measures the right
+/// definition at each one. If `sha` isn't present in `repo_src`, it is fetched
+/// from `origin` first.
+pub fn run_experiment_at(
+    experiment_name: &str,
+    repo_src: &Path,
+    sha: &str,
+    plugin_dir: &Path,
+    fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
+    reporter: Option<&dyn RunReporter>,
+) -> Result<(Vec<ExperimentRunStep>, Vec<SummaryDef>)> {
+    git::ensure_commit(repo_src, sha)?;
+    let scratch = Scratch::create(repo_src, sha)?;
+    run_in_scratch(experiment_name, scratch, sha, plugin_dir, fetcher, reporter)
+}
+
+/// Shared execution engine: measure `experiment_name` inside an already-prepared
+/// `scratch` clone checked out at `commit_sha`. The experiment definition and
+/// any step patches are read from the clone. Foragers run inside the clone, so
+/// `target/` and step patches never touch the caller's working tree.
+fn run_in_scratch(
+    experiment_name: &str,
+    scratch: Scratch,
+    commit_sha: &str,
+    plugin_dir: &Path,
     mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
     reporter: Option<&dyn RunReporter>,
 ) -> Result<(Vec<ExperimentRunStep>, Vec<SummaryDef>)> {
-    let experiment_dir = workspace
+    log::debug!("scratch checkout at {}", scratch.path().display());
+    let scratch_workspace = Workspace {
+        project_dir: scratch.path().to_path_buf(),
+        plugin_dir: plugin_dir.to_path_buf(),
+        config: ProjectConfig::load(scratch.path())?,
+    };
+
+    let experiment_dir = scratch_workspace
         .project_dir
         .join(".wezel")
         .join("experiments")
@@ -235,7 +268,6 @@ pub fn run_experiment(
     }
 
     let experiment = parse_experiment(&experiment_dir)?;
-    let commit_sha = git::current_sha(&workspace.project_dir)?;
 
     // Per-step sample count is derived from summaries; lint enforces a single
     // value per step, so taking max here just guards against a stale lockfile
@@ -259,20 +291,8 @@ pub fn run_experiment(
         })
         .collect();
     if let Some(r) = reporter {
-        r.run_started(experiment_name, &commit_sha, &plan);
+        r.run_started(experiment_name, commit_sha, &plan);
     }
-
-    // Isolate the run: fresh clone of the user's repo at `commit_sha`, into
-    // a tempdir that's removed when `scratch` drops. Foragers run inside
-    // this scratch checkout so `target/` and step patches never touch the
-    // user's working tree.
-    let scratch = Scratch::create(&workspace.project_dir, &commit_sha)?;
-    log::debug!("scratch checkout at {}", scratch.path().display());
-    let scratch_workspace = Workspace {
-        project_dir: scratch.path().to_path_buf(),
-        plugin_dir: workspace.plugin_dir.clone(),
-        config: ProjectConfig::load(scratch.path())?,
-    };
 
     // Run each step.
     let mut step_reports: Vec<ExperimentRunStep> = Vec::new();

@@ -54,9 +54,12 @@ impl ToolsConfig {
 pub struct Config {
     pub project_id: uuid::Uuid,
     pub name: String,
-    /// Burrow URL for this invocation. Sourced from `WEZEL_BURROW_URL`; never
+    /// Burrow URL for this invocation. Sourced from `WEZEL_API_URL`; never
     /// persisted to any `config.toml`.
     pub server_url: Option<String>,
+    /// `wez_live_…` API token for authenticated endpoints (run queue). Sourced
+    /// from `WEZEL_API_TOKEN`; never persisted to any `config.toml`.
+    pub api_token: Option<String>,
     pub username: String,
     /// Where pheromone binaries live.
     pub pheromone_dir: Option<String>,
@@ -96,7 +99,7 @@ pub fn discover(start: &Path) -> Option<(PathBuf, Config)> {
 ///   1. defaults (username = whoami)
 ///   2. `~/.wezel/config.toml`  (global — username only)
 ///   3. project `.wezel/config.toml`
-///   4. `WEZEL_BURROW_URL` env var (sole source for server_url)
+///   4. `WEZEL_API_URL` env var (sole source for server_url)
 ///
 /// `project_id` is read directly from the project config — it is never
 /// inherited from the global config or defaults.
@@ -127,7 +130,10 @@ fn load(project_config_path: &Path) -> Option<Config> {
 
     let resolved: ProjectConfig = figment.extract().ok()?;
 
-    let server_url = std::env::var("WEZEL_BURROW_URL")
+    let server_url = std::env::var("WEZEL_API_URL")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let api_token = std::env::var("WEZEL_API_TOKEN")
         .ok()
         .filter(|s| !s.is_empty());
 
@@ -135,6 +141,7 @@ fn load(project_config_path: &Path) -> Option<Config> {
         project_id,
         name,
         server_url,
+        api_token,
         username: resolved
             .username
             .filter(|s| !s.is_empty())

@@ -455,20 +455,6 @@ pub mod git {
         Ok(!out.stdout.is_empty())
     }
 
-    pub fn upstream(project_dir: &Path) -> Result<String> {
-        let out = Command::new("git")
-            .args(["remote", "get-url", "origin"])
-            .current_dir(project_dir)
-            .stderr(std::process::Stdio::null())
-            .output()
-            .context("running git remote get-url origin")?;
-        if !out.status.success() {
-            bail!("could not determine git remote origin");
-        }
-        let raw = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        Ok(normalize_upstream(&raw))
-    }
-
     pub fn commit_author(project_dir: &Path) -> String {
         let out = Command::new("git")
             .args(["log", "-1", "--format=%an"])
@@ -546,6 +532,46 @@ pub mod git {
         Ok(())
     }
 
+    /// True when `sha` resolves to a commit object in `repo`'s database.
+    fn has_commit(repo: &Path, sha: &str) -> bool {
+        Command::new("git")
+            .args(["cat-file", "-e", &format!("{sha}^{{commit}}")])
+            .current_dir(repo)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    /// Ensure `sha` is present in `repo`, fetching from `origin` if it isn't.
+    ///
+    /// The run queue claims arbitrary commits (e.g. bisection midpoints) that a
+    /// shallow CI checkout may not contain. A full `origin` fetch covers commits
+    /// reachable from branches; we then fall back to fetching the bare object,
+    /// which some servers permit.
+    pub fn ensure_commit(repo: &Path, sha: &str) -> Result<()> {
+        if has_commit(repo, sha) {
+            return Ok(());
+        }
+        let _ = fetch(repo);
+        if has_commit(repo, sha) {
+            return Ok(());
+        }
+        let status = Command::new("git")
+            .args(["fetch", "--quiet", "origin", sha])
+            .current_dir(repo)
+            .status()
+            .context("running git fetch origin <sha>")?;
+        if status.success() && has_commit(repo, sha) {
+            return Ok(());
+        }
+        bail!(
+            "commit {sha} not found in {} and could not be fetched from origin",
+            repo.display()
+        );
+    }
+
     pub fn checkout_detached(repo_dir: &Path, sha: &str) -> Result<()> {
         let status = Command::new("git")
             .args(["checkout", "--detach", sha])
@@ -556,21 +582,6 @@ pub mod git {
             bail!("git checkout --detach {} failed", sha);
         }
         Ok(())
-    }
-
-    fn normalize_upstream(url: &str) -> String {
-        let s = url
-            .trim()
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .trim_start_matches("ssh://")
-            .trim_start_matches("git://");
-        let s = if let Some(rest) = s.strip_prefix("git@") {
-            rest.replacen(':', "/", 1)
-        } else {
-            s.to_string()
-        };
-        s.trim_end_matches(".git").to_string()
     }
 }
 
