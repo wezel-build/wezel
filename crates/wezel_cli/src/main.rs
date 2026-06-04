@@ -470,7 +470,15 @@ enum ExperimentCmd {
     /// results, and exits. Intended for scheduled runners: one run per
     /// invocation. Requires `WEZEL_API_URL` and a `WEZEL_API_TOKEN`
     /// (`wez_live_…`) with run-queue access.
-    Next,
+    ///
+    /// With `--output-format json`, prints a single machine-readable object
+    /// (whether a run was claimed, its status, and `queue_pending`) so a
+    /// runner can decide whether to re-dispatch itself for the next run.
+    Next {
+        /// Output format.
+        #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+        output_format: OutputFormat,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -536,14 +544,39 @@ fn make_workspace(project_dir: PathBuf) -> anyhow::Result<wezel_bench::Workspace
     wezel_bench::Workspace::discover(project_dir, plugin_dir)
 }
 
+/// Machine-readable result of `wezel experiment next --output-format json`.
+///
+/// A self-dispatching runner keys off `claimed` (re-dispatch when a run was
+/// processed, stop when the queue was empty) and may consult `queue_pending`.
+#[derive(Default, serde::Serialize)]
+struct NextOutput {
+    /// Whether a run was claimed and processed this invocation.
+    claimed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    experiment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commit: Option<String>,
+    /// `"complete"` or `"failed"` when a run was processed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    /// Server hint that more runs remain queued (from the report response).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    queue_pending: Option<bool>,
+}
+
 /// Claim, run, and report a single queued experiment run.
 ///
-/// One run per invocation (a scheduled runner re-invokes to drain the queue).
-/// A measurement failure marks the run `failed` on the server and still returns
-/// `Ok(())` so the process exits 0 — the next invocation proceeds. Only
-/// infrastructure errors (no config/token, unreachable server) bubble up as a
-/// nonzero exit.
-fn next_cmd(project_dir: PathBuf) -> anyhow::Result<()> {
+/// One run per invocation (a scheduled or self-dispatching runner re-invokes to
+/// drain the queue). A measurement failure marks the run `failed` on the server
+/// and still returns `Ok(())` so the process exits 0 — the next invocation
+/// proceeds. Only infrastructure errors (no config/token, unreachable server)
+/// bubble up as a nonzero exit.
+fn next_cmd(project_dir: PathBuf, output_format: OutputFormat) -> anyhow::Result<()> {
+    let json = output_format == OutputFormat::Json;
     let ws = make_workspace(project_dir)?;
 
     let (_, config) = config::discover(&ws.project_dir)
@@ -559,14 +592,20 @@ fn next_cmd(project_dir: PathBuf) -> anyhow::Result<()> {
 
     let client = runner::RunnerClient::new(server_url, token);
     let Some(run) = client.claim()? else {
-        println!("No queued runs.");
+        if json {
+            emit_json(&NextOutput::default());
+        } else {
+            println!("No queued runs.");
+        }
         return Ok(());
     };
-    let short = &run.commit_sha[..7.min(run.commit_sha.len())];
-    println!(
-        "Claimed run {} — experiment '{}' @ {short}",
-        run.id, run.experiment_name
-    );
+    if !json {
+        let short = &run.commit_sha[..7.min(run.commit_sha.len())];
+        println!(
+            "Claimed run {} — experiment '{}' @ {short}",
+            run.id, run.experiment_name
+        );
+    }
 
     // Measure the claimed commit from a clean clone (never the working tree).
     let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
@@ -584,13 +623,25 @@ fn next_cmd(project_dir: PathBuf) -> anyhow::Result<()> {
         Ok(v) => v,
         Err(e) => {
             // Reported as failed so the row leaves `running`; exit 0 so the
-            // next scheduled invocation continues draining the queue.
+            // next invocation continues draining the queue.
             let detail = format!("{e:#}");
             warn!("run {} failed: {detail}", run.id);
             if let Err(status_err) = client.set_status(run.id, "failed", Some(&detail)) {
                 warn!("could not mark run {} failed: {status_err:#}", run.id);
             }
-            eprintln!("Run {} failed: {detail}", run.id);
+            if json {
+                emit_json(&NextOutput {
+                    claimed: true,
+                    run_id: Some(run.id),
+                    experiment: Some(run.experiment_name),
+                    commit: Some(run.commit_sha),
+                    status: Some("failed".into()),
+                    error: Some(detail),
+                    ..Default::default()
+                });
+            } else {
+                eprintln!("Run {} failed: {detail}", run.id);
+            }
             return Ok(());
         }
     };
@@ -600,12 +651,32 @@ fn next_cmd(project_dir: PathBuf) -> anyhow::Result<()> {
         steps,
         summaries,
     };
-    client.report(&report).context("reporting run results")?;
+    let response = client.report(&report).context("reporting run results")?;
     client
         .set_status(run.id, "complete", None)
         .context("marking run complete")?;
-    println!("Reported run {} ({} step(s)).", run.id, report.steps.len());
+    if json {
+        emit_json(&NextOutput {
+            claimed: true,
+            run_id: Some(run.id),
+            experiment: Some(run.experiment_name),
+            commit: Some(run.commit_sha),
+            status: Some("complete".into()),
+            queue_pending: Some(response.queue_pending),
+            ..Default::default()
+        });
+    } else {
+        println!("Reported run {} ({} step(s)).", run.id, report.steps.len());
+    }
     Ok(())
+}
+
+/// Print a value as a single line of JSON to stdout.
+fn emit_json<T: serde::Serialize>(value: &T) {
+    println!(
+        "{}",
+        serde_json::to_string(value).expect("serializing JSON output")
+    );
 }
 
 fn print_human_report(
@@ -831,7 +902,9 @@ fn main() -> ExitCode {
                 Ok(())
             })()),
             ExperimentCmd::List => run_result(wezel_bench::run::list_experiments(&project_dir)),
-            ExperimentCmd::Next => run_result(next_cmd(project_dir)),
+            ExperimentCmd::Next { output_format } => {
+                run_result(next_cmd(project_dir, output_format))
+            }
             ExperimentCmd::Lint => run_result((|| -> anyhow::Result<()> {
                 let ws = make_workspace(project_dir)?;
                 let mut fetcher = fetcher::ConfigFetcher::read_only(&ws)?;
