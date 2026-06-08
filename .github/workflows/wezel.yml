@@ -24,7 +24,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      # Full history: the runner clones this checkout and checks out the
+      # claimed commit, which is usually behind the tip (and bisection walks
+      # further back still). A shallow clone holds only the tip, so any
+      # non-tip run dies with "unable to read tree".
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: wezel-build/gh-action@main
         with:
           token: ${{ secrets.WEZEL_TOKEN }}
