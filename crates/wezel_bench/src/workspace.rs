@@ -68,19 +68,33 @@ impl Workspace {
 /// Per-run isolated checkout. Foragers run inside this directory so a build's
 /// `target/` never leaks into the user's working tree and step patches don't
 /// touch tracked files in-place.
+///
+/// The whole git repository is cloned, even when the project's `.wezel` lives
+/// in a subdirectory (e.g. a crate inside a workspace): [`Scratch::path`] is
+/// the cloned repo root, while [`Scratch::project_dir`] is the project dir
+/// within it. Git operations (clone, patch, snapshot) act on the repo root;
+/// foragers run from `project_dir`.
 pub struct Scratch {
     dir: tempfile::TempDir,
+    /// Project dir relative to the cloned repo root. Empty when the project
+    /// lives at the repo root.
+    rel: PathBuf,
 }
 
 impl Scratch {
-    /// Clone `source` into a fresh tempdir and check out `commit_sha`
-    /// detached. Local clones use git's default hardlinking when possible, so
-    /// this is much cheaper than a network clone.
+    /// Clone the git repository containing `source` into a fresh tempdir and
+    /// check out `commit_sha` detached. Local clones use git's default
+    /// hardlinking when possible, so this is much cheaper than a network clone.
     ///
-    /// Measures exactly the committed `commit_sha` — the caller's uncommitted
-    /// changes are not carried over. Use [`Scratch::create_with_worktree`] when
-    /// measuring the current checkout's working tree.
+    /// `source` is the project dir (where `.wezel` lives); the whole enclosing
+    /// repo is cloned so workspace builds resolve. Measures exactly the
+    /// committed `commit_sha` — the caller's uncommitted changes are not
+    /// carried over. Use [`Scratch::create_with_worktree`] when measuring the
+    /// current checkout's working tree.
     pub fn create(source: &Path, commit_sha: &str) -> Result<Self> {
+        let toplevel = crate::git::toplevel(source)?;
+        let rel = project_rel(source, &toplevel)?;
+
         let dir = tempfile::Builder::new()
             .prefix("wezel-scratch-")
             .tempdir()
@@ -90,7 +104,7 @@ impl Scratch {
             .arg("clone")
             .arg("--local")
             .arg("--no-checkout")
-            .arg(source)
+            .arg(&toplevel)
             .arg(dir.path())
             .status()
             .context("spawning git clone")?;
@@ -110,11 +124,11 @@ impl Scratch {
             bail!("git checkout {commit_sha} in scratch failed");
         }
 
-        Ok(Self { dir })
+        Ok(Self { dir, rel })
     }
 
     /// Like [`Scratch::create`], but after checking out `commit_sha` it overlays
-    /// `source`'s uncommitted working-tree state onto the clone: modified and
+    /// the repo's uncommitted working-tree state onto the clone: modified and
     /// untracked files (respecting `.gitignore`, so build dirs like `target/`
     /// stay out) are copied in, and files deleted from the worktree are removed.
     ///
@@ -122,14 +136,42 @@ impl Scratch {
     /// committing them. `commit_sha` should be the source's current `HEAD`, so
     /// the overlaid diff lines up with the checked-out tree.
     pub fn create_with_worktree(source: &Path, commit_sha: &str) -> Result<Self> {
+        let toplevel = crate::git::toplevel(source)?;
         let scratch = Self::create(source, commit_sha)?;
-        overlay_worktree(source, scratch.path())?;
+        // Overlay from the repo root so changes anywhere in the repo are
+        // reflected and `git status` paths stay repo-root-relative.
+        overlay_worktree(&toplevel, scratch.path())?;
         Ok(scratch)
     }
 
+    /// Root of the cloned repository. Git operations and snapshots act here.
     pub fn path(&self) -> &Path {
         self.dir.path()
     }
+
+    /// The project directory (where `.wezel` lives) within the clone. Foragers
+    /// run from here. Equals [`Scratch::path`] for repo-root projects.
+    pub fn project_dir(&self) -> PathBuf {
+        self.dir.path().join(&self.rel)
+    }
+}
+
+/// Path of `project_dir` relative to its repo `toplevel`. Both are canonicalized
+/// first so a symlinked `project_dir` (e.g. macOS `/var` → `/private/var`) still
+/// strips cleanly.
+fn project_rel(project_dir: &Path, toplevel: &Path) -> Result<PathBuf> {
+    let proj = std::fs::canonicalize(project_dir)
+        .with_context(|| format!("canonicalizing {}", project_dir.display()))?;
+    let top = std::fs::canonicalize(toplevel)
+        .with_context(|| format!("canonicalizing {}", toplevel.display()))?;
+    let rel = proj.strip_prefix(&top).with_context(|| {
+        format!(
+            "project dir {} is not inside repo root {}",
+            proj.display(),
+            top.display()
+        )
+    })?;
+    Ok(rel.to_path_buf())
 }
 
 /// Copy `source`'s uncommitted working-tree changes onto an already

@@ -92,3 +92,31 @@ fn plain_create_ignores_worktree() {
     assert_eq!(fs::read_to_string(p.join("tracked.txt")).unwrap(), "v1\n");
     assert!(!p.join("untracked.txt").exists());
 }
+
+/// When the project's `.wezel` lives in a subdirectory, `Scratch` clones the
+/// whole repo: `path()` is the repo root, `project_dir()` the subdir.
+#[test]
+fn nested_project_clones_whole_repo() {
+    let src = tempfile::tempdir().unwrap();
+    let head = init_repo(src.path());
+    let project = src.path().join("crates/burrow");
+    fs::create_dir_all(&project).unwrap();
+    // An (untracked) file under the project dir, like a not-yet-committed
+    // `.wezel/config.toml`, so the overlay carries the subdir into the clone.
+    fs::write(project.join("marker.txt"), "burrow\n").unwrap();
+
+    // Pass the nested project dir as the source, as the CLI does.
+    let scratch = Scratch::create_with_worktree(&project, &head).unwrap();
+
+    // The clone root is the repo root and holds the committed top-level file.
+    assert_eq!(
+        fs::read_to_string(scratch.path().join("tracked.txt")).unwrap(),
+        "v1\n"
+    );
+    // project_dir() points at the subdir within the clone, carried by overlay.
+    assert_eq!(scratch.project_dir(), scratch.path().join("crates/burrow"));
+    assert_eq!(
+        fs::read_to_string(scratch.project_dir().join("marker.txt")).unwrap(),
+        "burrow\n"
+    );
+}

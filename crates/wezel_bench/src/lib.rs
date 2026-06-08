@@ -403,10 +403,28 @@ fn toml_to_json(v: toml::Value) -> Result<serde_json::Value> {
 // ── Git helpers ───────────────────────────────────────────────────────────────
 
 pub mod git {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::process::Command;
 
     use anyhow::{Context, Result, bail};
+
+    /// Absolute path of the git repository root containing `project_dir`.
+    /// Lets a project whose `.wezel` lives in a subdirectory still be cloned
+    /// and measured against the whole repo (e.g. a crate inside a workspace).
+    pub fn toplevel(project_dir: &Path) -> Result<PathBuf> {
+        let out = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .current_dir(project_dir)
+            .stderr(std::process::Stdio::null())
+            .output()
+            .context("running git rev-parse --show-toplevel")?;
+        if !out.status.success() {
+            bail!("git rev-parse --show-toplevel failed");
+        }
+        Ok(PathBuf::from(
+            String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        ))
+    }
 
     pub fn current_sha(project_dir: &Path) -> Result<String> {
         let out = Command::new("git")
