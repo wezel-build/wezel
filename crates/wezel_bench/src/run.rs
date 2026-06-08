@@ -248,10 +248,11 @@ fn run_in_scratch(
     reporter: Option<&dyn RunReporter>,
 ) -> Result<(Vec<ExperimentRunStep>, Vec<SummaryDef>)> {
     log::debug!("scratch checkout at {}", scratch.path().display());
+    let project_dir = scratch.project_dir();
     let scratch_workspace = Workspace {
-        project_dir: scratch.path().to_path_buf(),
+        project_dir: project_dir.clone(),
         plugin_dir: plugin_dir.to_path_buf(),
-        config: ProjectConfig::load(scratch.path())?,
+        config: ProjectConfig::load(&project_dir)?,
     };
 
     let experiment_dir = scratch_workspace
@@ -317,7 +318,7 @@ fn run_in_scratch(
         if let Some(ref patch_stem) = step.diff {
             let patch_path = experiment_dir.join(format!("{patch_stem}.patch"));
             log::info!("  applying patch: {}", patch_path.display());
-            git::apply_patch(&scratch_workspace.project_dir, &patch_path)
+            git::apply_patch(scratch.path(), &patch_path)
                 .with_context(|| format!("applying patch for step '{}'", step.name))?;
         }
 
@@ -325,7 +326,7 @@ fn run_in_scratch(
         // it, making them i.i.d. The post-state of the last iter is what
         // downstream steps see.
         let snapshot = (samples > 1)
-            .then(|| Snapshot::capture(&scratch_workspace.project_dir))
+            .then(|| Snapshot::capture(scratch.path()))
             .transpose()
             .with_context(|| format!("snapshotting before step '{}'", step.name))?;
 
@@ -335,10 +336,9 @@ fn run_in_scratch(
             if iter > 1
                 && let Some(ref snap) = snapshot
             {
-                snap.restore_to(&scratch_workspace.project_dir)
-                    .with_context(|| {
-                        format!("restoring snapshot for step '{}' iter {iter}", step.name)
-                    })?;
+                snap.restore_to(scratch.path()).with_context(|| {
+                    format!("restoring snapshot for step '{}' iter {iter}", step.name)
+                })?;
             }
             log::debug!("  iter {iter}/{samples}");
             if let Some(r) = reporter {
