@@ -6,6 +6,7 @@ use crate::config::{ProjectConfig, ToolsConfig};
 const DEFAULT_GITIGNORE: &str = "\
 # Wezel project-local state. Add patterns here as needed.
 events/
+runs/
 *.local.toml
 ";
 
