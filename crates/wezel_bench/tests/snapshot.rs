@@ -18,11 +18,20 @@ fn restore_returns_tree_to_captured_state() {
     // Age the files so preserved mtimes are distinguishable from fresh ones.
     let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_600_000_000);
     for path in ["kept.txt", "sub/artifact.bin"] {
-        let file = fs::File::options().write(true).open(root.join(path)).unwrap();
+        let file = fs::File::options()
+            .write(true)
+            .open(root.join(path))
+            .unwrap();
         file.set_modified(old).unwrap();
     }
-    let kept_mtime = fs::metadata(root.join("kept.txt")).unwrap().modified().unwrap();
-    let artifact_mtime = fs::metadata(root.join("sub/artifact.bin")).unwrap().modified().unwrap();
+    let kept_mtime = fs::metadata(root.join("kept.txt"))
+        .unwrap()
+        .modified()
+        .unwrap();
+    let artifact_mtime = fs::metadata(root.join("sub/artifact.bin"))
+        .unwrap()
+        .modified()
+        .unwrap();
 
     let snapshot = Snapshot::capture(root).unwrap();
 
@@ -33,16 +42,25 @@ fn restore_returns_tree_to_captured_state() {
 
     snapshot.restore_to(root).unwrap();
 
-    assert_eq!(fs::read_to_string(root.join("kept.txt")).unwrap(), "original");
+    assert_eq!(
+        fs::read_to_string(root.join("kept.txt")).unwrap(),
+        "original"
+    );
     assert_eq!(fs::read(root.join("sub/artifact.bin")).unwrap(), b"blob");
     assert!(!root.join("new.txt").exists());
     assert_eq!(
-        fs::metadata(root.join("kept.txt")).unwrap().modified().unwrap(),
+        fs::metadata(root.join("kept.txt"))
+            .unwrap()
+            .modified()
+            .unwrap(),
         kept_mtime,
         "restore must preserve mtimes"
     );
     assert_eq!(
-        fs::metadata(root.join("sub/artifact.bin")).unwrap().modified().unwrap(),
+        fs::metadata(root.join("sub/artifact.bin"))
+            .unwrap()
+            .modified()
+            .unwrap(),
         artifact_mtime,
         "restore must preserve mtimes"
     );
@@ -59,6 +77,9 @@ fn restore_is_repeatable() {
     for _ in 0..2 {
         fs::write(root.join("file.txt"), "scribbled").unwrap();
         snapshot.restore_to(root).unwrap();
-        assert_eq!(fs::read_to_string(root.join("file.txt")).unwrap(), "original");
+        assert_eq!(
+            fs::read_to_string(root.join("file.txt")).unwrap(),
+            "original"
+        );
     }
 }

@@ -245,9 +245,8 @@ fn overlay_worktree(source: &Path, dest: &Path) -> Result<()> {
                         .with_context(|| format!("removing {}", dst.display()))?;
                 }
             }
-            fast_copy(&[&src, &dst]).with_context(|| {
-                format!("overlaying {} onto {}", src.display(), dst.display())
-            })?;
+            fast_copy(&[&src, &dst])
+                .with_context(|| format!("overlaying {} onto {}", src.display(), dst.display()))?;
         } else if dst.symlink_metadata().is_ok() {
             // Deleted from the worktree — drop it from the clone. git reports
             // deletions per file, so `dst` is a file or symlink, never a dir.
