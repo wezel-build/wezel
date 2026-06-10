@@ -156,6 +156,25 @@ impl Scratch {
     }
 }
 
+/// Copy `args[..n-1]` to `args[n-1]` (cp's CLI shape) with the fcp engine:
+/// parallel, CoW where the filesystem supports it, and timestamp-preserving —
+/// mtimes must survive snapshot/restore or cargo-style staleness checks would
+/// see every sampled iteration as dirty.
+fn fast_copy<P: AsRef<Path>>(args: &[P]) -> Result<()> {
+    let args = args
+        .iter()
+        .map(|p| {
+            let p = p.as_ref();
+            p.to_str()
+                .map(str::to_owned)
+                .with_context(|| format!("non-UTF-8 path {}", p.display()))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    // fcp's Error intentionally doesn't implement std::error::Error; carry
+    // its message (one line per failed entry) over to anyhow.
+    fcp::fcp(&args).map_err(|err| anyhow::anyhow!("{err}"))
+}
+
 /// Path of `project_dir` relative to its repo `toplevel`. Both are canonicalized
 /// first so a symlinked `project_dir` (e.g. macOS `/var` → `/private/var`) still
 /// strips cleanly.
@@ -215,15 +234,19 @@ fn overlay_worktree(source: &Path, dest: &Path) -> Result<()> {
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("creating {}", parent.display()))?;
             }
-            let status = Command::new("cp")
-                .arg("-a")
-                .arg(&src)
-                .arg(&dst)
-                .status()
-                .context("spawning cp -a for worktree overlay")?;
-            if !status.success() {
-                bail!("cp -a {} {} failed", src.display(), dst.display());
+            // fcp can't overwrite an existing destination symlink, so clear
+            // whatever the clone has at this path before copying.
+            if let Ok(meta) = dst.symlink_metadata() {
+                if meta.is_dir() {
+                    std::fs::remove_dir_all(&dst)
+                        .with_context(|| format!("removing {}", dst.display()))?;
+                } else {
+                    std::fs::remove_file(&dst)
+                        .with_context(|| format!("removing {}", dst.display()))?;
+                }
             }
+            fast_copy(&[&src, &dst])
+                .with_context(|| format!("overlaying {} onto {}", src.display(), dst.display()))?;
         } else if dst.symlink_metadata().is_ok() {
             // Deleted from the worktree — drop it from the clone. git reports
             // deletions per file, so `dst` is a file or symlink, never a dir.
@@ -241,7 +264,7 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// `cp -a source <holder>/snap`. Captures the full tree (including
+    /// Copy `source` to `<holder>/snap`. Captures the full tree (including
     /// `target/`, `.git/`, etc.) so a restore returns to byte-identical state.
     pub fn capture(source: &Path) -> Result<Self> {
         let holder = tempfile::Builder::new()
@@ -249,15 +272,8 @@ impl Snapshot {
             .tempdir()
             .context("creating snapshot tempdir")?;
         let dest = holder.path().join("snap");
-        let status = Command::new("cp")
-            .arg("-a")
-            .arg(source)
-            .arg(&dest)
-            .status()
-            .context("spawning cp -a for snapshot")?;
-        if !status.success() {
-            bail!("cp -a {} {} failed", source.display(), dest.display());
-        }
+        fast_copy(&[source, &dest])
+            .with_context(|| format!("snapshotting {}", source.display()))?;
         Ok(Self { holder })
     }
 
@@ -277,17 +293,18 @@ impl Snapshot {
                 std::fs::remove_file(&p).with_context(|| format!("removing {}", p.display()))?;
             }
         }
-        let mut snap_contents = self.holder.path().join("snap").into_os_string();
-        snap_contents.push("/.");
-        let status = Command::new("cp")
-            .arg("-a")
-            .arg(&snap_contents)
-            .arg(target)
-            .status()
-            .context("spawning cp -a for restore")?;
-        if !status.success() {
-            bail!("cp -a {:?} {} failed", snap_contents, target.display());
+        // fcp has no `snap/.` "copy contents" idiom; pass the snapshot's
+        // children as individual sources into `target` instead.
+        let snap = self.holder.path().join("snap");
+        let mut args = std::fs::read_dir(&snap)
+            .with_context(|| format!("reading {} for restore", snap.display()))?
+            .map(|entry| Ok(entry?.path()))
+            .collect::<Result<Vec<_>>>()?;
+        if args.is_empty() {
+            // Empty snapshot: the wipe above already produced the right state.
+            return Ok(());
         }
-        Ok(())
+        args.push(target.to_path_buf());
+        fast_copy(&args).with_context(|| format!("restoring into {}", target.display()))
     }
 }

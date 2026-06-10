@@ -79,6 +79,24 @@ fn overlay_drops_worktree_deletions() {
 }
 
 #[test]
+fn overlay_replaces_retargeted_symlink() {
+    let src = tempfile::tempdir().unwrap();
+    fs::write(src.path().join("other.txt"), "b\n").unwrap();
+    std::os::unix::fs::symlink("tracked.txt", src.path().join("link")).unwrap();
+    let head = init_repo(src.path());
+
+    // Retarget the committed symlink in the worktree without committing.
+    fs::remove_file(src.path().join("link")).unwrap();
+    std::os::unix::fs::symlink("other.txt", src.path().join("link")).unwrap();
+
+    let scratch = Scratch::create_with_worktree(src.path(), &head).unwrap();
+    assert_eq!(
+        fs::read_link(scratch.path().join("link")).unwrap(),
+        Path::new("other.txt")
+    );
+}
+
+#[test]
 fn plain_create_ignores_worktree() {
     let src = tempfile::tempdir().unwrap();
     let head = init_repo(src.path());
