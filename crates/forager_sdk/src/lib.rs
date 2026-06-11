@@ -15,7 +15,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
-use wezel_types::{ForagerPluginEnvelope, ForagerPluginOutput, ForagerSchema};
+pub use wezel_types::ForagerPluginOutput;
+use wezel_types::{ForagerPluginEnvelope, ForagerSchema};
 
 /// Contract implemented by every forager binary.
 pub trait Forager {
