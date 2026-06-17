@@ -2015,7 +2015,7 @@ dependencies = [
 
 [[package]]
 name = "wezel_cli"
-version = "0.1.3-pre"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "clap",
