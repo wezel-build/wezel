@@ -276,16 +276,28 @@ fn fetch_release_by_tag(repo: &str, tag: &str) -> Result<serde_json::Value, Fetc
     github_get_json(&url)
 }
 
+/// GitHub auth token for API + asset requests. Prefers `GH_TOKEN` (the `gh`
+/// CLI's convention, and what wezel's own GitHub Action sets); falls back to
+/// the now-deprecated `GITHUB_TOKEN` for back-compat with older setups.
+fn github_token() -> Option<String> {
+    for var in ["GH_TOKEN", "GITHUB_TOKEN"] {
+        if let Ok(token) = std::env::var(var) {
+            let token = token.trim();
+            if !token.is_empty() {
+                return Some(token.to_string());
+            }
+        }
+    }
+    None
+}
+
 fn github_get_json(url: &str) -> Result<serde_json::Value, FetchError> {
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(30))
         .build();
     let mut req = agent.get(url).set("User-Agent", "wezel-cli");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        let token = token.trim();
-        if !token.is_empty() {
-            req = req.set("Authorization", &format!("Bearer {token}"));
-        }
+    if let Some(token) = github_token() {
+        req = req.set("Authorization", &format!("Bearer {token}"));
     }
     let resp = req
         .call()
@@ -299,11 +311,8 @@ fn http_get_bytes(url: &str, binary_name: &str) -> Result<Vec<u8>, FetchError> {
         .timeout(std::time::Duration::from_secs(120))
         .build();
     let mut req = agent.get(url).set("User-Agent", "wezel-cli");
-    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-        let token = token.trim();
-        if !token.is_empty() {
-            req = req.set("Authorization", &format!("Bearer {token}"));
-        }
+    if let Some(token) = github_token() {
+        req = req.set("Authorization", &format!("Bearer {token}"));
     }
     let resp = req
         .call()
