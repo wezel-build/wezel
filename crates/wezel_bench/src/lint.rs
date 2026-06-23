@@ -5,7 +5,8 @@ use owo_colors::OwoColorize;
 
 use wezel_types::{ForagerSchema, StepDef};
 
-use crate::{Workspace, build_bundle, fetch, lockfile, parse_experiment};
+use crate::workspace::Scratch;
+use crate::{Workspace, build_bundle, fetch, git, lockfile, parse_experiment};
 
 /// Returns true when `.wezel/schema.json` doesn't match what `wezel project
 /// tool sync` would produce right now (or is missing). Sidecar problems are
@@ -86,6 +87,80 @@ struct ExperimentResult {
     diagnostics: Vec<LintDiagnostic>,
 }
 
+/// Replay an experiment's step patches against a fresh `HEAD` checkout to
+/// confirm they still apply. Patches are cumulative — a later step's patch is
+/// authored against the tree left by the earlier ones — so they're applied in
+/// order to one evolving scratch clone, not checked independently. The clone is
+/// at `commit_sha` (HEAD), and patches are read from that committed tree, so
+/// this matches what the queue runner (`experiment next`) would apply.
+///
+/// Stops at the first failing patch: every later patch is built on it, so
+/// continuing would just emit spurious "does not apply" noise.
+///
+/// Returns one diagnostic per failing patch (at most one). Steps whose patch
+/// file is missing are skipped — the file-existence check already owns that.
+/// When a step declares a patch present in the working tree but absent at HEAD
+/// (a not-yet-committed experiment), a note is printed and the step skipped,
+/// since there's nothing committed to apply.
+fn check_patches_apply(
+    workspace: &Workspace,
+    experiment_name: &str,
+    commit_sha: &str,
+    steps: &[StepDef],
+) -> Result<Vec<LintDiagnostic>> {
+    let mut diagnostics = Vec::new();
+    if !steps.iter().any(|s| s.diff.is_some()) {
+        return Ok(diagnostics);
+    }
+
+    let scratch = Scratch::create(&workspace.project_dir, commit_sha)
+        .with_context(|| format!("preparing scratch checkout at {commit_sha}"))?;
+    let scratch_experiment_dir = scratch
+        .project_dir()
+        .join(".wezel")
+        .join("experiments")
+        .join(experiment_name);
+    let short = &commit_sha[..7.min(commit_sha.len())];
+
+    for step in steps {
+        let Some(ref patch_stem) = step.diff else {
+            continue;
+        };
+        let patch_path = scratch_experiment_dir.join(format!("{patch_stem}.patch"));
+        if !patch_path.is_file() {
+            // Not committed at HEAD yet: there's nothing to apply against the
+            // committed tree. Note it so a "no errors" result isn't mistaken
+            // for "the patch was checked".
+            let in_worktree = workspace
+                .project_dir
+                .join(".wezel")
+                .join("experiments")
+                .join(experiment_name)
+                .join(format!("{patch_stem}.patch"))
+                .is_file();
+            if in_worktree {
+                println!(
+                    "  {} {}: {}.patch not committed at {short} — applicability not checked",
+                    "note".yellow(),
+                    step.name.dimmed(),
+                    patch_stem,
+                );
+            }
+            continue;
+        }
+
+        if let Err(e) = git::apply_patch_captured(scratch.path(), &patch_path) {
+            diagnostics.push(LintDiagnostic {
+                step: step.name.clone(),
+                message: format!("{patch_stem}.patch does not apply cleanly at {short}: {e}"),
+            });
+            break;
+        }
+    }
+
+    Ok(diagnostics)
+}
+
 pub fn run_lint(
     workspace: &Workspace,
     mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
@@ -116,6 +191,20 @@ pub fn run_lint(
     if dirs.is_empty() {
         bail!("no experiments found in {}", experiments_dir.display());
     }
+
+    // Patch-applicability checking needs a checkout to clone from. Resolve HEAD
+    // once; when there isn't one (no git repo / unborn HEAD) skip it with a
+    // warning rather than failing — the rest of lint is checkout-independent.
+    let head_sha = match git::current_sha(&workspace.project_dir) {
+        Ok(sha) => Some(sha),
+        Err(_) => {
+            println!(
+                "  {} no git checkout (HEAD not resolvable) — skipping patch-applicability checks",
+                "note".yellow(),
+            );
+            None
+        }
+    };
 
     let mut results: Vec<ExperimentResult> = Vec::new();
     let mut warned_plugins: HashSet<String> = HashSet::new();
@@ -281,6 +370,17 @@ pub fn run_lint(
                         ),
                     });
                 }
+            }
+        }
+
+        // Replay the step patches against HEAD to confirm they still apply.
+        if let Some(ref sha) = head_sha {
+            match check_patches_apply(workspace, &experiment_name, sha, &steps) {
+                Ok(patch_diags) => diagnostics.extend(patch_diags),
+                Err(e) => diagnostics.push(LintDiagnostic {
+                    step: String::new(),
+                    message: format!("could not check patch applicability: {e}"),
+                }),
             }
         }
 

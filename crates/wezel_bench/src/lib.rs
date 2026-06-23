@@ -518,6 +518,28 @@ pub mod git {
         Ok(())
     }
 
+    /// Like [`apply_patch`], but captures git's stderr instead of inheriting it
+    /// and folds it into the error. Used by lint so a patch that won't apply
+    /// becomes a clean diagnostic line rather than raw `error: patch failed`
+    /// noise on the terminal.
+    pub fn apply_patch_captured(project_dir: &Path, patch: &Path) -> Result<()> {
+        let out = Command::new("git")
+            .args(["apply", &patch.to_string_lossy()])
+            .current_dir(project_dir)
+            .output()
+            .context("running git apply")?;
+        if !out.status.success() {
+            let detail = String::from_utf8_lossy(&out.stderr);
+            let detail = detail.trim();
+            bail!(if detail.is_empty() {
+                "git apply failed".to_string()
+            } else {
+                detail.to_string()
+            });
+        }
+        Ok(())
+    }
+
     pub fn reset_worktree(repo_dir: &Path) -> Result<()> {
         let status = Command::new("git")
             .args(["checkout", "."])

@@ -137,6 +137,43 @@ tag = "v0.0.0"
         let lock_path = self.project_dir.join(".wezel/wezel.lock");
         fs::write(lock_path, "version = 1\n").unwrap();
     }
+
+    /// Write an arbitrary file (relative to the project dir).
+    fn write_file(&self, rel: &str, content: &str) {
+        let path = self.project_dir.join(rel);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, content).unwrap();
+    }
+
+    /// Write `<stem>.patch` into an experiment dir.
+    fn write_patch(&self, experiment: &str, stem: &str, content: &str) {
+        let dir = self.project_dir.join(".wezel/experiments").join(experiment);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(format!("{stem}.patch")), content).unwrap();
+    }
+
+    /// Initialize a git repo at the project dir and commit everything. The
+    /// patch-applicability check clones `HEAD`, so anything it needs to see —
+    /// experiment dirs, patch files, the files patches target — must be
+    /// committed first.
+    fn git_commit_all(&self) {
+        let run = |args: &[&str]| {
+            let ok = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&self.project_dir)
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "git {args:?} failed");
+        };
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", "init"]);
+    }
 }
 
 impl Drop for LintFixture {
@@ -215,6 +252,52 @@ fn lint_fails_when_patch_file_missing() {
     );
     // No step1.patch file written.
     assert!(fx.run_lint().is_err());
+}
+
+#[test]
+fn lint_fails_when_patch_does_not_apply() {
+    let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
+    fx.lock_forager("exec");
+    fx.install_fake_forager("exec");
+    fx.write_bundle();
+    fx.write_file("foo.txt", "a\n");
+    fx.add_experiment(
+        "e1",
+        &experiment_with_step("exec", "cmd = \"true\"\napply-diff = true"),
+    );
+    // Context line doesn't exist in foo.txt, so `git apply` rejects it.
+    fx.write_patch(
+        "e1",
+        "step1",
+        "--- a/foo.txt\n+++ b/foo.txt\n@@ -1,1 +1,1 @@\n-nonexistent\n+replacement\n",
+    );
+    fx.git_commit_all();
+    let err = fx.run_lint().unwrap_err().to_string();
+    assert!(
+        err.contains("error"),
+        "expected lint to fail when the patch doesn't apply, got: {err}"
+    );
+}
+
+#[test]
+fn lint_passes_when_patch_applies_cleanly() {
+    let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
+    fx.lock_forager("exec");
+    fx.install_fake_forager("exec");
+    fx.write_bundle();
+    fx.write_file("foo.txt", "a\n");
+    fx.add_experiment(
+        "e1",
+        &experiment_with_step("exec", "cmd = \"true\"\napply-diff = true"),
+    );
+    fx.write_patch(
+        "e1",
+        "step1",
+        "--- a/foo.txt\n+++ b/foo.txt\n@@ -1,1 +1,1 @@\n-a\n+b\n",
+    );
+    fx.git_commit_all();
+    fx.run_lint()
+        .expect("lint should pass when the patch applies cleanly");
 }
 
 #[test]
