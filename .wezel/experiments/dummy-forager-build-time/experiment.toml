@@ -12,4 +12,4 @@ command = "build"
 apply-diff = true
 build_target = ["forager_sdk"]
 examples = ["dummy_forager"]
-summary.incremental-build-time = { outcome = "time_ms", aggregation = "min", samples = 5 }
+summary.incremental-build-time = { outcome = "time_ms", aggregation = "min", samples = 15 }

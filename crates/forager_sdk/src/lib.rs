@@ -47,14 +47,14 @@ pub trait Forager {
 /// Entry point used by [`forager_main!`]. Handles `--schema`, reads
 /// `FORAGER_INPUTS`, invokes [`Forager::run`], and writes the envelope to
 /// `FORAGER_OUT`.
-pub fn run<F: Forager>() -> Result<()> {
+fn run(forager: ErasedForager) -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).is_some_and(|a| a == "--schema") {
         let schema = ForagerSchema {
-            name: F::NAME.into(),
-            description: F::DESCRIPTION.into(),
-            inputs: F::inputs_schema(),
-            outcomes_doc: F::OUTCOMES_DOC.into(),
+            name: forager.name.into(),
+            description: forager.description.into(),
+            inputs: (forager.input_schema)(),
+            outcomes_doc: forager.outcomes_doc.into(),
         };
         println!("{}", serde_json::to_string_pretty(&schema)?);
         return Ok(());
@@ -69,19 +69,39 @@ pub fn run<F: Forager>() -> Result<()> {
 
     let inputs_raw = std::fs::read_to_string(&inputs_path)
         .with_context(|| format!("reading {}", inputs_path.display()))?;
-    let inputs: F::Inputs = serde_json::from_str(&inputs_raw).context("parsing FORAGER_INPUTS")?;
 
-    let outcomes = F::run(inputs)?;
-
+    let outcomes = (forager.run)(&inputs_raw)?;
     let envelope = ForagerPluginEnvelope { outcomes };
     let body = serde_json::to_string(&envelope).context("serialising envelope")?;
     std::fs::write(&out_path, body).with_context(|| format!("writing {}", out_path.display()))?;
+
     Ok(())
+}
+
+struct ErasedForager {
+    name: &'static str,
+    description: &'static str,
+    outcomes_doc: &'static str,
+    run: fn(&str) -> Result<Vec<ForagerPluginOutput>>,
+    input_schema: fn() -> serde_json::Value,
 }
 
 #[doc(hidden)]
 pub fn __main<F: Forager>() {
-    if let Err(e) = run::<F>() {
+    let forager = ErasedForager {
+        name: F::NAME,
+        description: F::DESCRIPTION,
+        outcomes_doc: F::OUTCOMES_DOC,
+        run: |inputs_raw| {
+            let inputs: F::Inputs =
+                serde_json::from_str(&inputs_raw).context("parsing FORAGER_INPUTS")?;
+
+            let outcomes = F::run(inputs)?;
+            Ok(outcomes)
+        },
+        input_schema: F::inputs_schema,
+    };
+    if let Err(e) = run(forager) {
         eprintln!("forager-{}: {e:#}", F::NAME);
         std::process::exit(1);
     }
