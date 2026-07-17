@@ -15,3 +15,4 @@ wezel_types = { workspace = true }
 
 [[example]]
 name = "dummy_forager"
+path = "examples/dummy_forager.rs"

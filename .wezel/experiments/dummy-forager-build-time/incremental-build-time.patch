@@ -1,0 +1,13 @@
+diff --git a/crates/forager_sdk/examples/dummy_forager.rs b/crates/forager_sdk/examples/dummy_forager.rs
+index 564b677..d16faf2 100644
+--- a/crates/forager_sdk/examples/dummy_forager.rs
++++ b/crates/forager_sdk/examples/dummy_forager.rs
+@@ -3,7 +3,7 @@ use forager_sdk::{Forager, forager_main};
+ struct DummyForager;
+ 
+ impl Forager for DummyForager {
+-    const NAME: &'static str = "dummy";
++    const NAME: &'static str = "dummy description";
+ 
+     const DESCRIPTION: &'static str = "An example forager";
+ 

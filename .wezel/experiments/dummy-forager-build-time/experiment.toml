@@ -1,0 +1,15 @@
+#:schema ../../schema.json
+description = "Measures build time of a dummy forager implementation"
+
+[step.cargo.clean-build]
+command = "build"
+build_target = ["forager_sdk"]
+examples = ["dummy_forager"]
+summary.clean-build-time = { outcome = "time_ms", aggregation = "min", samples = 5 }
+
+[step.cargo.incremental-build-time]
+command = "build"
+apply-diff = true
+build_target = ["forager_sdk"]
+examples = ["dummy_forager"]
+summary.incremental-build-time = { outcome = "time_ms", aggregation = "min", samples = 5 }
