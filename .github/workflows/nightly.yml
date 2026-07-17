@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 6 * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Build a nightly even if HEAD is unchanged since the last one"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -18,14 +23,38 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       tag: ${{ steps.version.outputs.tag }}
       cargo_version: ${{ steps.version.outputs.cargo_version }}
+      should_release: ${{ steps.changed.outputs.should_release }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Skip if HEAD is unchanged since the last nightly
+        id: changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ inputs.force }}
+        shell: bash
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          LAST_TAG=$(gh release list --limit 30 --json tagName \
+            --jq 'map(select(.tagName | test("-pre\\."))) | .[0].tagName // ""')
+          LAST_SHA="${LAST_TAG##*+}"
+          echo "HEAD=${SHORT_SHA} last nightly tag=${LAST_TAG:-<none>} (sha=${LAST_SHA:-<none>})"
+          if [ "$FORCE" = "true" ]; then
+            echo "Forced build requested; proceeding."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$LAST_SHA" ] && [ "$LAST_SHA" = "$SHORT_SHA" ]; then
+            echo "HEAD unchanged since last nightly; skipping."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Install dist
+        if: ${{ steps.changed.outputs.should_release == 'true' }}
         shell: bash
         run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.31.0/cargo-dist-installer.sh | sh"
       - id: version
+        if: ${{ steps.changed.outputs.should_release == 'true' }}
         shell: bash
         run: |
           BASE_VERSION=$(grep -m1 '^version' crates/wezel_cli/Cargo.toml | sed -E 's/.*"(.+)".*/\1/')
@@ -37,16 +66,19 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "Nightly tag: ${TAG}"
       - name: Pin wezel_cli to nightly version
+        if: ${{ steps.changed.outputs.should_release == 'true' }}
         shell: bash
         run: |
           sed -i.bak -E "s/^version = .*/version = \"${{ steps.version.outputs.cargo_version }}\"/" crates/wezel_cli/Cargo.toml
           rm crates/wezel_cli/Cargo.toml.bak
           grep '^version' crates/wezel_cli/Cargo.toml
       - id: plan
+        if: ${{ steps.changed.outputs.should_release == 'true' }}
         run: |
           dist plan --tag="${{ steps.version.outputs.tag }}" --output-format=json > plan.json
           echo "matrix=$(jq -c '.ci.github.artifacts_matrix' plan.json)" >> "$GITHUB_OUTPUT"
       - name: Cache dist
+        if: ${{ steps.changed.outputs.should_release == 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: cargo-dist-cache
@@ -55,7 +87,7 @@ jobs:
   build-local:
     name: build-local (${{ join(matrix.targets, ', ') }})
     needs: plan
-    if: ${{ fromJson(needs.plan.outputs.matrix).include != null }}
+    if: ${{ needs.plan.outputs.should_release == 'true' && fromJson(needs.plan.outputs.matrix).include != null }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
@@ -106,6 +138,7 @@ jobs:
 
   build-global:
     needs: [plan, build-local]
+    if: ${{ needs.plan.outputs.should_release == 'true' }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
@@ -147,7 +180,7 @@ jobs:
 
   release:
     needs: [plan, build-local, build-global]
-    if: ${{ always() && needs.build-local.result == 'success' && needs.build-global.result == 'success' }}
+    if: ${{ always() && needs.plan.outputs.should_release == 'true' && needs.build-local.result == 'success' && needs.build-global.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
