@@ -94,7 +94,7 @@ pub fn __main<F: Forager>() {
         outcomes_doc: F::OUTCOMES_DOC,
         run: |inputs_raw| {
             let inputs: F::Inputs =
-                serde_json::from_str(&inputs_raw).context("parsing FORAGER_INPUTS")?;
+                serde_json::from_str(inputs_raw).context("parsing FORAGER_INPUTS")?;
 
             let outcomes = F::run(inputs)?;
             Ok(outcomes)
