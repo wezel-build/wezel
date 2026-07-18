@@ -12,3 +12,7 @@ schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 wezel_types = { workspace = true }
+
+[[example]]
+name = "dummy_forager"
+path = "examples/dummy_forager.rs"

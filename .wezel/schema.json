@@ -72,6 +72,11 @@
       "additionalProperties": false,
       "description": "Body of a `[step.<tool>.<step_name>]` table. The tool name is recovered from the outer key, not a field; flatten-collected `rest` is forwarded to the forager plugin via `FORAGER_INPUTS` as JSON.",
       "properties": {
+        "all_targets": {
+          "default": false,
+          "description": "Build every target (lib, bins, tests, benches, examples) via `--all-targets`.",
+          "type": "boolean"
+        },
         "apply-diff": {
           "anyOf": [
             {
@@ -82,6 +87,28 @@
             }
           ],
           "description": "Apply a patch before running this step. `true` uses `<step name>.patch`; a string overrides the filename."
+        },
+        "benches": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TargetSpecifier"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Benchmarks to build, as `--benches` (all) or `--bench <name>` per name. Omit to build none."
+        },
+        "bins": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TargetSpecifier"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Binaries to build, as `--bins` (all) or `--bin <name>` per name. Omit to build none."
         },
         "build_target": {
           "allOf": [
@@ -105,6 +132,22 @@
             "null"
           ]
         },
+        "examples": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TargetSpecifier"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Examples to build, as `--examples` (all) or `--example <name>` per name. Omit to build none."
+        },
+        "lib": {
+          "default": false,
+          "description": "Build the library target via `--lib`.",
+          "type": "boolean"
+        },
         "profile": {
           "default": null,
           "description": "Cargo profile to use, propagated as `--profile <value>`. Omit to use the default profile.",
@@ -122,7 +165,7 @@
               {
                 "properties": {
                   "outcome": {
-                    "description": "**`time_ms`** — how long `cargo <command>` took, in milliseconds.",
+                    "description": "**`time_ms`** — cargo's own reported build duration (the `Finished … in <t>` line), in milliseconds. Excludes process startup and dependency resolution.",
                     "type": "string"
                   }
                 }
@@ -131,6 +174,17 @@
           },
           "description": "Summaries emitted by this step, keyed by summary name.",
           "type": "object"
+        },
+        "tests": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TargetSpecifier"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Test targets to build, as `--tests` (all) or `--test <name>` per name. Omit to build none."
         }
       },
       "required": [
@@ -322,7 +376,7 @@
           "additionalProperties": {
             "$ref": "#/definitions/Step_cargo"
           },
-          "description": "Runs `cargo <command>` and records wall-clock time",
+          "description": "Runs `cargo <command>` and records the build time cargo reports",
           "type": "object"
         },
         "exec": {
