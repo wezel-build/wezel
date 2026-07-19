@@ -167,10 +167,10 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
             )));
         }
 
-        let dest = self.workspace.plugin_dir.join(&binary_name);
+        let dest = self.workspace.plugin_path(name, &archive_sha);
         fetch::extract_and_install(&bytes, &binary_name, &dest)?;
         fetch::strip_quarantine(&dest);
-        write_schema_sidecar(self.workspace, name, &dest)?;
+        write_schema_sidecar(name, &dest)?;
         eprintln!(
             "Installed `{binary_name}` ({}) from github.com/{} to {}",
             resolved.tag,
@@ -333,11 +333,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// Run `<binary> --schema` once at install time and write the JSON to the
 /// schema sidecar so lint and runtime tools can read it without spawning a
 /// child process.
-fn write_schema_sidecar(
-    workspace: &Workspace,
-    forager_name: &str,
-    binary: &std::path::Path,
-) -> Result<(), FetchError> {
+fn write_schema_sidecar(forager_name: &str, binary: &std::path::Path) -> Result<(), FetchError> {
     let out = std::process::Command::new(binary)
         .arg("--schema")
         .output()
@@ -363,7 +359,7 @@ fn write_schema_sidecar(
             parsed.name,
         )));
     }
-    let schema_path = workspace.schema_path(forager_name);
+    let schema_path = Workspace::schema_sidecar_path(binary);
     std::fs::write(&schema_path, &out.stdout).map_err(|e| {
         FetchError::Other(anyhow::anyhow!("writing {}: {e}", schema_path.display()))
     })?;

@@ -540,8 +540,8 @@ fn resolve_project_dir(project_dir: Option<PathBuf>) -> PathBuf {
 }
 
 fn make_workspace(project_dir: PathBuf) -> anyhow::Result<wezel_bench::Workspace> {
-    let plugin_dir = wezel_bench::Workspace::default_plugin_dir()?;
-    wezel_bench::Workspace::discover(project_dir, plugin_dir)
+    let tool_store = wezel_bench::Workspace::default_tool_store()?;
+    wezel_bench::Workspace::discover(project_dir, tool_store)
 }
 
 /// Machine-readable result of `wezel experiment next --output-format json`.
@@ -614,7 +614,7 @@ fn next_cmd(project_dir: PathBuf, output_format: OutputFormat) -> anyhow::Result
         &run.experiment_name,
         &ws.project_dir,
         &run.commit_sha,
-        &ws.plugin_dir,
+        &ws.tool_store,
         Some(&mut caching),
         None,
     );
@@ -985,7 +985,7 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
     let mut installed = 0usize;
     let mut skipped = 0usize;
     for name in &foragers {
-        if ws.resolve_plugin(name).is_some() && sidecar_is_current(ws, name) {
+        if sidecar_is_current(ws, name) {
             println!("  forager-{name}  up to date");
             skipped += 1;
         } else {
@@ -1015,7 +1015,10 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
 fn write_schema_bundle(ws: &wezel_bench::Workspace, foragers: &[String]) -> anyhow::Result<()> {
     let mut sidecars = Vec::with_capacity(foragers.len());
     for name in foragers {
-        let path = ws.schema_path(name);
+        let binary = ws
+            .resolve_plugin(name)
+            .with_context(|| format!("forager-{name} not installed"))?;
+        let path = wezel_bench::Workspace::schema_sidecar_path(&binary);
         let raw = std::fs::read_to_string(&path)
             .with_context(|| format!("reading sidecar {}", path.display()))?;
         let schema: wezel_types::ForagerSchema = serde_json::from_str(&raw)
@@ -1040,7 +1043,10 @@ fn write_schema_bundle(ws: &wezel_bench::Workspace, foragers: &[String]) -> anyh
 /// [`wezel_types::ForagerSchema`] shape. A stale-format file is treated as
 /// missing so `tool sync` re-fetches it.
 fn sidecar_is_current(ws: &wezel_bench::Workspace, forager: &str) -> bool {
-    let path = ws.schema_path(forager);
+    let Some(binary) = ws.resolve_plugin(forager) else {
+        return false;
+    };
+    let path = wezel_bench::Workspace::schema_sidecar_path(&binary);
     let Ok(raw) = std::fs::read_to_string(&path) else {
         return false;
     };

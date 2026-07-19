@@ -476,9 +476,9 @@ pub struct ExperimentPrResponse {
 // ── Forager schema (sidecar emitted by `forager-<name> --schema`) ────────────
 
 /// Self-description a forager prints in response to `--schema`. The wezel CLI
-/// caches the JSON to `<plugin_dir>/forager-<name>.schema.json` at install
-/// time and reads it back to compose the bundled `.wezel/schema.json` used by
-/// editors for `experiment.toml`.
+/// caches the JSON next to the installed binary at install time and reads it
+/// back to compose the bundled `.wezel/schema.json` used by editors for
+/// `experiment.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForagerSchema {
     /// Forager identifier; must match `forager-<name>` in the binary name.
