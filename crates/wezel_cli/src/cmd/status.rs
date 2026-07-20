@@ -5,8 +5,8 @@ use anyhow::Result;
 use wezel_bench::{Workspace, lint, lockfile};
 
 pub fn status_cmd(project_dir: &Path) -> Result<()> {
-    let plugin_dir = Workspace::default_plugin_dir()?;
-    let ws = Workspace::discover(project_dir.to_path_buf(), plugin_dir)?;
+    let tool_store = Workspace::default_tool_store()?;
+    let ws = Workspace::discover(project_dir.to_path_buf(), tool_store)?;
     let config_path = ws.project_dir.join(".wezel").join("config.toml");
 
     println!("project:  {} ({})", ws.config.name, ws.config.project_id);

@@ -9,59 +9,66 @@ use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
-use crate::ProjectConfig;
+use crate::{ProjectConfig, fetch, lockfile};
 
 #[derive(Debug)]
 pub struct Workspace {
     pub project_dir: PathBuf,
-    /// Where forager binaries live. Tests pass a tempdir; the CLI passes
-    /// the dir of the running wezel binary.
-    pub plugin_dir: PathBuf,
+    /// Content-addressed tool store root; binaries live at
+    /// `<tool_store>/<archive-sha>/forager-<name>`.
+    pub tool_store: PathBuf,
     pub config: ProjectConfig,
 }
 
 impl Workspace {
-    /// Load `.wezel/config.toml` from `project_dir` and pair it with the
-    /// caller-chosen plugin store directory.
-    pub fn discover(project_dir: PathBuf, plugin_dir: PathBuf) -> Result<Self> {
+    pub fn discover(project_dir: PathBuf, tool_store: PathBuf) -> Result<Self> {
         let canonical_project_dir = std::fs::canonicalize(&project_dir)?;
         let config = ProjectConfig::load(&canonical_project_dir)?;
         Ok(Self {
             project_dir,
-            plugin_dir,
+            tool_store,
             config,
         })
     }
 
-    /// Resolve the absolute path of a forager binary in the local store, or
-    /// `None` if it isn't installed.
+    /// Path of the forager binary pinned in `wezel.lock` for the current
+    /// target, or `None` if that version isn't installed.
     pub fn resolve_plugin(&self, forager: &str) -> Option<PathBuf> {
-        let candidate = self.plugin_dir.join(format!("forager-{forager}"));
-        candidate.is_file().then_some(candidate)
+        let binary = self.plugin_path(forager, &self.locked_sha(forager)?);
+        binary.is_file().then_some(binary)
     }
 
-    /// Path to the cached `--schema` JSON sidecar for a forager. Written by
-    /// the installer; read by lint so we don't shell out per-invocation.
-    pub fn schema_path(&self, forager: &str) -> PathBuf {
-        self.plugin_dir
-            .join(format!("forager-{forager}.schema.json"))
+    /// Locked archive sha (hex, no `sha256:` prefix) for `forager` on the
+    /// current target.
+    fn locked_sha(&self, forager: &str) -> Option<String> {
+        let target = fetch::current_target()?;
+        let lock = lockfile::load(&self.project_dir).ok()?;
+        let key = lock.tools.foragers.get(forager)?.assets.get(target)?;
+        Some(key.strip_prefix("sha256:").unwrap_or(key).to_string())
     }
 
-    /// Path to the project-scoped editor schema bundle. Rewritten on every
-    /// `wezel project tool sync`; each experiment.toml references it via `#:schema`.
+    pub fn plugin_path(&self, forager: &str, sha_hex: &str) -> PathBuf {
+        self.tool_store
+            .join(sha_hex)
+            .join(format!("forager-{forager}"))
+    }
+
+    /// The `--schema` sidecar sits next to its binary.
+    pub fn schema_sidecar_path(binary: &Path) -> PathBuf {
+        let mut name = binary.file_name().unwrap_or_default().to_os_string();
+        name.push(".schema.json");
+        binary.with_file_name(name)
+    }
+
     pub fn bundle_schema_path(&self) -> PathBuf {
         self.project_dir.join(".wezel").join("schema.json")
     }
 
-    /// Default plugin store: the directory containing the running wezel
-    /// binary. Used by the CLI; tests should pass a tempdir to `discover`
-    /// directly.
-    pub fn default_plugin_dir() -> Result<PathBuf> {
-        std::env::current_exe()
-            .context("locating current exe")?
-            .parent()
-            .map(|p| p.to_path_buf())
-            .context("current exe has no parent directory")
+    pub fn default_tool_store() -> Result<PathBuf> {
+        Ok(dirs::home_dir()
+            .context("could not determine home directory")?
+            .join(".wezel")
+            .join("tools"))
     }
 }
 

@@ -12,15 +12,21 @@ fn make_tempdir(prefix: &str) -> PathBuf {
     dir
 }
 
+/// Deterministic, valid 64-char hex stand-in for an archive sha, unique per name.
+fn fake_sha(name: &str) -> String {
+    let hex: String = name.bytes().map(|b| format!("{b:02x}")).collect();
+    format!("{hex:a<64.64}")
+}
+
 struct LintFixture {
     project_dir: PathBuf,
-    plugin_dir: PathBuf,
+    tool_store: PathBuf,
 }
 
 impl LintFixture {
     fn new(config_toml: &str) -> Self {
         let project_dir = make_tempdir("wezel-test-lint");
-        let plugin_dir = make_tempdir("wezel-test-lint-plugins");
+        let tool_store = make_tempdir("wezel-test-lint-plugins");
         let wezel_dir = project_dir.join(".wezel");
         fs::create_dir_all(wezel_dir.join("experiments")).unwrap();
         fs::write(
@@ -33,8 +39,16 @@ impl LintFixture {
         .unwrap();
         Self {
             project_dir,
-            plugin_dir,
+            tool_store,
         }
+    }
+
+    /// Path a fake forager binary occupies in the content-addressed store,
+    /// matching [`Workspace::plugin_path`] for [`fake_sha`].
+    fn plugin_path(&self, name: &str) -> PathBuf {
+        self.tool_store
+            .join(fake_sha(name))
+            .join(format!("forager-{name}"))
     }
 
     fn add_experiment(&self, name: &str, toml: &str) -> PathBuf {
@@ -61,14 +75,15 @@ impl LintFixture {
     }
 
     fn install_fake_forager_with_inputs(&self, name: &str, inputs: serde_json::Value) {
-        let path = self.plugin_dir.join(format!("forager-{name}"));
+        let path = self.plugin_path(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
         }
-        let schema_path = self.plugin_dir.join(format!("forager-{name}.schema.json"));
+        let schema_path = Workspace::schema_sidecar_path(&path);
         let sidecar = wezel_types::ForagerSchema {
             name: name.into(),
             description: format!("fake {name}"),
@@ -88,18 +103,23 @@ impl LintFixture {
         } else {
             "version = 1\n".to_string()
         };
+        let target = wezel_bench::fetch::current_target().expect("supported target");
         body.push_str(&format!(
             r#"
 [tools.foragers.{name}]
 github = "acme/forager_{name}"
 tag = "v0.0.0"
+
+[tools.foragers.{name}.assets]
+"{target}" = "sha256:{sha}"
 "#,
+            sha = fake_sha(name),
         ));
         fs::write(&lock_path, body).unwrap();
     }
 
     fn workspace(&self) -> Workspace {
-        Workspace::discover(self.project_dir.clone(), self.plugin_dir.clone())
+        Workspace::discover(self.project_dir.clone(), self.tool_store.clone())
             .expect("workspace discovery")
     }
 
@@ -115,7 +135,9 @@ tag = "v0.0.0"
             .foragers
             .keys()
             .map(|name| {
-                let raw = fs::read_to_string(ws.schema_path(name)).expect("sidecar present");
+                let binary = ws.resolve_plugin(name).expect("plugin installed");
+                let raw = fs::read_to_string(Workspace::schema_sidecar_path(&binary))
+                    .expect("sidecar present");
                 serde_json::from_str(&raw).expect("sidecar parses")
             })
             .collect();
@@ -179,7 +201,7 @@ tag = "v0.0.0"
 impl Drop for LintFixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.project_dir);
-        let _ = fs::remove_dir_all(&self.plugin_dir);
+        let _ = fs::remove_dir_all(&self.tool_store);
     }
 }
 
@@ -305,7 +327,8 @@ fn lint_fails_when_schema_sidecar_missing() {
     let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
     fx.lock_forager("exec");
     // Install just the binary, no sidecar.
-    let path = fx.plugin_dir.join("forager-exec");
+    let path = fx.plugin_path("exec");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
     #[cfg(unix)]
     {

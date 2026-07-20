@@ -19,8 +19,10 @@ pub fn bundle_is_stale(workspace: &Workspace) -> bool {
     };
     let mut sidecars = Vec::new();
     for name in workspace.config.tools.foragers.keys() {
-        let path = workspace.schema_path(name);
-        let Ok(raw) = std::fs::read_to_string(&path) else {
+        let Some(binary) = workspace.resolve_plugin(name) else {
+            return false;
+        };
+        let Ok(raw) = std::fs::read_to_string(Workspace::schema_sidecar_path(&binary)) else {
             return false;
         };
         let Ok(schema) = serde_json::from_str::<ForagerSchema>(&raw) else {
@@ -332,7 +334,7 @@ pub fn run_lint(
 
             // Every declared forager must end up resolvable — its cached
             // schema is part of the contract that lint validates.
-            if workspace.resolve_plugin(&step.forager).is_none() {
+            let Some(binary) = workspace.resolve_plugin(&step.forager) else {
                 if warned_plugins.insert(step.forager.clone()) {
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),
@@ -340,11 +342,11 @@ pub fn run_lint(
                     });
                 }
                 continue;
-            }
+            };
 
             // Read the cached schema sidecar that the installer wrote. Lint
             // never invokes the binary for schema discovery.
-            let schema_path = workspace.schema_path(&step.forager);
+            let schema_path = Workspace::schema_sidecar_path(&binary);
             match std::fs::read_to_string(&schema_path) {
                 Ok(raw) => match serde_json::from_str::<wezel_types::ForagerSchema>(&raw) {
                     Ok(sidecar) => {

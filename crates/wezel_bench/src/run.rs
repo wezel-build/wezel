@@ -208,7 +208,7 @@ pub fn run_experiment(
         experiment_name,
         scratch,
         &commit_sha,
-        &workspace.plugin_dir,
+        &workspace.tool_store,
         fetcher,
         reporter,
     )
@@ -226,13 +226,13 @@ pub fn run_experiment_at(
     experiment_name: &str,
     repo_src: &Path,
     sha: &str,
-    plugin_dir: &Path,
+    tool_store: &Path,
     fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
     reporter: Option<&dyn RunReporter>,
 ) -> Result<(Vec<ExperimentRunStep>, Vec<SummaryDef>)> {
     git::ensure_commit(repo_src, sha)?;
     let scratch = Scratch::create(repo_src, sha)?;
-    run_in_scratch(experiment_name, scratch, sha, plugin_dir, fetcher, reporter)
+    run_in_scratch(experiment_name, scratch, sha, tool_store, fetcher, reporter)
 }
 
 /// Shared execution engine: measure `experiment_name` inside an already-prepared
@@ -243,7 +243,7 @@ fn run_in_scratch(
     experiment_name: &str,
     scratch: Scratch,
     commit_sha: &str,
-    plugin_dir: &Path,
+    tool_store: &Path,
     mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
     reporter: Option<&dyn RunReporter>,
 ) -> Result<(Vec<ExperimentRunStep>, Vec<SummaryDef>)> {
@@ -251,7 +251,7 @@ fn run_in_scratch(
     let project_dir = scratch.project_dir();
     let scratch_workspace = Workspace {
         project_dir: project_dir.clone(),
-        plugin_dir: plugin_dir.to_path_buf(),
+        tool_store: tool_store.to_path_buf(),
         config: ProjectConfig::load(&project_dir)?,
     };
 
