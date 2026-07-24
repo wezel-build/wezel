@@ -192,6 +192,70 @@ pub enum Aggregation {
     Min,
 }
 
+/// Which way a metric improves. Declared by the forager that emits an outcome
+/// and propagated onto the produced summary, so regression detection knows
+/// whether an increase or a decrease is worse. Defaults to `LowerIsBetter` for
+/// backwards-compat with foragers and stored data predating this field.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(rename_all = "kebab-case")]
+pub enum MetricDirection {
+    #[default]
+    LowerIsBetter,
+    HigherIsBetter,
+}
+
+impl MetricDirection {
+    /// Kebab-case wire/DB spelling (`lower-is-better` / `higher-is-better`).
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LowerIsBetter => "lower-is-better",
+            Self::HigherIsBetter => "higher-is-better",
+        }
+    }
+
+    /// Whether this is the default (`LowerIsBetter`). Used to keep the field out
+    /// of serialized output when it carries no information.
+    fn is_default(&self) -> bool {
+        *self == Self::LowerIsBetter
+    }
+}
+
+/// Returned by [`MetricDirection`]'s [`FromStr`](std::str::FromStr) when the input is
+/// not a recognized kebab-case direction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseMetricDirectionError {
+    pub input: String,
+}
+
+impl std::fmt::Display for ParseMetricDirectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "unknown direction {:?}, expected `lower-is-better` or `higher-is-better`",
+            self.input
+        )
+    }
+}
+
+impl std::error::Error for ParseMetricDirectionError {}
+
+impl std::str::FromStr for MetricDirection {
+    type Err = ParseMetricDirectionError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "lower-is-better" => Ok(Self::LowerIsBetter),
+            "higher-is-better" => Ok(Self::HigherIsBetter),
+            _ => Err(ParseMetricDirectionError {
+                input: s.to_owned(),
+            }),
+        }
+    }
+}
+
 // ── Experiment TOML parsing ──────────────────────────────────────────────────
 
 /// Top-level shape of `.wezel/experiments/<name>/experiment.toml`.
@@ -324,22 +388,40 @@ impl std::fmt::Display for SummaryError {
 impl std::error::Error for SummaryError {}
 
 impl SummaryDef {
-    /// Pre-aggregation values matched by `step` + `measurement` + `filter`.
-    /// Callers wanting distribution data (n, min, max) alongside the scalar
-    /// can take it from here; `compute` reduces this to a single value.
-    pub fn matching_values(&self, steps: &[ExperimentRunStep]) -> Vec<f64> {
+    /// Outcomes matched by `step` + `measurement` + `filter`, before aggregation.
+    fn matching_outcomes<'a>(
+        &'a self,
+        steps: &'a [ExperimentRunStep],
+    ) -> impl Iterator<Item = &'a ForagerPluginOutput> {
         steps
             .iter()
-            .filter(|s| s.step == self.step)
+            .filter(move |s| s.step == self.step)
             .flat_map(|s| &s.measurements)
-            .filter(|m| m.name == self.measurement)
-            .filter(|m| {
+            .filter(move |m| m.name == self.measurement)
+            .filter(move |m| {
                 self.filter
                     .iter()
                     .all(|(k, v)| m.tags.get(k).map(|s| s.as_str()) == Some(v.as_str()))
             })
+    }
+
+    /// Pre-aggregation values matched by `step` + `measurement` + `filter`.
+    /// Callers wanting distribution data (n, min, max) alongside the scalar
+    /// can take it from here; `compute` reduces this to a single value.
+    pub fn matching_values(&self, steps: &[ExperimentRunStep]) -> Vec<f64> {
+        self.matching_outcomes(steps)
             .filter_map(|m| m.value.as_f64())
             .collect()
+    }
+
+    /// Direction of the produced summary, taken from the outcomes it aggregates.
+    /// A metric carries one direction, so the first matching outcome decides;
+    /// with no matches (or none set) this is the default `LowerIsBetter`.
+    pub fn direction(&self, steps: &[ExperimentRunStep]) -> MetricDirection {
+        self.matching_outcomes(steps)
+            .map(|m| m.direction)
+            .next()
+            .unwrap_or_default()
     }
 
     /// Compute this summary's value from a slice of plugin measurements.
@@ -402,10 +484,14 @@ pub struct ExperimentRun {
 }
 
 /// Measurement written by a forager plugin to `FORAGER_OUT`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ForagerPluginOutput {
     pub name: String,
     pub value: serde_json::Value,
+    /// Which way this metric improves. Set by the forager author; omitting it
+    /// (or reading older output) yields `LowerIsBetter`.
+    #[serde(default, skip_serializing_if = "crate::MetricDirection::is_default")]
+    pub direction: MetricDirection,
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub tags: IndexMap<String, String>,
 }
@@ -605,4 +691,63 @@ pub struct BuildEvent {
     /// Output from the pheromone handler, if available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pheromone: Option<PheromoneOutput>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn direction_round_trips_kebab_case() {
+        assert_eq!(
+            serde_json::to_value(MetricDirection::HigherIsBetter).unwrap(),
+            serde_json::json!("higher-is-better")
+        );
+        assert_eq!(
+            "lower-is-better".parse::<MetricDirection>().unwrap(),
+            MetricDirection::LowerIsBetter
+        );
+        assert!("sideways".parse::<MetricDirection>().is_err());
+    }
+
+    #[test]
+    fn outcome_defaults_to_lower_is_better_when_absent() {
+        let out: ForagerPluginOutput =
+            serde_json::from_value(serde_json::json!({"name": "wall", "value": 1.0})).unwrap();
+        assert_eq!(out.direction, MetricDirection::LowerIsBetter);
+    }
+
+    #[test]
+    fn default_direction_is_omitted_from_serialization() {
+        let out = ForagerPluginOutput {
+            name: "wall".into(),
+            value: serde_json::json!(1.0),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&out).unwrap();
+        assert!(json.get("direction").is_none());
+    }
+
+    #[test]
+    fn summary_direction_taken_from_matching_outcome() {
+        let steps = vec![ExperimentRunStep {
+            step: "bench".into(),
+            measurements: vec![ForagerPluginOutput {
+                name: "throughput".into(),
+                value: serde_json::json!(42.0),
+                direction: MetricDirection::HigherIsBetter,
+                tags: IndexMap::new(),
+            }],
+        }];
+        let def = SummaryDef {
+            name: "throughput".into(),
+            step: "bench".into(),
+            measurement: "throughput".into(),
+            aggregation: None,
+            filter: IndexMap::new(),
+            bisect: true,
+            samples: 1,
+        };
+        assert_eq!(def.direction(&steps), MetricDirection::HigherIsBetter);
+    }
 }
