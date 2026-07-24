@@ -249,7 +249,9 @@ impl std::str::FromStr for MetricDirection {
         match s {
             "lower-is-better" => Ok(Self::LowerIsBetter),
             "higher-is-better" => Ok(Self::HigherIsBetter),
-            _ => Err(ParseMetricDirectionError { input: s.to_owned() }),
+            _ => Err(ParseMetricDirectionError {
+                input: s.to_owned(),
+            }),
         }
     }
 }
