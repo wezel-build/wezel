@@ -504,6 +504,30 @@ pub struct ExperimentRun {
     pub bisection_id: Option<u64>,
 }
 
+/// Where a run executed — a CI job page, a self-hosted runner's own page. Only
+/// the runner knows this, so it hands one over when claiming and burrow keeps it
+/// on the row, which is what lets the UI link to the logs of a run that failed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunBacklink {
+    /// http(s) only — burrow rejects other schemes, since this ends up in an
+    /// `href`.
+    pub url: String,
+    /// What to call the link. `None` leaves the UI to name it after the host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+/// Body of `POST /api/runs/claim`. Carries only the claiming runner's backlink —
+/// the project comes from the `wez_live_…` token, so a runner still cannot claim
+/// for another repo. burrow also accepts a bodiless claim, so runners predating
+/// this keep working and simply record no link.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExperimentRunClaim {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backlink: Option<RunBacklink>,
+}
+
 /// Measurement written by a forager plugin to `FORAGER_OUT`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ForagerPluginOutput {

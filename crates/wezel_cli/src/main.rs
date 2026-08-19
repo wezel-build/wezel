@@ -479,6 +479,15 @@ enum ExperimentCmd {
         /// Output format.
         #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
         output_format: OutputFormat,
+        /// URL for where this run executed — a CI job, this runner's own status
+        /// page — shown beside the run in the UI so its logs stay reachable even
+        /// if the run dies. Defaults to `$WEZEL_RUN_BACKLINK`.
+        #[arg(long, value_name = "URL")]
+        backlink: Option<String>,
+        /// What to call the `--backlink` link. Defaults to
+        /// `$WEZEL_RUN_BACKLINK_LABEL`; the UI falls back to the host.
+        #[arg(long, value_name = "TEXT")]
+        backlink_label: Option<String>,
     },
 }
 
@@ -576,7 +585,11 @@ struct NextOutput {
 /// and still returns `Ok(())` so the process exits 0 — the next invocation
 /// proceeds. Only infrastructure errors (no config/token, unreachable server)
 /// bubble up as a nonzero exit.
-fn next_cmd(project_dir: PathBuf, output_format: OutputFormat) -> anyhow::Result<()> {
+fn next_cmd(
+    project_dir: PathBuf,
+    output_format: OutputFormat,
+    backlink: Option<wezel_types::RunBacklink>,
+) -> anyhow::Result<()> {
     let json = output_format == OutputFormat::Json;
     let ws = make_workspace(project_dir)?;
 
@@ -592,7 +605,7 @@ fn next_cmd(project_dir: PathBuf, output_format: OutputFormat) -> anyhow::Result
         .context("API token not configured (set WEZEL_API_TOKEN)")?;
 
     let client = runner::RunnerClient::new(server_url, token);
-    let Some(run) = client.claim()? else {
+    let Some(run) = client.claim(backlink)? else {
         if json {
             emit_json(&NextOutput::default());
         } else {
@@ -832,9 +845,15 @@ fn main() -> ExitCode {
                 Ok(())
             })()),
             ExperimentCmd::List => run_result(wezel_bench::run::list_experiments(&project_dir)),
-            ExperimentCmd::Next { output_format } => {
-                run_result(next_cmd(project_dir, output_format))
-            }
+            ExperimentCmd::Next {
+                output_format,
+                backlink,
+                backlink_label,
+            } => run_result(next_cmd(
+                project_dir,
+                output_format,
+                runner::resolve_backlink(backlink, backlink_label),
+            )),
             ExperimentCmd::Lint => run_result((|| -> anyhow::Result<()> {
                 let ws = make_workspace(project_dir)?;
                 let mut fetcher = fetcher::ConfigFetcher::read_only(&ws)?;
