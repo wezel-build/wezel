@@ -784,6 +784,7 @@ fn main() -> ExitCode {
                     steps,
                     summaries: summary_defs,
                     plan,
+                    measuring_by_step,
                 } = completed;
                 let duration_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
                 let commit = wezel_bench::git::current_sha(&ws.project_dir)?;
@@ -804,17 +805,28 @@ fn main() -> ExitCode {
                     },
                 };
 
-                if save {
-                    let dir = wezel_bench::run::save_run(&ws, &saved)?;
-                    eprintln!("Saved: {}", dir.display());
-                }
+                let saved_dir = save
+                    .then(|| wezel_bench::run::save_run(&ws, &saved))
+                    .transpose()?;
 
                 match output_format {
                     OutputFormat::Json => {
                         println!("{}", serde_json::to_string_pretty(&saved.output).unwrap());
                     }
                     OutputFormat::Human => {
-                        report::print_run(&saved, &plan, &summary_defs, previous.as_ref(), verbose);
+                        report::print_run(
+                            &saved,
+                            &plan,
+                            &summary_defs,
+                            &measuring_by_step,
+                            previous.as_ref(),
+                            verbose,
+                        );
+                        // Trailer, not a banner: the path is only useful after
+                        // you've read the numbers.
+                        if let Some(dir) = saved_dir {
+                            report::print_saved_at(&dir, &ws.project_dir);
+                        }
                     }
                 }
                 Ok(())

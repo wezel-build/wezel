@@ -45,6 +45,9 @@ pub struct CompletedRun {
     pub steps: Vec<ExperimentRunStep>,
     pub summaries: Vec<SummaryDef>,
     pub plan: Vec<StepPlan>,
+    /// Forager-only time per step, summed across samples. Excludes snapshot
+    /// capture and inter-sample restores.
+    pub measuring_by_step: IndexMap<String, std::time::Duration>,
 }
 
 /// JSON output for `wezel experiment run --output-format json`.
@@ -403,12 +406,30 @@ fn run_in_scratch(
                 .max(1),
         })
         .collect();
+    // Install every forager the plan needs before the first bar is drawn.
+    // Fetching lazily inside a step interleaves install notices with live
+    // progress output, charges the download to that step's first sample, and
+    // delays a missing-tool failure until after earlier steps have run.
+    if let Some(f) = fetcher.as_deref_mut() {
+        let mut fetched = std::collections::HashSet::new();
+        for step in &experiment.steps {
+            if !fetched.insert(step.forager.as_str())
+                || scratch_workspace.resolve_plugin(&step.forager).is_some()
+            {
+                continue;
+            }
+            f.fetch(&step.forager)
+                .with_context(|| format!("installing forager-{}", step.forager))?;
+        }
+    }
+
     if let Some(r) = reporter {
         r.run_started(experiment_name, commit_sha, &plan);
     }
 
     // Run each step.
     let mut step_reports: Vec<ExperimentRunStep> = Vec::new();
+    let mut measuring_by_step: IndexMap<String, std::time::Duration> = IndexMap::new();
 
     for step in &experiment.steps {
         let samples = step_samples
@@ -444,6 +465,9 @@ fn run_in_scratch(
 
         let mut all_measurements = Vec::new();
         let mut hard_failure = None;
+        // Forager-only time: excludes snapshot capture and inter-sample
+        // restores, so it's comparable to what the step actually measures.
+        let mut measuring = std::time::Duration::ZERO;
         for iter in 1..=samples {
             if iter > 1
                 && let Some(ref snap) = snapshot
@@ -456,13 +480,16 @@ fn run_in_scratch(
             if let Some(r) = reporter {
                 r.sample_started(&step.name, iter, samples);
             }
-            match invoke_forager(
+            let sample_start = std::time::Instant::now();
+            let invoked = invoke_forager(
                 &step.forager,
                 &step.name,
                 &step.inputs,
                 &scratch_workspace,
                 fetcher.as_deref_mut(),
-            ) {
+            );
+            measuring += sample_start.elapsed();
+            match invoked {
                 Ok(mut measurements) => all_measurements.append(&mut measurements),
                 Err(e) if e.is_hard() => {
                     hard_failure = Some(e);
@@ -487,6 +514,7 @@ fn run_in_scratch(
             step: step.name.clone(),
             measurements: all_measurements,
         });
+        measuring_by_step.insert(step.name.clone(), measuring);
     }
 
     if let Some(r) = reporter {
@@ -502,6 +530,7 @@ fn run_in_scratch(
         steps: step_reports,
         summaries: experiment.summaries,
         plan,
+        measuring_by_step,
     })
 }
 

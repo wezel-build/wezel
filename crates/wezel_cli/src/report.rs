@@ -5,7 +5,10 @@
 //! the previous run, and the delta.
 
 use std::fmt::Write as _;
+use std::path::Path;
+use std::time::Duration;
 
+use indexmap::IndexMap;
 use owo_colors::{OwoColorize, Stream::Stdout};
 use wezel_bench::run::{SavedRun, StepPlan};
 use wezel_types::{MetricDirection, SummaryDef, Unit};
@@ -28,12 +31,23 @@ pub fn print_run(
     saved: &SavedRun,
     plan: &[StepPlan],
     summary_defs: &[SummaryDef],
+    measuring: &IndexMap<String, Duration>,
     previous: Option<&SavedRun>,
     verbose: bool,
 ) {
     print!(
         "{}",
-        render_run(saved, plan, summary_defs, previous, verbose)
+        render_run(saved, plan, summary_defs, measuring, previous, verbose)
+    );
+}
+
+/// Dim trailer naming where the run was saved, relative to the project dir
+/// when it sits inside it.
+pub fn print_saved_at(run_dir: &Path, project_dir: &Path) {
+    let shown = run_dir.strip_prefix(project_dir).unwrap_or(run_dir);
+    println!(
+        "\n{}",
+        format!("saved {}", shown.display()).if_supports_color(Stdout, |t| t.dimmed())
     );
 }
 
@@ -43,6 +57,7 @@ fn render_run(
     saved: &SavedRun,
     plan: &[StepPlan],
     summary_defs: &[SummaryDef],
+    measuring: &IndexMap<String, Duration>,
     previous: Option<&SavedRun>,
     verbose: bool,
 ) -> String {
@@ -51,7 +66,7 @@ fn render_run(
     let short = short_sha(&output.commit);
     let branch = saved.branch.as_deref().unwrap_or("(detached)");
     let dirty = if saved.dirty { " (dirty)" } else { "" };
-    let duration = format_duration(saved.duration_ms);
+    let duration = format_millis(saved.duration_ms as f64);
 
     let _ = writeln!(
         out,
@@ -66,7 +81,7 @@ fn render_run(
         baseline_line(previous).if_supports_color(Stdout, |t| t.dimmed())
     );
 
-    render_samples(&mut out, saved, plan, summary_defs);
+    render_steps(&mut out, saved, plan, summary_defs);
 
     if output.summaries.is_empty() {
         let _ = writeln!(out, "\n(no summaries)");
@@ -75,7 +90,7 @@ fn render_run(
     }
 
     if verbose {
-        render_outcomes(&mut out, saved);
+        render_outcomes(&mut out, saved, measuring);
     }
     out
 }
@@ -94,10 +109,11 @@ fn baseline_line(previous: Option<&SavedRun>) -> String {
     }
 }
 
-/// Per-step sample values, e.g. `5 samples  41.9s  42.3s  …`. Steps whose
-/// summaries are all single-sample are skipped — their value is already in the
-/// table.
-fn render_samples(
+/// Sample values for summaries that took more than one sample, grouped under
+/// their step. Steps that produced a single value contribute nothing here —
+/// that value is already in the table, and how long the step took to run isn't
+/// what the experiment measures (see `-v` for wall-clock per step).
+fn render_steps(
     out: &mut String,
     saved: &SavedRun,
     plan: &[StepPlan],
@@ -202,29 +218,51 @@ fn render_table(
         "{:<name_w$}  {:>this_w$}  {:>prev_w$}  {:>delta_w$}  {:>pct_w$}",
         "SUMMARY", "THIS RUN", "PREVIOUS", "Δ", ""
     );
+    let header = header.trim_end();
+
+    // Pad every cell before colouring — escape codes would otherwise count as
+    // width — and keep the plain text so the rule can span the widest line.
+    let padded: Vec<_> = rows
+        .iter()
+        .map(|row| {
+            let plain = format!(
+                "{:<name_w$}  {:>this_w$}  {:>prev_w$}  {:>delta_w$}  {:>pct_w$}",
+                row.name, row.this_run, row.previous, row.delta, row.percent
+            );
+            (
+                row,
+                format!("{:<name_w$}", row.name),
+                format!("{:>this_w$}", row.this_run),
+                format!("{:>prev_w$}", row.previous),
+                format!("{:>delta_w$}", row.delta),
+                format!("{:>pct_w$}", row.percent),
+                plain.trim_end().chars().count(),
+            )
+        })
+        .collect();
+
+    let rule = padded
+        .iter()
+        .map(|(.., plain_width)| *plain_width)
+        .chain(std::iter::once(header.chars().count()))
+        .max()
+        .unwrap_or(0);
+
     let _ = writeln!(
         out,
         "\n{}",
-        header.trim_end().if_supports_color(Stdout, |t| t.dimmed())
+        header.if_supports_color(Stdout, |t| t.dimmed())
     );
     let _ = writeln!(
         out,
         "{}",
-        // Full header width, percent column included, so the rule spans every
-        // row rather than stopping at the delta column.
-        "─"
-            .repeat(header.chars().count())
-            .if_supports_color(Stdout, |t| t.dimmed())
+        "─".repeat(rule).if_supports_color(Stdout, |t| t.dimmed())
     );
 
-    for row in &rows {
-        // Pad before colouring: escape codes would otherwise count as width.
-        let name = format!("{:<name_w$}", row.name);
-        let this_run = format!("{:>this_w$}", row.this_run);
-        let previous = format!("{:>prev_w$}", row.previous);
-        let delta = format!("{:>delta_w$}", row.delta);
-        let percent = format!("{:>pct_w$}", row.percent);
-
+    for (row, name, this_run, previous, delta, percent) in padded
+        .iter()
+        .map(|(r, n, t, p, d, pc, _)| (r, n, t, p, d, pc))
+    {
         let (delta, percent) = match row.worse {
             Some(true) => (
                 delta.if_supports_color(Stdout, |t| t.red()).to_string(),
@@ -236,7 +274,7 @@ fn render_table(
             ),
             None => (
                 delta.if_supports_color(Stdout, |t| t.dimmed()).to_string(),
-                percent,
+                percent.clone(),
             ),
         };
         let line = format!(
@@ -247,17 +285,28 @@ fn render_table(
     }
 }
 
-/// Raw per-step outcome dump behind `-v`. Values are shown as the forager
-/// emitted them, tags included, for debugging definitions.
-fn render_outcomes(out: &mut String, saved: &SavedRun) {
+/// Raw per-step dump behind `-v`: how long each step spent in its forager, and
+/// the outcomes exactly as the forager emitted them, tags included. Debugging
+/// aid for experiment definitions, hence no unit formatting.
+fn render_outcomes(out: &mut String, saved: &SavedRun, measuring: &IndexMap<String, Duration>) {
     let _ = writeln!(out, "\nOutcomes:");
     for report in &saved.output.steps {
+        let elapsed = measuring
+            .get(&report.step)
+            .map(|d| format!("  {}", format_dur(*d)))
+            .unwrap_or_default();
+        let _ = writeln!(
+            out,
+            "  {}{}",
+            report.step,
+            elapsed.if_supports_color(Stdout, |t| t.dimmed())
+        );
         if report.measurements.is_empty() {
-            let _ = writeln!(out, "  {} — (none)", report.step);
+            let _ = writeln!(out, "    (no outcomes)");
             continue;
         }
         for m in &report.measurements {
-            let mut line = format!("  {}.{} = {}", report.step, m.name, m.value);
+            let mut line = format!("    {} = {}", m.name, m.value);
             if !m.tags.is_empty() {
                 let mut tags: Vec<_> = m.tags.iter().collect();
                 tags.sort_by(|a, b| a.0.cmp(b.0));
@@ -304,11 +353,13 @@ fn format_percent(diff: f64, previous: f64) -> String {
     if previous == 0.0 {
         return String::new();
     }
+    // Widen precision as the change shrinks, so a real difference never
+    // renders as `-0.0%`.
     let pct = diff / previous * 100.0;
-    if pct.abs() >= 10.0 {
-        format!("{pct:+.0}%")
-    } else {
-        format!("{pct:+.1}%")
+    match pct.abs() {
+        p if p >= 10.0 => format!("{pct:+.0}%"),
+        p if p >= 1.0 => format!("{pct:+.1}%"),
+        _ => format!("{pct:+.2}%"),
     }
 }
 
@@ -372,19 +423,8 @@ fn three_sig_figs(value: f64) -> String {
     }
 }
 
-fn format_duration(ms: u64) -> String {
-    let s = ms as f64 / 1000.0;
-    if s < 60.0 {
-        format!("{s:.1}s")
-    } else if s < 3600.0 {
-        let m = (s / 60.0) as u64;
-        let rs = s - (m as f64) * 60.0;
-        format!("{m}m{rs:.0}s")
-    } else {
-        let h = (s / 3600.0) as u64;
-        let m = ((s - (h as f64) * 3600.0) / 60.0) as u64;
-        format!("{h}h{m}m")
-    }
+fn format_dur(d: Duration) -> String {
+    format_millis(d.as_secs_f64() * 1000.0)
 }
 
 /// `6 days ago` for a timestamp written by `utc_timestamp_rfc3339`. `None`
@@ -549,12 +589,16 @@ mod tests {
             summary_def("llvm-lines", "artifacts", "llvm-lines", 1),
         ];
 
-        let rendered = render_run(&this_run, &plan, &defs, Some(&previous), false);
+        let measuring = IndexMap::from([
+            ("release-build".to_string(), Duration::from_millis(211_000)),
+            ("artifacts".to_string(), Duration::from_millis(3)),
+        ]);
+        let rendered = render_run(&this_run, &plan, &defs, &measuring, Some(&previous), false);
         let mut lines = rendered.lines();
 
         assert_eq!(
             lines.next().unwrap(),
-            "workspace-build · 1a2b3c4 on main · 1m2s"
+            "workspace-build · 1a2b3c4 on main · 1m02s"
         );
         assert!(
             lines
@@ -604,7 +648,7 @@ mod tests {
         }];
         let defs = vec![summary_def("build-time", "release-build", "time_ms", 5)];
 
-        let rendered = render_run(&this_run, &plan, &defs, None, false);
+        let rendered = render_run(&this_run, &plan, &defs, &IndexMap::new(), None, false);
         assert!(
             rendered.contains("no previous run to compare against"),
             "{rendered}"
@@ -655,7 +699,9 @@ mod tests {
     #[test]
     fn percent_precision_widens_below_ten() {
         assert_eq!(format_percent(12_400.0, 29_700.0), "+42%");
-        assert_eq!(format_percent(-100.0, 29_700.0), "-0.3%");
+        assert_eq!(format_percent(-100.0, 29_700.0), "-0.34%");
+        assert_eq!(format_percent(-2_240.0, 10_903_088.0), "-0.02%");
+        assert_eq!(format_percent(400.0, 29_700.0), "+1.3%");
         assert_eq!(format_percent(5.0, 0.0), "");
     }
 
