@@ -26,7 +26,6 @@ struct State {
 
 #[derive(Default)]
 struct Timing {
-    step_start: Option<Instant>,
     /// Forager-only elapsed (between paired sample_started/sample_done).
     accumulated: Duration,
     sample_start: Option<Instant>,
@@ -53,12 +52,9 @@ impl Default for IndicatifReporter {
 }
 
 impl RunReporter for IndicatifReporter {
-    fn run_started(&self, experiment: &str, commit: &str, steps: &[StepPlan]) {
-        let short = &commit[..7.min(commit.len())];
-        let _ = self
-            .multi
-            .println(format!("Experiment: {experiment}  @  {short}"));
-
+    /// No banner here — the final report prints the run's identity. Bars are
+    /// live UI only, cleared in `run_finished`.
+    fn run_started(&self, _experiment: &str, _commit: &str, steps: &[StepPlan]) {
         let mut state = self.state.lock().unwrap();
         state.name_width = steps.iter().map(|s| s.name.len()).max().unwrap_or(0);
         state.plan = steps.iter().map(|s| (s.name.clone(), s.samples)).collect();
@@ -74,13 +70,7 @@ impl RunReporter for IndicatifReporter {
         pb.set_message(if samples > 1 { "preparing…" } else { "" }.to_string());
         pb.enable_steady_tick(Duration::from_millis(100));
         state.bars.insert(step.to_string(), pb);
-        state.timings.insert(
-            step.to_string(),
-            Timing {
-                step_start: Some(Instant::now()),
-                ..Default::default()
-            },
-        );
+        state.timings.insert(step.to_string(), Timing::default());
     }
 
     fn sample_started(&self, step: &str, _iter: usize, _samples: usize) {
@@ -118,26 +108,27 @@ impl RunReporter for IndicatifReporter {
 
     fn step_finished(&self, step: &str) {
         let state = self.state.lock().unwrap();
-        let timing = state.timings.get(step);
-        let work = timing.map(|t| t.accumulated).unwrap_or_default();
-        let total = timing
-            .and_then(|t| t.step_start.map(|s| s.elapsed()))
-            .unwrap_or(work);
-        let setup = total.saturating_sub(work);
+        let work = state
+            .timings
+            .get(step)
+            .map(|t| t.accumulated)
+            .unwrap_or_default();
         if let Some(pb) = state.bars.get(step) {
             pb.disable_steady_tick();
             pb.set_style(done_style());
-            pb.set_message(format!(
-                "{} setup + {} work",
-                format_dur(setup),
-                format_dur(work)
-            ));
+            pb.set_message(format_dur(work));
             pb.finish();
         }
     }
 
+    /// Clear every bar so the run's only lasting output is the report. Per-step
+    /// timing survives in `CompletedRun::measuring_by_step`.
     fn run_finished(&self) {
-        let _ = self.multi.println("");
+        let state = self.state.lock().unwrap();
+        for pb in state.bars.values() {
+            pb.finish_and_clear();
+        }
+        let _ = self.multi.clear();
     }
 }
 
@@ -157,14 +148,11 @@ fn done_style() -> ProgressStyle {
 
 fn format_dur(d: Duration) -> String {
     let secs = d.as_secs();
-    let ms = d.subsec_millis();
     if secs >= 60 {
-        let m = secs / 60;
-        let s = secs % 60;
-        format!("{m}m{s:02}s")
-    } else if secs >= 10 {
-        format!("{secs}s")
+        format!("{}m{:02}s", secs / 60, secs % 60)
+    } else if d.as_millis() >= 1000 {
+        format!("{:.1}s", d.as_secs_f64())
     } else {
-        format!("{secs}.{ms:03}s")
+        format!("{}ms", d.as_millis())
     }
 }

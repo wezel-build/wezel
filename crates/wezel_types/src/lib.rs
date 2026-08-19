@@ -256,6 +256,20 @@ impl std::str::FromStr for MetricDirection {
     }
 }
 
+/// Physical unit of an outcome value, used to render it (`42.1s`, `18.4 MiB`,
+/// `1.94 M`) instead of a bare number. Declared by the forager that emits the
+/// outcome and propagated onto the summaries that aggregate it. Absent means
+/// the value is unitless and renders as-is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+#[schemars(rename_all = "kebab-case")]
+pub enum Unit {
+    Milliseconds,
+    Bytes,
+    /// A dimensionless tally (LLVM IR lines, symbols, allocations).
+    Count,
+}
+
 // ── Experiment TOML parsing ──────────────────────────────────────────────────
 
 /// Top-level shape of `.wezel/experiments/<name>/experiment.toml`.
@@ -424,6 +438,13 @@ impl SummaryDef {
             .unwrap_or_default()
     }
 
+    /// Unit of the produced summary, taken from the outcomes it aggregates.
+    /// Mirrors [`Self::direction`]: the first matching outcome decides, and no
+    /// matches (or none set) means unitless.
+    pub fn unit(&self, steps: &[ExperimentRunStep]) -> Option<Unit> {
+        self.matching_outcomes(steps).find_map(|m| m.unit)
+    }
+
     /// Compute this summary's value from a slice of plugin measurements.
     ///
     /// Returns `Ok(None)` when no measurements match the filter. Returns
@@ -492,6 +513,10 @@ pub struct ForagerPluginOutput {
     /// (or reading older output) yields `LowerIsBetter`.
     #[serde(default, skip_serializing_if = "crate::MetricDirection::is_default")]
     pub direction: MetricDirection,
+    /// Unit of `value`, set by the forager author. `None` renders the raw
+    /// number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<Unit>,
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub tags: IndexMap<String, String>,
 }
@@ -736,6 +761,7 @@ mod tests {
                 name: "throughput".into(),
                 value: serde_json::json!(42.0),
                 direction: MetricDirection::HigherIsBetter,
+                unit: Some(Unit::Count),
                 tags: IndexMap::new(),
             }],
         }];
@@ -749,5 +775,33 @@ mod tests {
             samples: 1,
         };
         assert_eq!(def.direction(&steps), MetricDirection::HigherIsBetter);
+        assert_eq!(def.unit(&steps), Some(Unit::Count));
+    }
+
+    #[test]
+    fn summary_unit_is_none_without_matches() {
+        let def = SummaryDef {
+            name: "wall".into(),
+            step: "build".into(),
+            measurement: "time_ms".into(),
+            aggregation: None,
+            filter: IndexMap::new(),
+            bisect: true,
+            samples: 1,
+        };
+        assert_eq!(def.unit(&[]), None);
+    }
+
+    #[test]
+    fn unit_round_trips_as_kebab_case() {
+        let out: ForagerPluginOutput = serde_json::from_value(
+            serde_json::json!({"name": "wall", "value": 1.0, "unit": "milliseconds"}),
+        )
+        .unwrap();
+        assert_eq!(out.unit, Some(Unit::Milliseconds));
+        assert_eq!(
+            serde_json::to_value(&out).unwrap().get("unit"),
+            Some(&serde_json::json!("milliseconds"))
+        );
     }
 }

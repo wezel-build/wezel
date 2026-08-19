@@ -2030,6 +2030,7 @@ dependencies = [
  "indicatif",
  "libc",
  "log",
+ "owo-colors",
  "serde",
  "serde_json",
  "sha2",

@@ -506,16 +506,35 @@ pub mod git {
             .unwrap_or_default()
     }
 
-    pub fn apply_patch(project_dir: &Path, patch: &Path) -> Result<()> {
-        let status = Command::new("git")
-            .args(["apply", &patch.to_string_lossy()])
-            .current_dir(project_dir)
-            .status()
-            .context("running git apply")?;
-        if !status.success() {
-            bail!("git apply {} failed", patch.display());
+    /// Run a git invocation with its stdio captured, folding stderr into the
+    /// error on failure. Git never writes to wezel's terminal — the CLI owns
+    /// every line the user sees.
+    pub(crate) fn run_quiet(mut cmd: Command, what: &str) -> Result<()> {
+        let out = cmd
+            .output()
+            .with_context(|| format!("spawning git {what}"))?;
+        if out.status.success() {
+            return Ok(());
         }
-        Ok(())
+        let detail = String::from_utf8_lossy(&out.stderr);
+        match detail.trim() {
+            "" => bail!("git {what} failed"),
+            detail => bail!("git {what} failed: {detail}"),
+        }
+    }
+
+    /// A `git` command running in `dir`.
+    fn git_in(dir: &Path, args: &[&str]) -> Command {
+        let mut cmd = Command::new("git");
+        cmd.args(args).current_dir(dir);
+        cmd
+    }
+
+    pub fn apply_patch(project_dir: &Path, patch: &Path) -> Result<()> {
+        run_quiet(
+            git_in(project_dir, &["apply", &patch.to_string_lossy()]),
+            &format!("apply {}", patch.display()),
+        )
     }
 
     /// Like [`apply_patch`], but captures git's stderr instead of inheriting it
@@ -541,35 +560,12 @@ pub mod git {
     }
 
     pub fn reset_worktree(repo_dir: &Path) -> Result<()> {
-        let status = Command::new("git")
-            .args(["checkout", "."])
-            .current_dir(repo_dir)
-            .status()
-            .context("running git checkout .")?;
-        if !status.success() {
-            bail!("git checkout . failed");
-        }
-        let status = Command::new("git")
-            .args(["clean", "-fd"])
-            .current_dir(repo_dir)
-            .status()
-            .context("running git clean -fd")?;
-        if !status.success() {
-            bail!("git clean -fd failed");
-        }
-        Ok(())
+        run_quiet(git_in(repo_dir, &["checkout", "."]), "checkout .")?;
+        run_quiet(git_in(repo_dir, &["clean", "-fd"]), "clean -fd")
     }
 
     pub fn fetch(repo_dir: &Path) -> Result<()> {
-        let status = Command::new("git")
-            .args(["fetch", "--quiet", "origin"])
-            .current_dir(repo_dir)
-            .status()
-            .context("running git fetch")?;
-        if !status.success() {
-            bail!("git fetch failed");
-        }
-        Ok(())
+        run_quiet(git_in(repo_dir, &["fetch", "origin"]), "fetch")
     }
 
     /// True when `sha` resolves to a commit object in `repo`'s database.
@@ -598,12 +594,11 @@ pub mod git {
         if has_commit(repo, sha) {
             return Ok(());
         }
-        let status = Command::new("git")
-            .args(["fetch", "--quiet", "origin", sha])
-            .current_dir(repo)
-            .status()
-            .context("running git fetch origin <sha>")?;
-        if status.success() && has_commit(repo, sha) {
+        let fetched = run_quiet(
+            git_in(repo, &["fetch", "origin", sha]),
+            "fetch origin <sha>",
+        );
+        if fetched.is_ok() && has_commit(repo, sha) {
             return Ok(());
         }
         bail!(
@@ -613,15 +608,10 @@ pub mod git {
     }
 
     pub fn checkout_detached(repo_dir: &Path, sha: &str) -> Result<()> {
-        let status = Command::new("git")
-            .args(["checkout", "--detach", sha])
-            .current_dir(repo_dir)
-            .status()
-            .context("running git checkout --detach")?;
-        if !status.success() {
-            bail!("git checkout --detach {} failed", sha);
-        }
-        Ok(())
+        run_quiet(
+            git_in(repo_dir, &["checkout", "--detach", sha]),
+            &format!("checkout --detach {sha}"),
+        )
     }
 }
 

@@ -42,6 +42,7 @@ sha2 = "0.10"
 hex = "0.4"
 tempfile = "3"
 indicatif = "0.17"
+owo-colors = { version = "4.3.0", features = ["supports-colors"] }
 
 # The profile that 'dist' will build with
 [profile.dist]

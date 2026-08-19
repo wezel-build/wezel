@@ -6,6 +6,7 @@ mod flush;
 mod pheromone_mgr;
 mod progress;
 mod queue;
+mod report;
 mod runner;
 mod shell;
 
@@ -619,7 +620,7 @@ fn next_cmd(project_dir: PathBuf, output_format: OutputFormat) -> anyhow::Result
         None,
     );
 
-    let (steps, summaries) = match outcome {
+    let completed = match outcome {
         Ok(v) => v,
         Err(e) => {
             // Reported as failed so the row leaves `running`; exit 0 so the
@@ -648,8 +649,8 @@ fn next_cmd(project_dir: PathBuf, output_format: OutputFormat) -> anyhow::Result
 
     let report = wezel_types::ExperimentRunReport {
         run_id: run.id,
-        steps,
-        summaries,
+        steps: completed.steps,
+        summaries: completed.summaries,
     };
     let response = client.report(&report).context("reporting run results")?;
     client
@@ -677,97 +678,6 @@ fn emit_json<T: serde::Serialize>(value: &T) {
         "{}",
         serde_json::to_string(value).expect("serializing JSON output")
     );
-}
-
-fn print_human_report(
-    saved: &wezel_bench::run::SavedRun,
-    summary_defs: &[wezel_types::SummaryDef],
-    verbose: bool,
-) {
-    let output = &saved.output;
-    let short = &output.commit[..7.min(output.commit.len())];
-    let branch = saved.branch.as_deref().unwrap_or("(detached)");
-    let dirty = if saved.dirty { " *" } else { "" };
-    let dur = format_duration(saved.duration_ms);
-
-    println!(
-        "{}  ·  {short} on {branch}{dirty}  ·  {dur}",
-        output.experiment
-    );
-
-    if output.summaries.is_empty() {
-        println!();
-        println!("(no summaries)");
-    } else {
-        let mut entries: Vec<_> = output.summaries.iter().collect();
-        entries.sort_by(|a, b| a.0.cmp(b.0));
-
-        let name_w = entries
-            .iter()
-            .map(|(n, _)| n.len())
-            .max()
-            .unwrap_or(0)
-            .max("SUMMARY".len());
-
-        println!();
-        println!("{:<name_w$}  VALUE", "SUMMARY");
-        for (name, sv) in entries {
-            let samples = summary_defs
-                .iter()
-                .find(|d| &d.name == name)
-                .map(|d| d.matching_values(&output.steps))
-                .unwrap_or_default();
-            if samples.len() > 1 {
-                let min = samples.iter().cloned().fold(f64::INFINITY, f64::min);
-                let max = samples.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                println!(
-                    "{name:<name_w$}  {}  (n={}, min={}, max={})",
-                    sv.value,
-                    samples.len(),
-                    min,
-                    max,
-                );
-            } else {
-                println!("{name:<name_w$}  {}", sv.value);
-            }
-        }
-    }
-
-    if verbose {
-        println!();
-        println!("Outcomes:");
-        for report in &output.steps {
-            if report.measurements.is_empty() {
-                println!("  {} — (none)", report.step);
-                continue;
-            }
-            for m in &report.measurements {
-                let mut line = format!("  {}.{} = {}", report.step, m.name, m.value);
-                if !m.tags.is_empty() {
-                    let mut tags: Vec<_> = m.tags.iter().collect();
-                    tags.sort_by(|a, b| a.0.cmp(b.0));
-                    let joined: Vec<_> = tags.iter().map(|(k, v)| format!("{k}={v}")).collect();
-                    line.push_str(&format!(" [{}]", joined.join(", ")));
-                }
-                println!("{line}");
-            }
-        }
-    }
-}
-
-fn format_duration(ms: u64) -> String {
-    let s = ms as f64 / 1000.0;
-    if s < 60.0 {
-        format!("{s:.1}s")
-    } else if s < 3600.0 {
-        let m = (s / 60.0) as u64;
-        let rs = s - (m as f64) * 60.0;
-        format!("{m}m{rs:.0}s")
-    } else {
-        let h = (s / 3600.0) as u64;
-        let m = ((s - (h as f64) * 3600.0) / 60.0) as u64;
-        format!("{h}h{m}m")
-    }
 }
 
 fn main() -> ExitCode {
@@ -856,10 +766,13 @@ fn main() -> ExitCode {
                     .ok()
                     .flatten();
                 let dirty = wezel_bench::git::is_dirty(&ws.project_dir).unwrap_or(false);
+                // Read the baseline before this run is saved, or it would find
+                // itself.
+                let previous = wezel_bench::run::load_previous_run(&ws, &experiment);
                 let started_at = wezel_bench::run::utc_timestamp_rfc3339();
                 let t0 = std::time::Instant::now();
 
-                let (steps, summary_defs) = wezel_bench::run::run_experiment(
+                let completed = wezel_bench::run::run_experiment(
                     &experiment,
                     &ws,
                     Some(&mut caching),
@@ -867,12 +780,18 @@ fn main() -> ExitCode {
                         .as_ref()
                         .map(|r| r as &dyn wezel_bench::run::RunReporter),
                 )?;
+                let wezel_bench::run::CompletedRun {
+                    steps,
+                    summaries: summary_defs,
+                    plan,
+                    measuring_by_step,
+                } = completed;
                 let duration_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
                 let commit = wezel_bench::git::current_sha(&ws.project_dir)?;
                 let summaries = wezel_bench::run::compute_summaries(&steps, &summary_defs);
 
                 let saved = wezel_bench::run::SavedRun {
-                    schema_version: 1,
+                    schema_version: wezel_bench::run::SAVED_RUN_SCHEMA_VERSION,
                     wezel_version: env!("CARGO_PKG_VERSION").to_string(),
                     started_at,
                     duration_ms,
@@ -886,17 +805,28 @@ fn main() -> ExitCode {
                     },
                 };
 
-                if save {
-                    let dir = wezel_bench::run::save_run(&ws, &saved)?;
-                    eprintln!("Saved: {}", dir.display());
-                }
+                let saved_dir = save
+                    .then(|| wezel_bench::run::save_run(&ws, &saved))
+                    .transpose()?;
 
                 match output_format {
                     OutputFormat::Json => {
                         println!("{}", serde_json::to_string_pretty(&saved.output).unwrap());
                     }
                     OutputFormat::Human => {
-                        print_human_report(&saved, &summary_defs, verbose);
+                        report::print_run(
+                            &saved,
+                            &plan,
+                            &summary_defs,
+                            &measuring_by_step,
+                            previous.as_ref(),
+                            verbose,
+                        );
+                        // Trailer, not a banner: the path is only useful after
+                        // you've read the numbers.
+                        if let Some(dir) = saved_dir {
+                            report::print_saved_at(&dir, &ws.project_dir);
+                        }
                     }
                 }
                 Ok(())

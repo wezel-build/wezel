@@ -107,29 +107,16 @@ impl Scratch {
             .tempdir()
             .context("creating scratch tempdir")?;
 
-        let status = Command::new("git")
+        let mut clone = Command::new("git");
+        clone
             .arg("clone")
             .arg("--local")
             .arg("--no-checkout")
             .arg(&toplevel)
-            .arg(dir.path())
-            .status()
-            .context("spawning git clone")?;
-        if !status.success() {
-            bail!("git clone into {} failed", dir.path().display());
-        }
+            .arg(dir.path());
+        crate::git::run_quiet(clone, "clone")?;
 
-        let status = Command::new("git")
-            .arg("-C")
-            .arg(dir.path())
-            .arg("checkout")
-            .arg("--detach")
-            .arg(commit_sha)
-            .status()
-            .context("spawning git checkout")?;
-        if !status.success() {
-            bail!("git checkout {commit_sha} in scratch failed");
-        }
+        crate::git::checkout_detached(dir.path(), commit_sha)?;
 
         Ok(Self { dir, rel })
     }
