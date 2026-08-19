@@ -10,7 +10,9 @@
 //! `complete` via `set_status` afterwards.
 
 use anyhow::{Context, Result};
-use wezel_types::{ExperimentRun, ExperimentRunReport, ExperimentRunResponse};
+use wezel_types::{
+    ExperimentRun, ExperimentRunClaim, ExperimentRunReport, ExperimentRunResponse, RunBacklink,
+};
 
 pub struct RunnerClient {
     agent: ureq::Agent,
@@ -36,16 +38,18 @@ impl RunnerClient {
     /// Claim the next pending run for the token's project. Returns `Ok(None)`
     /// when the queue is empty (HTTP 204).
     ///
-    /// The request carries no body: the project-scoped `wez_live_` token tells
-    /// burrow which queue to drain, so the client never computes (or could
-    /// spoof) a repo upstream.
-    pub fn claim(&self) -> Result<Option<ExperimentRun>> {
+    /// `backlink` records where this runner is executing, so a run that dies
+    /// before it can report still points at its own logs. Beyond that the body
+    /// carries nothing: the project-scoped `wez_live_` token tells burrow which
+    /// queue to drain, so the client never computes (or could spoof) a repo
+    /// upstream.
+    pub fn claim(&self, backlink: Option<RunBacklink>) -> Result<Option<ExperimentRun>> {
         let url = format!("{}/api/runs/claim", self.base);
         let resp = self
             .agent
             .post(&url)
             .set("Authorization", &self.bearer())
-            .call()
+            .send_json(ExperimentRunClaim { backlink })
             .map_err(|e| describe(e, "POST /api/runs/claim"))?;
         if resp.status() == 204 {
             return Ok(None);
@@ -80,6 +84,26 @@ impl RunnerClient {
             .map_err(|e| describe(e, "PATCH /api/runs/{id}/status"))?;
         Ok(())
     }
+}
+
+/// Where this runner should say it ran: `--backlink`, else `WEZEL_RUN_BACKLINK`.
+///
+/// The env var is how a harness that wraps this command — a CI action, a runner
+/// daemon — passes down a URL it alone can construct. Deliberately no sniffing
+/// of any particular CI's variables: knowing how to describe itself is the
+/// harness's job, not wezel's.
+pub fn resolve_backlink(url: Option<String>, label: Option<String>) -> Option<RunBacklink> {
+    Some(RunBacklink {
+        url: url.or_else(|| env_nonempty("WEZEL_RUN_BACKLINK"))?,
+        label: label.or_else(|| env_nonempty("WEZEL_RUN_BACKLINK_LABEL")),
+    })
+}
+
+fn env_nonempty(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 /// Render a ureq error with the server's response body when it returned a
