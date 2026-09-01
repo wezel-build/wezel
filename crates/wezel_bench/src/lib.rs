@@ -14,7 +14,10 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
-use wezel_types::{ExperimentDef, ForagerPluginEnvelope, ForagerSchema, StepDef, SummaryDef};
+use wezel_types::{
+    ExperimentDef, ForagerPluginAttachment, ForagerPluginEnvelope, ForagerPluginOutput,
+    ForagerSchema, StepDef, SummaryDef,
+};
 // Experiment-TOML parsing types now live in `wezel_types`; re-exported so
 // downstream `wezel_bench::ExperimentToml` (etc.) paths keep resolving.
 pub use wezel_types::{DiffField, EmbeddedSummaryToml, ExperimentToml, StepBody};
@@ -647,6 +650,13 @@ impl StepError {
     }
 }
 
+#[derive(Debug)]
+pub struct ForagerInvocation {
+    pub outcomes: Vec<ForagerPluginOutput>,
+    pub attachments: Vec<ForagerPluginAttachment>,
+    pub attachment_dir: tempfile::TempDir,
+}
+
 fn fmt_captured(stdout: &str, stderr: &str) -> String {
     let mut s = String::new();
     let stderr = stderr.trim();
@@ -668,7 +678,7 @@ pub fn invoke_forager(
     inputs: &serde_json::Value,
     workspace: &Workspace,
     fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
-) -> std::result::Result<Vec<wezel_types::ForagerPluginOutput>, StepError> {
+) -> std::result::Result<ForagerInvocation, StepError> {
     let binary_name = format!("forager-{forager_name}");
     // Resolve from the local store; if missing, ask the fetcher to install.
     let binary = match workspace.resolve_plugin(forager_name) {
@@ -689,6 +699,8 @@ pub fn invoke_forager(
     let inputs_id = uuid::Uuid::new_v4();
     let inputs_path = std::env::temp_dir().join(format!("forager-inputs-{inputs_id}.json"));
     let out_path = std::env::temp_dir().join(format!("forager-out-{inputs_id}.json"));
+    let attachment_dir = tempfile::tempdir()
+        .map_err(|e| StepError::Other(anyhow::anyhow!("creating FORAGER_ATTACHMENTS_DIR: {e}")))?;
 
     std::fs::write(&inputs_path, serde_json::to_string(inputs).unwrap())
         .map_err(|e| StepError::Other(anyhow::anyhow!("writing FORAGER_INPUTS: {e}")))?;
@@ -696,6 +708,7 @@ pub fn invoke_forager(
     let output = Command::new(&binary)
         .env("FORAGER_INPUTS", &inputs_path)
         .env("FORAGER_OUT", &out_path)
+        .env("FORAGER_ATTACHMENTS_DIR", attachment_dir.path())
         .env("FORAGER_STEP", step_name)
         .current_dir(&workspace.project_dir)
         .stdout(std::process::Stdio::piped())
@@ -728,5 +741,9 @@ pub fn invoke_forager(
     let _ = std::fs::remove_file(&inputs_path);
     let _ = std::fs::remove_file(&out_path);
 
-    Ok(envelope.outcomes)
+    Ok(ForagerInvocation {
+        outcomes: envelope.outcomes,
+        attachments: envelope.attachments,
+        attachment_dir,
+    })
 }

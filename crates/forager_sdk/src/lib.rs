@@ -3,9 +3,11 @@
 //! A forager is a binary that the wezel runner invokes once per step. The
 //! binary takes its inputs as JSON via the `FORAGER_INPUTS` env var, runs
 //! whatever procedure it implements, and writes a [`ForagerPluginEnvelope`]
-//! of outcomes to the path in `FORAGER_OUT`. It must also respond to a
-//! `--schema` flag with its self-description so the wezel CLI can compose
-//! editor-facing JSON Schemas for `experiment.toml`.
+//! of outcomes to the path in `FORAGER_OUT`. If it emits attachments, it writes
+//! the files under [`FORAGER_ATTACHMENTS_DIR`] and references those relative
+//! paths in the envelope. It must also respond to a `--schema` flag with its
+//! self-description so the wezel CLI can compose editor-facing JSON Schemas for
+//! `experiment.toml`.
 //!
 //! Implementors define a unit type and `impl Forager for ...`, then invoke
 //! [`forager_main!`] to generate the binary entry point.
@@ -15,8 +17,21 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
-use wezel_types::{ForagerPluginEnvelope, ForagerSchema};
-pub use wezel_types::{ForagerPluginOutput, MetricDirection, Unit};
+use wezel_types::ForagerSchema;
+pub use wezel_types::{
+    AttachmentOpenWith, ForagerPluginAttachment, ForagerPluginEnvelope, ForagerPluginOutput,
+    MetricDirection, Unit,
+};
+
+pub const FORAGER_ATTACHMENTS_DIR: &str = "FORAGER_ATTACHMENTS_DIR";
+
+/// Directory where a forager should write files it references from
+/// [`ForagerPluginEnvelope::attachments`].
+pub fn attachments_dir() -> Result<PathBuf> {
+    std::env::var_os(FORAGER_ATTACHMENTS_DIR)
+        .map(PathBuf::from)
+        .context("FORAGER_ATTACHMENTS_DIR not set")
+}
 
 /// Contract implemented by every forager binary.
 pub trait Forager {
@@ -35,6 +50,15 @@ pub trait Forager {
     type Inputs: DeserializeOwned + JsonSchema;
 
     fn run(inputs: Self::Inputs) -> Result<Vec<ForagerPluginOutput>>;
+
+    /// Full envelope emitted by the forager. Override this when the step needs
+    /// to attach artifacts as well as measurements.
+    fn run_envelope(inputs: Self::Inputs) -> Result<ForagerPluginEnvelope> {
+        Ok(ForagerPluginEnvelope {
+            outcomes: Self::run(inputs)?,
+            attachments: Vec::new(),
+        })
+    }
 
     /// JSON Schema for [`Self::Inputs`]. Default impl derives it via schemars;
     /// override only to post-process the generated schema.
@@ -70,8 +94,7 @@ fn run(forager: ErasedForager) -> Result<()> {
     let inputs_raw = std::fs::read_to_string(&inputs_path)
         .with_context(|| format!("reading {}", inputs_path.display()))?;
 
-    let outcomes = (forager.run)(&inputs_raw)?;
-    let envelope = ForagerPluginEnvelope { outcomes };
+    let envelope = (forager.run)(&inputs_raw)?;
     let body = serde_json::to_string(&envelope).context("serialising envelope")?;
     std::fs::write(&out_path, body).with_context(|| format!("writing {}", out_path.display()))?;
 
@@ -82,7 +105,7 @@ struct ErasedForager {
     name: &'static str,
     description: &'static str,
     outcomes_doc: &'static str,
-    run: fn(&str) -> Result<Vec<ForagerPluginOutput>>,
+    run: fn(&str) -> Result<ForagerPluginEnvelope>,
     input_schema: fn() -> serde_json::Value,
 }
 
@@ -96,8 +119,7 @@ pub fn __main<F: Forager>() {
             let inputs: F::Inputs =
                 serde_json::from_str(inputs_raw).context("parsing FORAGER_INPUTS")?;
 
-            let outcomes = F::run(inputs)?;
-            Ok(outcomes)
+            F::run_envelope(inputs)
         },
         input_schema: F::inputs_schema,
     };

@@ -506,6 +506,7 @@ mod tests {
                 commit: commit.into(),
                 steps: vec![
                     ExperimentRunStep {
+                        index: Some(0),
                         step: "release-build".into(),
                         measurements: outcomes(
                             "time_ms",
@@ -513,8 +514,10 @@ mod tests {
                             MetricDirection::LowerIsBetter,
                             &[41_900.0, 42_300.0, 42_000.0, 42_100.0, 42_200.0],
                         ),
+                        executions: Vec::new(),
                     },
                     ExperimentRunStep {
+                        index: Some(1),
                         step: "artifacts".into(),
                         measurements: [
                             outcomes(
@@ -531,6 +534,7 @@ mod tests {
                             ),
                         ]
                         .concat(),
+                        executions: Vec::new(),
                     },
                 ],
                 summaries: summaries
