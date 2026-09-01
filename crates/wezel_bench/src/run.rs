@@ -1,10 +1,11 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use wezel_types::{ExperimentRunStep, SummaryDef};
+use sha2::{Digest, Sha256};
+use wezel_types::{ExperimentRunStep, ExperimentRunStepExecution, RunReportAttachment, SummaryDef};
 
 use crate::git;
 use crate::workspace::{Scratch, Snapshot};
@@ -45,9 +46,18 @@ pub struct CompletedRun {
     pub steps: Vec<ExperimentRunStep>,
     pub summaries: Vec<SummaryDef>,
     pub plan: Vec<StepPlan>,
+    pub attachment_files: Vec<CompletedRunAttachment>,
     /// Forager-only time per step, summed across samples. Excludes snapshot
     /// capture and inter-sample restores.
     pub measuring_by_step: IndexMap<String, std::time::Duration>,
+    #[doc(hidden)]
+    pub attachment_dir: tempfile::TempDir,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompletedRunAttachment {
+    pub archive_path: String,
+    pub source_path: PathBuf,
 }
 
 /// JSON output for `wezel experiment run --output-format json`.
@@ -199,6 +209,14 @@ pub fn load_previous_run(workspace: &crate::Workspace, experiment: &str) -> Opti
 /// run directory. Creates `.wezel/runs/.gitignore` on first use so saved runs
 /// never get committed.
 pub fn save_run(workspace: &crate::Workspace, run: &SavedRun) -> Result<std::path::PathBuf> {
+    save_run_with_attachments(workspace, run, &[])
+}
+
+pub fn save_run_with_attachments(
+    workspace: &crate::Workspace,
+    run: &SavedRun,
+    attachments: &[CompletedRunAttachment],
+) -> Result<std::path::PathBuf> {
     let runs_root = workspace.project_dir.join(".wezel").join("runs");
     std::fs::create_dir_all(&runs_root)
         .with_context(|| format!("creating {}", runs_root.display()))?;
@@ -228,6 +246,22 @@ pub fn save_run(workspace: &crate::Workspace, run: &SavedRun) -> Result<std::pat
     let run_json = run_dir.join("run.json");
     let bytes = serde_json::to_vec_pretty(run).context("serializing SavedRun")?;
     std::fs::write(&run_json, bytes).with_context(|| format!("writing {}", run_json.display()))?;
+
+    for attachment in attachments {
+        let target = run_dir.join(&attachment.archive_path);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
+        std::fs::copy(&attachment.source_path, &target).with_context(|| {
+            format!(
+                "copying attachment {} to {}",
+                attachment.source_path.display(),
+                target.display()
+            )
+        })?;
+    }
+
     Ok(run_dir)
 }
 
@@ -349,6 +383,140 @@ pub fn run_experiment_at(
     run_in_scratch(experiment_name, scratch, sha, tool_store, fetcher, reporter)
 }
 
+struct CollectedExecutionAttachments {
+    execution: ExperimentRunStepExecution,
+    files: Vec<CompletedRunAttachment>,
+}
+
+fn collect_execution_attachments(
+    run_attachment_dir: &Path,
+    step_index: usize,
+    step_name: &str,
+    execution_index: usize,
+    invocation: &crate::ForagerInvocation,
+) -> Result<Option<CollectedExecutionAttachments>> {
+    if invocation.attachments.is_empty() {
+        return Ok(None);
+    }
+
+    let mut seen_names = std::collections::HashSet::new();
+    let step_dir = format!("{step_index:03}-{}", path_segment(step_name, "step"));
+    let execution_dir = execution_index.to_string();
+    let mut attachments = Vec::new();
+    let mut files = Vec::new();
+
+    for (attachment_index, attachment) in invocation.attachments.iter().enumerate() {
+        if !seen_names.insert(attachment.name.as_str()) {
+            bail!(
+                "step '{step_name}' execution {execution_index}: duplicate attachment '{}'",
+                attachment.name
+            );
+        }
+
+        let source = attachment_source_path(invocation.attachment_dir.path(), &attachment.path)
+            .with_context(|| {
+                format!(
+                    "resolving attachment '{}' from step '{step_name}' execution {execution_index}",
+                    attachment.name
+                )
+            })?;
+        let filename = attachment
+            .filename
+            .clone()
+            .or_else(|| {
+                source
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| attachment.name.clone());
+        let archive_filename = format!(
+            "{attachment_index:03}-{}",
+            path_segment(&filename, "attachment")
+        );
+        let archive_path = format!("attachments/{step_dir}/{execution_dir}/{archive_filename}");
+        let target = run_attachment_dir.join(&archive_path);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
+
+        let bytes =
+            std::fs::read(&source).with_context(|| format!("reading {}", source.display()))?;
+        let size_bytes = u64::try_from(bytes.len()).context("attachment too large")?;
+        let sha256 = hex::encode(Sha256::digest(&bytes));
+        std::fs::write(&target, &bytes).with_context(|| format!("writing {}", target.display()))?;
+
+        attachments.push(RunReportAttachment {
+            name: attachment.name.clone(),
+            path: archive_path.clone(),
+            filename: Some(filename),
+            content_type: attachment.content_type.clone(),
+            size_bytes,
+            sha256,
+            open_with: attachment.open_with,
+        });
+        files.push(CompletedRunAttachment {
+            archive_path,
+            source_path: target,
+        });
+    }
+
+    Ok(Some(CollectedExecutionAttachments {
+        execution: ExperimentRunStepExecution {
+            index: u32::try_from(execution_index).context("too many step executions")?,
+            attachments,
+        },
+        files,
+    }))
+}
+
+fn attachment_source_path(root: &Path, raw: &str) -> Result<PathBuf> {
+    let rel = Path::new(raw);
+    if rel.is_absolute()
+        || rel.components().any(|c| {
+            matches!(
+                c,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        bail!("attachment path must be relative and stay inside FORAGER_ATTACHMENTS_DIR");
+    }
+    let source = root.join(rel);
+    let metadata =
+        std::fs::metadata(&source).with_context(|| format!("reading {}", source.display()))?;
+    if !metadata.is_file() {
+        bail!(
+            "attachment path is not a regular file: {}",
+            source.display()
+        );
+    }
+    Ok(source)
+}
+
+fn path_segment(raw: &str, fallback: &str) -> String {
+    let mut out = String::with_capacity(raw.len().min(80));
+    for ch in raw.chars() {
+        if out.len() >= 80 {
+            break;
+        }
+        match ch {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '-' | '_' => {
+                out.push(ch.to_ascii_lowercase())
+            }
+            _ if !out.ends_with('-') => out.push('-'),
+            _ => {}
+        }
+    }
+    let trimmed = out.trim_matches(['-', '.']).to_string();
+    if trimmed.is_empty() {
+        fallback.to_string()
+    } else {
+        trimmed
+    }
+}
+
 /// Shared execution engine: measure `experiment_name` inside an already-prepared
 /// `scratch` clone checked out at `commit_sha`. The experiment definition and
 /// any step patches are read from the clone. Foragers run inside the clone, so
@@ -430,8 +598,11 @@ fn run_in_scratch(
     // Run each step.
     let mut step_reports: Vec<ExperimentRunStep> = Vec::new();
     let mut measuring_by_step: IndexMap<String, std::time::Duration> = IndexMap::new();
+    let attachment_dir =
+        tempfile::tempdir().context("creating run report attachment staging directory")?;
+    let mut attachment_files = Vec::new();
 
-    for step in &experiment.steps {
+    for (step_index, step) in experiment.steps.iter().enumerate() {
         let samples = step_samples
             .get(step.name.as_str())
             .copied()
@@ -464,6 +635,7 @@ fn run_in_scratch(
             .with_context(|| format!("snapshotting before step '{}'", step.name))?;
 
         let mut all_measurements = Vec::new();
+        let mut executions = Vec::new();
         let mut hard_failure = None;
         // Forager-only time: excludes snapshot capture and inter-sample
         // restores, so it's comparable to what the step actually measures.
@@ -490,7 +662,19 @@ fn run_in_scratch(
             );
             measuring += sample_start.elapsed();
             match invoked {
-                Ok(mut measurements) => all_measurements.append(&mut measurements),
+                Ok(mut invocation) => {
+                    all_measurements.append(&mut invocation.outcomes);
+                    if let Some(collected) = collect_execution_attachments(
+                        attachment_dir.path(),
+                        step_index,
+                        &step.name,
+                        iter - 1,
+                        &invocation,
+                    )? {
+                        attachment_files.extend(collected.files);
+                        executions.push(collected.execution);
+                    }
+                }
                 Err(e) if e.is_hard() => {
                     hard_failure = Some(e);
                     break;
@@ -511,8 +695,10 @@ fn run_in_scratch(
         }
 
         step_reports.push(ExperimentRunStep {
+            index: Some(u32::try_from(step_index).context("too many experiment steps")?),
             step: step.name.clone(),
             measurements: all_measurements,
+            executions,
         });
         measuring_by_step.insert(step.name.clone(), measuring);
     }
@@ -530,7 +716,9 @@ fn run_in_scratch(
         steps: step_reports,
         summaries: experiment.summaries,
         plan,
+        attachment_files,
         measuring_by_step,
+        attachment_dir,
     })
 }
 

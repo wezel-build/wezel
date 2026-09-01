@@ -545,20 +545,77 @@ pub struct ForagerPluginOutput {
     pub tags: IndexMap<String, String>,
 }
 
-/// Envelope written by a forager plugin to `FORAGER_OUT`.
+/// A fixed external opener Anthill knows how to drive for an attachment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AttachmentOpenWith {
+    Perfetto,
+}
+
+/// A file a forager wrote under `FORAGER_ATTACHMENTS_DIR`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForagerPluginAttachment {
+    /// Stable execution-local name. Use the same name on retry to make upload
+    /// idempotence possible.
+    pub name: String,
+    /// Path relative to `FORAGER_ATTACHMENTS_DIR`.
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_with: Option<AttachmentOpenWith>,
+}
+
+/// Attachment metadata inside a packaged run report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunReportAttachment {
+    /// Stable execution-local name.
+    pub name: String,
+    /// Path of the attachment file inside the report archive.
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    pub size_bytes: u64,
+    pub sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_with: Option<AttachmentOpenWith>,
+}
+
+/// Envelope written by a forager plugin to `FORAGER_OUT`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ForagerPluginEnvelope {
     #[serde(default)]
     pub outcomes: Vec<ForagerPluginOutput>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<ForagerPluginAttachment>,
+}
+
+/// One actual execution of a step, such as one sample in a sampled step.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExperimentRunStepExecution {
+    pub index: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<RunReportAttachment>,
 }
 
 /// Per-step report included in `ExperimentRunReport`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExperimentRunStep {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<u32>,
     pub step: String,
     /// Empty when the forager produced no measurements (e.g. `exec`).
     #[serde(default)]
     pub measurements: Vec<ForagerPluginOutput>,
+    /// Empty when the step produced no per-execution artifacts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub executions: Vec<ExperimentRunStepExecution>,
 }
 
 /// Body of `POST /api/runs/report` — wezel-cli reporting completed experiment
@@ -780,6 +837,7 @@ mod tests {
     #[test]
     fn summary_direction_taken_from_matching_outcome() {
         let steps = vec![ExperimentRunStep {
+            index: None,
             step: "bench".into(),
             measurements: vec![ForagerPluginOutput {
                 name: "throughput".into(),
@@ -788,6 +846,7 @@ mod tests {
                 unit: Some(Unit::Count),
                 tags: IndexMap::new(),
             }],
+            executions: Vec::new(),
         }];
         let def = SummaryDef {
             name: "throughput".into(),

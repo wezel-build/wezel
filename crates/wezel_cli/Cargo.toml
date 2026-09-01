@@ -40,3 +40,4 @@ uuid = { workspace = true }
 wezel_bench = { path = "../wezel_bench" }
 wezel_types = { workspace = true }
 whoami = { workspace = true }
+zstd = { workspace = true }

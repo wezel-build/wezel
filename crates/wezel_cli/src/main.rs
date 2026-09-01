@@ -660,12 +660,21 @@ fn next_cmd(
         }
     };
 
+    let wezel_bench::run::CompletedRun {
+        steps,
+        summaries,
+        attachment_files,
+        attachment_dir: _attachment_dir,
+        ..
+    } = completed;
     let report = wezel_types::ExperimentRunReport {
         run_id: run.id,
-        steps: completed.steps,
-        summaries: completed.summaries,
+        steps,
+        summaries,
     };
-    let response = client.report(&report).context("reporting run results")?;
+    let response = client
+        .report(&report, &attachment_files)
+        .context("reporting run results")?;
     client
         .set_status(run.id, "complete", None)
         .context("marking run complete")?;
@@ -797,7 +806,9 @@ fn main() -> ExitCode {
                     steps,
                     summaries: summary_defs,
                     plan,
+                    attachment_files,
                     measuring_by_step,
+                    attachment_dir: _attachment_dir,
                 } = completed;
                 let duration_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
                 let commit = wezel_bench::git::current_sha(&ws.project_dir)?;
@@ -819,7 +830,9 @@ fn main() -> ExitCode {
                 };
 
                 let saved_dir = save
-                    .then(|| wezel_bench::run::save_run(&ws, &saved))
+                    .then(|| {
+                        wezel_bench::run::save_run_with_attachments(&ws, &saved, &attachment_files)
+                    })
                     .transpose()?;
 
                 match output_format {
