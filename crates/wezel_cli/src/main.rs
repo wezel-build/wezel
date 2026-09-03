@@ -545,13 +545,6 @@ struct RunCommandOutput<'a> {
     run_dir: Option<String>,
 }
 
-fn report_run_id(run_id: Option<u64>, save: bool) -> anyhow::Result<Option<u64>> {
-    if run_id.is_some() && !save {
-        anyhow::bail!("--save yes is required when passing --run-id");
-    }
-    Ok(run_id)
-}
-
 fn main() -> ExitCode {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"))
         .format_timestamp(None)
@@ -629,7 +622,6 @@ fn main() -> ExitCode {
                 save,
                 run_id,
             } => run_result((|| -> anyhow::Result<()> {
-                let run_id = report_run_id(run_id, save)?;
                 let ws = make_workspace(project_dir)?;
                 let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
                 let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
@@ -919,15 +911,27 @@ mod tests {
     }
 
     #[test]
-    fn run_id_requires_saved_run_dir() {
-        assert!(
-            report_run_id(Some(7), false)
-                .unwrap_err()
-                .to_string()
-                .contains("--save yes")
-        );
-        assert_eq!(report_run_id(Some(7), true).unwrap(), Some(7));
-        assert_eq!(report_run_id(None, false).unwrap(), None);
+    fn run_id_can_be_used_without_saving() {
+        let cli = Cli::try_parse_from([
+            "wezel",
+            "experiment",
+            "run",
+            "build",
+            "--run-id",
+            "7",
+            "--save",
+            "no",
+        ])
+        .unwrap();
+
+        let Command::Experiment {
+            cmd: ExperimentCmd::Run { run_id, save, .. },
+        } = cli.command
+        else {
+            panic!("expected experiment run command");
+        };
+        assert_eq!(run_id, Some(7));
+        assert!(!save);
     }
 
     #[test]
