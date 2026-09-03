@@ -42,10 +42,10 @@ Forager is the experimentation arm of Wezel. It runs on dedicated hardware provi
 The CLI piece used by Sabo is intentionally transport-free:
 
 ```sh
-wezel experiment run clean-build --run-id 123 --report-dir report
+wezel experiment run clean-build --run-id 123 --output-format json
 ```
 
-Sabo reads Burrow's `POST /runs` ticket (`run_id`, `project_upstream`, `commit_sha`, `experiment_name`, `api_url`), prepares the clone at `commit_sha`, then passes `experiment_name` and `run_id` into `wezel experiment run`. The command writes `report.json` plus attachments under `--report-dir`. Sabo then packages/uploads that directory, or reports a failure, back to Burrow with its runner-scoped token.
+Sabo reads Burrow's `POST /runs` ticket (`run_id`, `project_upstream`, `commit_sha`, `experiment_name`, `api_url`), prepares the clone at `commit_sha`, then passes `experiment_name` and `run_id` into `wezel experiment run`. The command saves the run under `.wezel/runs/...`, writes `report.json` next to `run.json`, and emits the saved `runDir` in JSON output. Sabo then packages/uploads that directory, or reports a failure, back to Burrow with its runner-scoped token.
 
 #### Flow
 1. The user observes in Anthill which scenarios are most common (derived from Pheromone data).
@@ -62,7 +62,7 @@ Bisection is embarrassingly parallel. Each commit under test is independent, so 
 The architecture is:
 - **Burrow scheduler** — decides which run should execute on which runner.
 - **Sabo daemon** — accepts exact tickets, deduplicates retries, starts isolated work, sends heartbeats and callbacks.
-- **Sabo worker shell-out** — runs `wezel experiment run` inside the prepared clone/VM and hands the report directory back to Sabo.
+- **Sabo worker shell-out** — runs `wezel experiment run` inside the prepared clone/VM and hands the saved run directory back to Sabo.
 
 Worker provisioning and scaling is the client's responsibility until Sabo becomes the Wezel-managed executor.
 
@@ -108,7 +108,7 @@ git clone "$PROJECT_UPSTREAM" work
 cd work
 git fetch origin "$COMMIT_SHA"
 git checkout --detach "$COMMIT_SHA"
-wezel experiment run "$EXPERIMENT_NAME" --run-id "$RUN_ID" --report-dir ../report
+wezel experiment run "$EXPERIMENT_NAME" --run-id "$RUN_ID" --output-format json
 ```
 
 Sabo, not the CLI, reports `running`, heartbeats, `failed`, and successful run results to Burrow.
