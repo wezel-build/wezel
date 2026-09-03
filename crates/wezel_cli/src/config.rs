@@ -57,8 +57,8 @@ pub struct Config {
     /// Burrow URL for this invocation. Sourced from `WEZEL_API_URL`; never
     /// persisted to any `config.toml`.
     pub server_url: Option<String>,
-    /// `wez_live_…` API token for authenticated endpoints (run queue). Sourced
-    /// from `WEZEL_API_TOKEN`; never persisted to any `config.toml`.
+    /// `wez_live_…` API token for authenticated Burrow endpoints. Sourced from
+    /// `WEZEL_API_TOKEN`; never persisted to any `config.toml`.
     pub api_token: Option<String>,
     pub username: String,
     /// Where pheromone binaries live.

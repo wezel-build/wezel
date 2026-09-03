@@ -94,7 +94,7 @@ struct ExperimentResult {
 /// authored against the tree left by the earlier ones — so they're applied in
 /// order to one evolving scratch clone, not checked independently. The clone is
 /// at `commit_sha` (HEAD), and patches are read from that committed tree, so
-/// this matches what the queue runner (`experiment next`) would apply.
+/// this matches what dispatched runner execution would apply.
 ///
 /// Stops at the first failing patch: every later patch is built on it, so
 /// continuing would just emit spurious "does not apply" noise.

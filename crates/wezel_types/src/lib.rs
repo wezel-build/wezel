@@ -487,10 +487,7 @@ impl SummaryDef {
     }
 }
 
-/// An experiment run row claimed by wezel-cli via `POST /api/runs/claim`.
-/// Authentication is via the caller's `wez_live_…` API token (Authorization
-/// header); `id` is the row id, used as the round-trip handle when reporting
-/// results back to `POST /api/runs/report`.
+/// A queued experiment run as understood by the runner/reporting API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExperimentRun {
@@ -505,8 +502,9 @@ pub struct ExperimentRun {
 }
 
 /// Where a run executed — a CI job page, a self-hosted runner's own page. Only
-/// the runner knows this, so it hands one over when claiming and burrow keeps it
-/// on the row, which is what lets the UI link to the logs of a run that failed.
+/// the runner knows this, so it records it through run state/heartbeat
+/// callbacks and burrow keeps it on the row, which is what lets the UI link to
+/// the logs of a run that failed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunBacklink {
     /// http(s) only — burrow rejects other schemes, since this ends up in an
@@ -515,17 +513,6 @@ pub struct RunBacklink {
     /// What to call the link. `None` leaves the UI to name it after the host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
-}
-
-/// Body of `POST /api/runs/claim`. Carries only the claiming runner's backlink —
-/// the project comes from the `wez_live_…` token, so a runner still cannot claim
-/// for another repo. burrow also accepts a bodiless claim, so runners predating
-/// this keep working and simply record no link.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExperimentRunClaim {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub backlink: Option<RunBacklink>,
 }
 
 /// Measurement written by a forager plugin to `FORAGER_OUT`.
@@ -618,11 +605,10 @@ pub struct ExperimentRunStep {
     pub executions: Vec<ExperimentRunStepExecution>,
 }
 
-/// Body of `POST /api/runs/report` — wezel-cli reporting completed experiment
-/// run results. Auth is via the caller's `wez_live_…` API token. `run_id`
-/// identifies which row's results are being reported; the server resolves
-/// `(commit, experiment, bisection_id)` from that row, so the report no
-/// longer needs to carry them.
+/// Runner-produced `report.json` consumed by `POST /api/runs/report`.
+/// `run_id` identifies which row's results are being
+/// reported; Burrow resolves `(commit, experiment, bisection_id)` from that row,
+/// so the report does not carry them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExperimentRunReport {
@@ -634,12 +620,6 @@ pub struct ExperimentRunReport {
 }
 
 /// Response from `POST /api/runs/report`.
-///
-/// `queue_pending` tells wezel-cli whether the server still has unclaimed
-/// experiment runs for this org/project — a hint that wezel-cli can
-/// re-dispatch its own workflow rather than waiting for the next scheduled
-/// poll. The actual self-dispatch logic lives in wezel-cli; the field stays
-/// `false` in this spec and is wired up in a follow-up.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExperimentRunResponse {

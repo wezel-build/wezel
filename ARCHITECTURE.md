@@ -37,12 +37,20 @@ There are four faces to Wezel:
 - The asynchronous scenario executor (provided by the client) named Forager. It runs the scenarios and gathers the measures (both volatile and non-volatile ones).
 
 ### Forager
-Forager is the experimentation arm of Wezel. It runs on dedicated hardware provisioned by the client — consistency of the machine is essential for meaningful volatile measurements. Forager does not prescribe *how* it is triggered; a cron job, a scheduled CI pipeline on a self-hosted runner, or a manual invocation all work.
+Forager is the experimentation arm of Wezel. It runs on dedicated hardware provisioned by the client — consistency of the machine is essential for meaningful volatile measurements. In the managed runner path, Burrow assigns work to a configured Sabo runner and pushes an exact dispatch ticket to Sabo; Sabo owns cloning, isolation, status changes, heartbeats, report upload, and failure callbacks.
+
+The CLI piece used by Sabo is intentionally transport-free:
+
+```sh
+wezel experiment run clean-build --run-id 123 --output-format json
+```
+
+Sabo reads Burrow's `POST /runs` ticket (`run_id`, `project_upstream`, `commit_sha`, `experiment_name`, `api_url`), prepares the clone at `commit_sha`, then passes `experiment_name` and `run_id` into `wezel experiment run`. The command saves the run under `.wezel/runs/...`, writes `report.json` next to `run.json`, and emits the saved `runDir` in JSON output. Sabo then packages/uploads that directory, or reports a failure, back to Burrow with its runner-scoped token.
 
 #### Flow
 1. The user observes in Anthill which scenarios are most common (derived from Pheromone data).
 2. The user pins interesting scenarios for tracking and defines them as **mutations**: a recipe like "build the workspace clean, then add this function to this source file, then rebuild."
-3. Forager runs tracked scenarios periodically (e.g. nightly) against HEAD of the main branch.
+3. Burrow assigns tracked scenarios to configured runners and pushes exact tickets to Sabo.
 4. Each scenario is executed multiple times to establish statistical confidence — a single timing is not trustworthy even on dedicated hardware.
 5. Results are reported to Burrow: raw **measurements** from each step, plus **summaries** computed by aggregating those measurements according to formulas defined in the experiment TOML.
 6. Burrow compares each summary against recent history. If a regression is detected in a bisect-eligible summary, Burrow enqueues a bisection.
@@ -52,10 +60,11 @@ Forager is the experimentation arm of Wezel. It runs on dedicated hardware provi
 Bisection is embarrassingly parallel. Each commit under test is independent, so the user can provision multiple worker machines to test commits concurrently. With enough workers, every commit in the range can be tested in a single round — no binary search needed.
 
 The architecture is:
-- **Forager orchestrator** — decides what to run, interprets results, talks to Burrow.
-- **Forager workers** (N machines, same specs) — stateless. They pull jobs, run `forager measure <scenario> --at <sha>`, and report back.
+- **Burrow scheduler** — decides which run should execute on which runner.
+- **Sabo daemon** — accepts exact tickets, deduplicates retries, starts isolated work, sends heartbeats and callbacks.
+- **Sabo worker shell-out** — runs `wezel experiment run` inside the prepared clone/VM and hands the saved run directory back to Sabo.
 
-Worker provisioning and scaling is the client's responsibility. Forager just needs a way to reach them (or they pull from a queue).
+Worker provisioning and scaling is the client's responsibility until Sabo becomes the Wezel-managed executor.
 
 #### Experiment definition
 An experiment lives in `.wezel/experiments/<name>/experiment.toml`. It declares:
@@ -92,20 +101,17 @@ Steps may also apply a patch file before running (`apply-diff = true`), enabling
 When Forager identifies a culprit commit, it needs to notify someone. At minimum, Forager exposes a **webhook** so users can wire it to Slack, email, GitHub comments, or whatever fits their workflow. Anthill also surfaces bisect results in the dashboard.
 
 #### Integration example
-A minimal GitHub Actions setup with a self-hosted runner:
-```yaml
-# .github/workflows/forager.yml
-on:
-  schedule:
-    - cron: '0 3 * * *'
-jobs:
-  experiment:
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-      - run: forager run --report
+A minimal Sabo execution shell-out after accepting a Burrow ticket:
+
+```sh
+git clone "$PROJECT_UPSTREAM" work
+cd work
+git fetch origin "$COMMIT_SHA"
+git checkout --detach "$COMMIT_SHA"
+wezel experiment run "$EXPERIMENT_NAME" --run-id "$RUN_ID" --output-format json
 ```
-The workflow file is trivial and stable. All scenario logic lives in the `forager` binary; scenario configuration lives in Burrow.
+
+Sabo, not the CLI, reports `running`, heartbeats, `failed`, and successful run results to Burrow.
 
 ### Burrow
 Burrow is Anthill's backend. It receives events flushed by Pheromone, persists them, and exposes the data Anthill needs to render scenarios, configurations, and their measures.

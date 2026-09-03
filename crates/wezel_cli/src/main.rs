@@ -7,7 +7,7 @@ mod pheromone_mgr;
 mod progress;
 mod queue;
 mod report;
-mod runner;
+mod report_artifacts;
 mod shell;
 
 use anyhow::Context as _;
@@ -459,36 +459,14 @@ enum ExperimentCmd {
             value_name = "yes|no",
         )]
         save: bool,
+        /// Burrow run id to place in `report.json` inside the saved run dir.
+        #[arg(long, value_name = "ID")]
+        run_id: Option<u64>,
     },
     /// List available experiments.
     List,
     /// Validate experiment definitions without running them.
     Lint,
-    /// Claim and run the next queued experiment run from the server.
-    ///
-    /// Claims one pending run for this repo, measures the claimed commit
-    /// (cloning it cleanly — never touching the working tree), reports the
-    /// results, and exits. Intended for scheduled runners: one run per
-    /// invocation. Requires `WEZEL_API_URL` and a `WEZEL_API_TOKEN`
-    /// (`wez_live_…`) with run-queue access.
-    ///
-    /// With `--output-format json`, prints a single machine-readable object
-    /// (whether a run was claimed, its status, and `queue_pending`) so a
-    /// runner can decide whether to re-dispatch itself for the next run.
-    Next {
-        /// Output format.
-        #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
-        output_format: OutputFormat,
-        /// URL for where this run executed — a CI job, this runner's own status
-        /// page — shown beside the run in the UI so its logs stay reachable even
-        /// if the run dies. Defaults to `$WEZEL_RUN_BACKLINK`.
-        #[arg(long, value_name = "URL")]
-        backlink: Option<String>,
-        /// What to call the `--backlink` link. Defaults to
-        /// `$WEZEL_RUN_BACKLINK_LABEL`; the UI falls back to the host.
-        #[arg(long, value_name = "TEXT")]
-        backlink_label: Option<String>,
-    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -554,152 +532,24 @@ fn make_workspace(project_dir: PathBuf) -> anyhow::Result<wezel_bench::Workspace
     wezel_bench::Workspace::discover(project_dir, tool_store)
 }
 
-/// Machine-readable result of `wezel experiment next --output-format json`.
-///
-/// A self-dispatching runner keys off `claimed` (re-dispatch when a run was
-/// processed, stop when the queue was empty) and may consult `queue_pending`.
-#[derive(Default, serde::Serialize)]
-struct NextOutput {
-    /// Whether a run was claimed and processed this invocation.
-    claimed: bool,
+/// Machine-readable result of `wezel experiment run --output-format json`.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RunCommandOutput<'a> {
+    #[serde(flatten)]
+    output: &'a wezel_bench::run::ExperimentRunOutput,
+    status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     run_id: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    experiment: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    commit: Option<String>,
-    /// `"complete"` or `"failed"` when a run was processed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    status: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-    /// Server hint that more runs remain queued (from the report response).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    queue_pending: Option<bool>,
+    run_dir: Option<String>,
 }
 
-/// Claim, run, and report a single queued experiment run.
-///
-/// One run per invocation (a scheduled or self-dispatching runner re-invokes to
-/// drain the queue). A measurement failure marks the run `failed` on the server
-/// and still returns `Ok(())` so the process exits 0 — the next invocation
-/// proceeds. Only infrastructure errors (no config/token, unreachable server)
-/// bubble up as a nonzero exit.
-fn next_cmd(
-    project_dir: PathBuf,
-    output_format: OutputFormat,
-    backlink: Option<wezel_types::RunBacklink>,
-) -> anyhow::Result<()> {
-    let json = output_format == OutputFormat::Json;
-    let ws = make_workspace(project_dir)?;
-
-    let (_, config) = config::discover(&ws.project_dir)
-        .context("no .wezel/config.toml found — run `wezel project init`")?;
-    let server_url = config
-        .server_url
-        .as_deref()
-        .context("server URL not configured (set WEZEL_API_URL)")?;
-    let token = config
-        .api_token
-        .as_deref()
-        .context("API token not configured (set WEZEL_API_TOKEN)")?;
-
-    let client = runner::RunnerClient::new(server_url, token);
-    let Some(run) = client.claim(backlink)? else {
-        if json {
-            emit_json(&NextOutput::default());
-        } else {
-            println!("No queued runs.");
-        }
-        return Ok(());
-    };
-    if !json {
-        let short = &run.commit_sha[..7.min(run.commit_sha.len())];
-        println!(
-            "Claimed run {} — experiment '{}' @ {short}",
-            run.id, run.experiment_name
-        );
+fn report_run_id(run_id: Option<u64>, save: bool) -> anyhow::Result<Option<u64>> {
+    if run_id.is_some() && !save {
+        anyhow::bail!("--save yes is required when passing --run-id");
     }
-
-    // Measure the claimed commit from a clean clone (never the working tree).
-    let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
-    let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
-    let outcome = wezel_bench::run::run_experiment_at(
-        &run.experiment_name,
-        &ws.project_dir,
-        &run.commit_sha,
-        &ws.tool_store,
-        Some(&mut caching),
-        None,
-    );
-
-    let completed = match outcome {
-        Ok(v) => v,
-        Err(e) => {
-            // Reported as failed so the row leaves `running`; exit 0 so the
-            // next invocation continues draining the queue.
-            let detail = format!("{e:#}");
-            warn!("run {} failed: {detail}", run.id);
-            if let Err(status_err) = client.set_status(run.id, "failed", Some(&detail)) {
-                warn!("could not mark run {} failed: {status_err:#}", run.id);
-            }
-            if json {
-                emit_json(&NextOutput {
-                    claimed: true,
-                    run_id: Some(run.id),
-                    experiment: Some(run.experiment_name),
-                    commit: Some(run.commit_sha),
-                    status: Some("failed".into()),
-                    error: Some(detail),
-                    ..Default::default()
-                });
-            } else {
-                eprintln!("Run {} failed: {detail}", run.id);
-            }
-            return Ok(());
-        }
-    };
-
-    let wezel_bench::run::CompletedRun {
-        steps,
-        summaries,
-        attachment_files,
-        attachment_dir: _attachment_dir,
-        ..
-    } = completed;
-    let report = wezel_types::ExperimentRunReport {
-        run_id: run.id,
-        steps,
-        summaries,
-    };
-    let response = client
-        .report(&report, &attachment_files)
-        .context("reporting run results")?;
-    client
-        .set_status(run.id, "complete", None)
-        .context("marking run complete")?;
-    if json {
-        emit_json(&NextOutput {
-            claimed: true,
-            run_id: Some(run.id),
-            experiment: Some(run.experiment_name),
-            commit: Some(run.commit_sha),
-            status: Some("complete".into()),
-            queue_pending: Some(response.queue_pending),
-            ..Default::default()
-        });
-    } else {
-        println!("Reported run {} ({} step(s)).", run.id, report.steps.len());
-    }
-    Ok(())
-}
-
-/// Print a value as a single line of JSON to stdout.
-fn emit_json<T: serde::Serialize>(value: &T) {
-    println!(
-        "{}",
-        serde_json::to_string(value).expect("serializing JSON output")
-    );
+    Ok(run_id)
 }
 
 fn main() -> ExitCode {
@@ -777,7 +627,9 @@ fn main() -> ExitCode {
                 output_format,
                 verbose,
                 save,
+                run_id,
             } => run_result((|| -> anyhow::Result<()> {
+                let run_id = report_run_id(run_id, save)?;
                 let ws = make_workspace(project_dir)?;
                 let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
                 let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
@@ -813,6 +665,11 @@ fn main() -> ExitCode {
                 let duration_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
                 let commit = wezel_bench::git::current_sha(&ws.project_dir)?;
                 let summaries = wezel_bench::run::compute_summaries(&steps, &summary_defs);
+                let runner_report = run_id.map(|run_id| wezel_types::ExperimentRunReport {
+                    run_id,
+                    steps: steps.clone(),
+                    summaries: summary_defs.clone(),
+                });
 
                 let saved = wezel_bench::run::SavedRun {
                     schema_version: wezel_bench::run::SAVED_RUN_SCHEMA_VERSION,
@@ -835,9 +692,24 @@ fn main() -> ExitCode {
                     })
                     .transpose()?;
 
+                if let (Some(dir), Some(report)) = (saved_dir.as_ref(), runner_report.as_ref()) {
+                    report_artifacts::write_report_json(dir, report)?;
+                }
+
+                let run_dir = saved_dir.as_ref().map(|dir| dir.display().to_string());
+
                 match output_format {
                     OutputFormat::Json => {
-                        println!("{}", serde_json::to_string_pretty(&saved.output).unwrap());
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&RunCommandOutput {
+                                output: &saved.output,
+                                status: "complete",
+                                run_id,
+                                run_dir,
+                            })
+                            .unwrap()
+                        );
                     }
                     OutputFormat::Human => {
                         report::print_run(
@@ -858,15 +730,6 @@ fn main() -> ExitCode {
                 Ok(())
             })()),
             ExperimentCmd::List => run_result(wezel_bench::run::list_experiments(&project_dir)),
-            ExperimentCmd::Next {
-                output_format,
-                backlink,
-                backlink_label,
-            } => run_result(next_cmd(
-                project_dir,
-                output_format,
-                runner::resolve_backlink(backlink, backlink_label),
-            )),
             ExperimentCmd::Lint => run_result((|| -> anyhow::Result<()> {
                 let ws = make_workspace(project_dir)?;
                 let mut fetcher = fetcher::ConfigFetcher::read_only(&ws)?;
@@ -1013,4 +876,62 @@ fn sidecar_is_current(ws: &wezel_bench::Workspace, forager: &str) -> bool {
         return false;
     };
     serde_json::from_str::<wezel_types::ForagerSchema>(&raw).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn experiment_next_is_not_a_command() {
+        assert!(Cli::try_parse_from(["wezel", "experiment", "next"]).is_err());
+    }
+
+    #[test]
+    fn experiment_run_accepts_runner_report_outputs() {
+        let cli = Cli::try_parse_from([
+            "wezel",
+            "experiment",
+            "run",
+            "build",
+            "--run-id",
+            "7",
+            "--output-format",
+            "json",
+        ])
+        .unwrap();
+
+        let Command::Experiment {
+            cmd:
+                ExperimentCmd::Run {
+                    experiment,
+                    run_id,
+                    output_format,
+                    ..
+                },
+        } = cli.command
+        else {
+            panic!("expected experiment run command");
+        };
+        assert_eq!(experiment, "build");
+        assert_eq!(run_id, Some(7));
+        assert_eq!(output_format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn run_id_requires_saved_run_dir() {
+        assert!(
+            report_run_id(Some(7), false)
+                .unwrap_err()
+                .to_string()
+                .contains("--save yes")
+        );
+        assert_eq!(report_run_id(Some(7), true).unwrap(), Some(7));
+        assert_eq!(report_run_id(None, false).unwrap(), None);
+    }
+
+    #[test]
+    fn run_dispatched_is_not_a_command() {
+        assert!(Cli::try_parse_from(["wezel", "experiment", "run-dispatched"]).is_err());
+    }
 }

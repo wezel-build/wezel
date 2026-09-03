@@ -363,7 +363,7 @@ pub fn run_experiment(
 }
 
 /// Run an experiment at a specific committed `sha`, cloning the repo from
-/// `repo_src`. Used by the run queue (`wezel experiment next`).
+/// `repo_src`. Used by dispatched runner execution.
 ///
 /// Unlike [`run_experiment`], the working tree is never consulted: both the
 /// code and the experiment definition come from `sha`'s committed tree, so a
