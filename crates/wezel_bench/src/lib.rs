@@ -585,10 +585,10 @@ pub mod git {
 
     /// Ensure `sha` is present in `repo`, fetching from `origin` if it isn't.
     ///
-    /// The run queue claims arbitrary commits (e.g. bisection midpoints) that a
-    /// shallow CI checkout may not contain. A full `origin` fetch covers commits
-    /// reachable from branches; we then fall back to fetching the bare object,
-    /// which some servers permit.
+    /// Runner dispatch can target arbitrary commits (e.g. bisection midpoints)
+    /// that a shallow checkout may not contain. A full `origin` fetch covers
+    /// commits reachable from branches; we then fall back to fetching the bare
+    /// object, which some servers permit.
     pub fn ensure_commit(repo: &Path, sha: &str) -> Result<()> {
         if has_commit(repo, sha) {
             return Ok(());
