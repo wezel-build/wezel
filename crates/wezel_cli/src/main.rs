@@ -459,12 +459,9 @@ enum ExperimentCmd {
             value_name = "yes|no",
         )]
         save: bool,
-        /// Burrow run id to place in `report.json` when writing `--report-dir`.
+        /// Burrow run id to place in `report.json` inside the saved run dir.
         #[arg(long, value_name = "ID")]
         run_id: Option<u64>,
-        /// Directory to write `report.json` and copied attachments into.
-        #[arg(long, value_name = "DIR")]
-        report_dir: Option<PathBuf>,
     },
     /// List available experiments.
     List,
@@ -546,21 +543,13 @@ struct RunCommandOutput<'a> {
     run_id: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     run_dir: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    report_dir: Option<String>,
 }
 
-fn report_run_id(run_id: Option<u64>, report_dir: Option<&Path>) -> anyhow::Result<Option<u64>> {
-    match (run_id, report_dir) {
-        (Some(id), Some(_)) => Ok(Some(id)),
-        (None, None) => Ok(None),
-        (None, Some(_)) => {
-            anyhow::bail!("--run-id is required when writing --report-dir");
-        }
-        (Some(_), None) => {
-            anyhow::bail!("--report-dir is required when passing --run-id");
-        }
+fn report_run_id(run_id: Option<u64>, save: bool) -> anyhow::Result<Option<u64>> {
+    if run_id.is_some() && !save {
+        anyhow::bail!("--save yes is required when passing --run-id");
     }
+    Ok(run_id)
 }
 
 fn main() -> ExitCode {
@@ -639,9 +628,8 @@ fn main() -> ExitCode {
                 verbose,
                 save,
                 run_id,
-                report_dir,
             } => run_result((|| -> anyhow::Result<()> {
-                let run_id = report_run_id(run_id, report_dir.as_deref())?;
+                let run_id = report_run_id(run_id, save)?;
                 let ws = make_workspace(project_dir)?;
                 let mut fetcher = fetcher::ConfigFetcher::new(&ws)?;
                 let mut caching = wezel_bench::fetch::CachingFetcher::new(&mut fetcher);
@@ -704,18 +692,11 @@ fn main() -> ExitCode {
                     })
                     .transpose()?;
 
-                let effective_report_dir = match (report_dir.as_ref(), runner_report.as_ref()) {
-                    (Some(dir), Some(report)) => {
-                        report_artifacts::write_report_dir(dir, report, &attachment_files)?;
-                        Some(dir.clone())
-                    }
-                    _ => None,
-                };
+                if let (Some(dir), Some(report)) = (saved_dir.as_ref(), runner_report.as_ref()) {
+                    report_artifacts::write_report_json(dir, report)?;
+                }
 
                 let run_dir = saved_dir.as_ref().map(|dir| dir.display().to_string());
-                let report_dir = effective_report_dir
-                    .as_ref()
-                    .map(|dir| dir.display().to_string());
 
                 match output_format {
                     OutputFormat::Json => {
@@ -726,7 +707,6 @@ fn main() -> ExitCode {
                                 status: "complete",
                                 run_id,
                                 run_dir,
-                                report_dir,
                             })
                             .unwrap()
                         );
@@ -744,9 +724,6 @@ fn main() -> ExitCode {
                         // you've read the numbers.
                         if let Some(dir) = saved_dir {
                             report::print_saved_at(&dir, &ws.project_dir);
-                        }
-                        if let Some(dir) = report_dir {
-                            println!("Report directory: {dir}");
                         }
                     }
                 }
@@ -919,8 +896,6 @@ mod tests {
             "build",
             "--run-id",
             "7",
-            "--report-dir",
-            "report",
             "--output-format",
             "json",
         ])
@@ -931,7 +906,6 @@ mod tests {
                 ExperimentCmd::Run {
                     experiment,
                     run_id,
-                    report_dir,
                     output_format,
                     ..
                 },
@@ -941,28 +915,19 @@ mod tests {
         };
         assert_eq!(experiment, "build");
         assert_eq!(run_id, Some(7));
-        assert_eq!(report_dir, Some(PathBuf::from("report")));
         assert_eq!(output_format, OutputFormat::Json);
     }
 
     #[test]
-    fn run_id_and_report_dir_are_required_together() {
+    fn run_id_requires_saved_run_dir() {
         assert!(
-            report_run_id(None, Some(Path::new("report")))
+            report_run_id(Some(7), false)
                 .unwrap_err()
                 .to_string()
-                .contains("--run-id")
+                .contains("--save yes")
         );
-        assert!(
-            report_run_id(Some(7), None)
-                .unwrap_err()
-                .to_string()
-                .contains("--report-dir")
-        );
-        assert_eq!(
-            report_run_id(Some(7), Some(Path::new("report"))).unwrap(),
-            Some(7)
-        );
+        assert_eq!(report_run_id(Some(7), true).unwrap(), Some(7));
+        assert_eq!(report_run_id(None, false).unwrap(), None);
     }
 
     #[test]
