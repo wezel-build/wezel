@@ -1,7 +1,7 @@
 version = 1
 
 [tools.foragers.cargo]
-github = "wezel-build/executor_cargo"
+github = "wezel-build/wezel_cargo"
 tag = "nightly-2026-07-17-a5d2720"
 
 [tools.foragers.cargo.assets]
@@ -11,7 +11,7 @@ x86_64-apple-darwin = "sha256:6368d9b7181d06f378db0218aad41ea090763715e657cf46fa
 x86_64-unknown-linux-gnu = "sha256:28c3563228537c4ee57750b2609523b3bff974a766d05d3ae3c27ada3c3a734b"
 
 [tools.foragers.exec]
-github = "wezel-build/executor_exec"
+github = "wezel-build/wezel_exec"
 tag = "nightly-2026-05-19-6ac3442"
 
 [tools.foragers.exec.assets]
@@ -21,7 +21,7 @@ x86_64-apple-darwin = "sha256:2247d9b4d1d10f5b93283b7df07361dda49eec2a23e27c1779
 x86_64-unknown-linux-gnu = "sha256:49351218a27804961d855a6758c491dab42439dd351024bbd98f628173fa2c17"
 
 [tools.foragers.filesize]
-github = "wezel-build/executor_filesize"
+github = "wezel-build/wezel_filesize"
 tag = "nightly-2026-05-19-fafe0da"
 
 [tools.foragers.filesize.assets]
@@ -31,7 +31,7 @@ x86_64-apple-darwin = "sha256:8857f938c69fc2b9367b9164f5ac0470918c6d95afd533cc21
 x86_64-unknown-linux-gnu = "sha256:ff9de0248889d7649e5e91ec9c85721ed186c0c13588c793c205960e922c220a"
 
 [tools.foragers.llvm-lines]
-github = "wezel-build/executor_llvm_lines"
+github = "wezel-build/wezel_llvm_lines"
 tag = "nightly-2026-05-19-85b06bf"
 
 [tools.foragers.llvm-lines.assets]

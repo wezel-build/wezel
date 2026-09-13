@@ -239,7 +239,7 @@ fn resolve_release_metadata(
         .as_array()
         .ok_or_else(|| FetchError::Other(anyhow::anyhow!("release has no assets")))?;
 
-    // Prefer executor archives, but still install older pinned releases. Their
+    // Prefer wezel_* archives, but still install older pinned releases. Their
     // package names use underscores and the archived executables use hyphens.
     let canonical = wezel_types::executor_binary_name(name);
     let (binary_name, asset) = [canonical.clone(), format!("forager-{name}")]
@@ -403,19 +403,19 @@ mod tests {
     }
 
     #[test]
-    fn renamed_release_prefers_executor_archive_for_the_requested_target() {
+    fn renamed_release_prefers_wezel_archive_for_the_requested_target() {
         let release = release(&[
             "forager_llvm_lines-aarch64-apple-darwin.tar.xz",
-            "executor_llvm_lines-aarch64-apple-darwin.tar.xz.sha256",
-            "executor_llvm_lines-x86_64-unknown-linux-gnu.tar.xz",
-            "executor_llvm_lines-aarch64-apple-darwin.tar.xz",
+            "wezel_llvm_lines-aarch64-apple-darwin.tar.xz.sha256",
+            "wezel_llvm_lines-x86_64-unknown-linux-gnu.tar.xz",
+            "wezel_llvm_lines-aarch64-apple-darwin.tar.xz",
         ]);
         let resolved = resolve_release_metadata(&release, "llvm-lines", TARGET).unwrap();
-        assert_eq!(resolved.binary_name, "executor_llvm_lines");
+        assert_eq!(resolved.binary_name, "wezel_llvm_lines");
         assert_eq!(resolved.tag, "v1.0.0");
         assert_eq!(
             resolved.download_url,
-            "https://example.invalid/executor_llvm_lines-aarch64-apple-darwin.tar.xz"
+            "https://example.invalid/wezel_llvm_lines-aarch64-apple-darwin.tar.xz"
         );
     }
 
@@ -438,13 +438,13 @@ mod tests {
     #[test]
     fn checksums_and_other_plugins_are_not_installable_archives() {
         let release = release(&[
-            "executor_cargo-aarch64-apple-darwin.tar.xz.sha256",
-            "executor_filesize-aarch64-apple-darwin.tar.xz",
-            "executor_cargo-x86_64-unknown-linux-gnu.tar.xz",
+            "wezel_cargo-aarch64-apple-darwin.tar.xz.sha256",
+            "wezel_filesize-aarch64-apple-darwin.tar.xz",
+            "wezel_cargo-x86_64-unknown-linux-gnu.tar.xz",
         ]);
         assert!(matches!(
             resolve_release_metadata(&release, "cargo", TARGET),
-            Err(FetchError::NotAvailable { plugin, .. }) if plugin == "executor_cargo"
+            Err(FetchError::NotAvailable { plugin, .. }) if plugin == "wezel_cargo"
         ));
     }
 }

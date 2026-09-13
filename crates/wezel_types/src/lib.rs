@@ -648,12 +648,12 @@ pub struct ExperimentPrResponse {
 /// Executable name for a measurement plugin's logical identifier.
 ///
 /// Experiment and schema identifiers retain hyphens (for example,
-/// `llvm-lines`), while executable names use underscores (`executor_llvm_lines`).
+/// `llvm-lines`), while executable names use underscores (`wezel_llvm_lines`).
 pub fn executor_binary_name(name: &str) -> String {
-    format!("executor_{}", name.replace('-', "_"))
+    format!("wezel_{}", name.replace('-', "_"))
 }
 
-// ── Forager schema (sidecar emitted by `executor_<name> --schema`) ───────────
+// ── Forager schema (sidecar emitted by `wezel_<name> --schema`) ───────────
 
 /// Self-description a forager prints in response to `--schema`. The wezel CLI
 /// caches the JSON next to the installed binary at install time and reads it

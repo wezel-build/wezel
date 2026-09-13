@@ -42,7 +42,7 @@ tag = "v1"
     // An unrelated cached version must never satisfy the pinned hash.
     fs::create_dir(store.path().join("unlocked-version")).unwrap();
     fs::write(
-        store.path().join("unlocked-version/executor_llvm_lines"),
+        store.path().join("unlocked-version/wezel_llvm_lines"),
         "unlocked",
     )
     .unwrap();
@@ -60,7 +60,7 @@ tag = "v1"
         "legacy schema"
     );
 
-    let renamed = dir.join("executor_llvm_lines");
+    let renamed = dir.join("wezel_llvm_lines");
     assert_eq!(ws.plugin_path("llvm-lines", &sha), renamed);
     fs::write(&renamed, "renamed").unwrap();
     fs::write(Workspace::schema_sidecar_path(&renamed), "new schema").unwrap();

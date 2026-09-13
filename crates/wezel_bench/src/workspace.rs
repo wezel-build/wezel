@@ -15,7 +15,7 @@ use crate::{ProjectConfig, fetch, lockfile};
 pub struct Workspace {
     pub project_dir: PathBuf,
     /// Content-addressed tool store root; binaries live at
-    /// `<tool_store>/<archive-sha>/executor_<name>`.
+    /// `<tool_store>/<archive-sha>/wezel_<name>`.
     pub tool_store: PathBuf,
     pub config: ProjectConfig,
 }
