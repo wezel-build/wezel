@@ -413,7 +413,7 @@ enum ProjectCmd {
     /// Creates `.wezel/config.toml` in the current directory.
     /// Options not passed on the command line are prompted interactively.
     Init {
-        /// Burrow API URL to push build timings to.
+        /// Fiflok API URL to push build timings to.
         #[arg(long)]
         server_url: Option<String>,
     },
@@ -459,7 +459,7 @@ enum ExperimentCmd {
             value_name = "yes|no",
         )]
         save: bool,
-        /// Burrow run id to place in `report.json` inside the saved run dir.
+        /// Fiflok run id to place in `report.json` inside the saved run dir.
         #[arg(long, value_name = "ID")]
         run_id: Option<u64>,
     },
@@ -803,7 +803,7 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
     let mut skipped = 0usize;
     for name in &foragers {
         if sidecar_is_current(ws, name) {
-            println!("  forager-{name}  up to date");
+            println!("  {}  up to date", wezel_types::executor_binary_name(name));
             skipped += 1;
         } else {
             wezel_bench::fetch::PluginFetcher::fetch(&mut fetcher, name)?;
@@ -832,9 +832,9 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
 fn write_schema_bundle(ws: &wezel_bench::Workspace, foragers: &[String]) -> anyhow::Result<()> {
     let mut sidecars = Vec::with_capacity(foragers.len());
     for name in foragers {
-        let binary = ws
-            .resolve_plugin(name)
-            .with_context(|| format!("forager-{name} not installed"))?;
+        let binary = ws.resolve_plugin(name).with_context(|| {
+            format!("{} not installed", wezel_types::executor_binary_name(name))
+        })?;
         let path = wezel_bench::Workspace::schema_sidecar_path(&binary);
         let raw = std::fs::read_to_string(&path)
             .with_context(|| format!("reading sidecar {}", path.display()))?;

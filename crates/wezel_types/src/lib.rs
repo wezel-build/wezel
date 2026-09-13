@@ -1,6 +1,6 @@
 //! Shared types for the wezel ecosystem.
 //!
-//! These mirror the data model consumed by the Anthill frontend.
+//! These mirror the data model consumed by the Farfocel frontend.
 
 use std::collections::HashMap;
 
@@ -503,11 +503,11 @@ pub struct ExperimentRun {
 
 /// Where a run executed — a CI job page, a self-hosted runner's own page. Only
 /// the runner knows this, so it records it through run state/heartbeat
-/// callbacks and burrow keeps it on the row, which is what lets the UI link to
+/// callbacks and fiflok keeps it on the row, which is what lets the UI link to
 /// the logs of a run that failed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunBacklink {
-    /// http(s) only — burrow rejects other schemes, since this ends up in an
+    /// http(s) only — fiflok rejects other schemes, since this ends up in an
     /// `href`.
     pub url: String,
     /// What to call the link. `None` leaves the UI to name it after the host.
@@ -532,7 +532,7 @@ pub struct ForagerPluginOutput {
     pub tags: IndexMap<String, String>,
 }
 
-/// A fixed external opener Anthill knows how to drive for an attachment.
+/// A fixed external opener Farfocel knows how to drive for an attachment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AttachmentOpenWith {
@@ -607,7 +607,7 @@ pub struct ExperimentRunStep {
 
 /// Runner-produced `report.json` consumed by `POST /api/runs/report`.
 /// `run_id` identifies which row's results are being
-/// reported; Burrow resolves `(commit, experiment, bisection_id)` from that row,
+/// reported; Fiflok resolves `(commit, experiment, bisection_id)` from that row,
 /// so the report does not carry them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -645,7 +645,15 @@ pub struct ExperimentPrResponse {
     pub pr_url: String,
 }
 
-// ── Forager schema (sidecar emitted by `forager-<name> --schema`) ────────────
+/// Executable name for a measurement plugin's logical identifier.
+///
+/// Experiment and schema identifiers retain hyphens (for example,
+/// `llvm-lines`), while executable names use underscores (`wezel_llvm_lines`).
+pub fn executor_binary_name(name: &str) -> String {
+    format!("wezel_{}", name.replace('-', "_"))
+}
+
+// ── Forager schema (sidecar emitted by `wezel_<name> --schema`) ───────────
 
 /// Self-description a forager prints in response to `--schema`. The wezel CLI
 /// caches the JSON next to the installed binary at install time and reads it
@@ -653,7 +661,8 @@ pub struct ExperimentPrResponse {
 /// `experiment.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForagerSchema {
-    /// Forager identifier; must match `forager-<name>` in the binary name.
+    /// Logical forager identifier, such as `llvm-lines`. Its executable name
+    /// is derived with [`executor_binary_name`].
     pub name: String,
     /// One-line human description shown in CLI listings.
     pub description: String,

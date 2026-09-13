@@ -342,7 +342,7 @@ pub fn list_experiments(project_dir: &Path) -> Result<()> {
 /// working-tree edits, so the measured tree matches what the user is looking
 /// at. The experiment definition is read from that clone.
 ///
-/// This function is pure execution — it knows nothing about Burrow. The caller
+/// This function is pure execution — it knows nothing about Fiflok. The caller
 /// decides whether/how to submit results.
 pub fn run_experiment(
     experiment_name: &str,
@@ -586,8 +586,12 @@ fn run_in_scratch(
             {
                 continue;
             }
-            f.fetch(&step.forager)
-                .with_context(|| format!("installing forager-{}", step.forager))?;
+            f.fetch(&step.forager).with_context(|| {
+                format!(
+                    "installing {}",
+                    wezel_types::executor_binary_name(&step.forager)
+                )
+            })?;
         }
     }
 

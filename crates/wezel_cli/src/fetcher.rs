@@ -48,7 +48,7 @@ impl<'ws> ConfigFetcher<'ws> {
     ///
     /// No-op when the entry already exists at the resolved tag.
     pub fn lock_target(&mut self, name: &str, target: &str) -> anyhow::Result<()> {
-        let binary_name = format!("forager-{name}");
+        let binary_name = wezel_types::executor_binary_name(name);
         let source = self
             .workspace
             .config
@@ -62,7 +62,7 @@ impl<'ws> ConfigFetcher<'ws> {
             &source.github,
             source.tag.as_deref(),
             locked.as_ref(),
-            &binary_name,
+            name,
             target,
         )
         .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -115,7 +115,7 @@ impl<'ws> ConfigFetcher<'ws> {
 
 impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
     fn fetch(&mut self, name: &str) -> Result<PathBuf, FetchError> {
-        let binary_name = format!("forager-{name}");
+        let binary_name = wezel_types::executor_binary_name(name);
         let target = fetch::current_target().ok_or_else(|| FetchError::NotAvailable {
             plugin: binary_name.clone(),
             target: "unknown".into(),
@@ -149,7 +149,7 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
             &source.github,
             source.tag.as_deref(),
             locked.as_ref(),
-            &binary_name,
+            name,
             target,
         )?;
 
@@ -168,7 +168,7 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
         }
 
         let dest = self.workspace.plugin_path(name, &archive_sha);
-        fetch::extract_and_install(&bytes, &binary_name, &dest)?;
+        fetch::extract_and_install(&bytes, &resolved.binary_name, &dest)?;
         fetch::strip_quarantine(&dest);
         write_schema_sidecar(name, &dest)?;
         eprintln!(
@@ -205,13 +205,15 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
 struct ResolvedRelease {
     tag: String,
     download_url: String,
+    /// Name inside the archive, which may belong to a pinned legacy release.
+    binary_name: String,
 }
 
 fn resolve_release(
     repo: &str,
     config_tag: Option<&str>,
     locked: Option<&LockedTool>,
-    binary_name: &str,
+    name: &str,
     target: &str,
 ) -> Result<ResolvedRelease, FetchError> {
     let pinned = locked.map(|l| l.tag.as_str()).or(config_tag);
@@ -220,6 +222,14 @@ fn resolve_release(
         None => fetch_latest_release(repo)?,
     };
 
+    resolve_release_metadata(&release, name, target)
+}
+
+fn resolve_release_metadata(
+    release: &serde_json::Value,
+    name: &str,
+    target: &str,
+) -> Result<ResolvedRelease, FetchError> {
     let tag = release["tag_name"]
         .as_str()
         .ok_or_else(|| FetchError::Other(anyhow::anyhow!("release has no tag_name")))?
@@ -229,20 +239,26 @@ fn resolve_release(
         .as_array()
         .ok_or_else(|| FetchError::Other(anyhow::anyhow!("release has no assets")))?;
 
-    // Archive naming convention: {name}-{version}-{target}.tar.gz; cargo-dist
-    // uses the crate name (underscores) while the binary uses hyphens, so
-    // accept both forms.
-    let underscored = binary_name.replace('-', "_");
-    let asset = assets
-        .iter()
-        .find(|a| {
-            let fname = a["name"].as_str().unwrap_or("");
-            (fname.contains(binary_name) || fname.contains(&underscored))
-                && fname.contains(target)
-                && !fname.ends_with(".sha256")
+    // Prefer wezel_* archives, but still install older pinned releases. Their
+    // package names use underscores and the archived executables use hyphens.
+    let canonical = wezel_types::executor_binary_name(name);
+    let (binary_name, asset) = [canonical.clone(), format!("forager-{name}")]
+        .into_iter()
+        .find_map(|binary_name| {
+            let underscored = binary_name.replace('-', "_");
+            assets
+                .iter()
+                .find(|asset| {
+                    let fname = asset["name"].as_str().unwrap_or("");
+                    (fname.starts_with(&format!("{binary_name}-"))
+                        || fname.starts_with(&format!("{underscored}-")))
+                        && (fname.ends_with(&format!("-{target}.tar.gz"))
+                            || fname.ends_with(&format!("-{target}.tar.xz")))
+                })
+                .map(|asset| (binary_name, asset))
         })
         .ok_or_else(|| FetchError::NotAvailable {
-            plugin: binary_name.into(),
+            plugin: canonical,
             target: target.into(),
         })?;
 
@@ -251,7 +267,11 @@ fn resolve_release(
         .ok_or_else(|| FetchError::Other(anyhow::anyhow!("asset has no download URL")))?
         .to_string();
 
-    Ok(ResolvedRelease { tag, download_url })
+    Ok(ResolvedRelease {
+        tag,
+        download_url,
+        binary_name,
+    })
 }
 
 /// Fetch the most recent release. Uses `/releases?per_page=1` rather than
@@ -334,28 +354,27 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// schema sidecar so lint and runtime tools can read it without spawning a
 /// child process.
 fn write_schema_sidecar(forager_name: &str, binary: &std::path::Path) -> Result<(), FetchError> {
+    let binary_name = wezel_types::executor_binary_name(forager_name);
     let out = std::process::Command::new(binary)
         .arg("--schema")
         .output()
         .map_err(|e| {
-            FetchError::Other(anyhow::anyhow!(
-                "running --schema for forager-{forager_name}: {e}"
-            ))
+            FetchError::Other(anyhow::anyhow!("running --schema for {binary_name}: {e}"))
         })?;
     if !out.status.success() {
         return Err(FetchError::Other(anyhow::anyhow!(
-            "forager-{forager_name} --schema exited with {}",
+            "{binary_name} --schema exited with {}",
             out.status
         )));
     }
     let parsed: wezel_types::ForagerSchema = serde_json::from_slice(&out.stdout).map_err(|e| {
         FetchError::Other(anyhow::anyhow!(
-            "forager-{forager_name} --schema produced invalid output: {e}"
+            "{binary_name} --schema produced invalid output: {e}"
         ))
     })?;
     if parsed.name != forager_name {
         return Err(FetchError::Other(anyhow::anyhow!(
-            "forager-{forager_name} --schema reports name `{}` — binary/schema mismatch",
+            "{binary_name} --schema reports name `{}` — binary/schema mismatch",
             parsed.name,
         )));
     }
@@ -364,4 +383,68 @@ fn write_schema_sidecar(forager_name: &str, binary: &std::path::Path) -> Result<
         FetchError::Other(anyhow::anyhow!("writing {}: {e}", schema_path.display()))
     })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    const TARGET: &str = "aarch64-apple-darwin";
+
+    fn release(assets: &[&str]) -> serde_json::Value {
+        json!({
+            "tag_name": "v1.0.0",
+            "assets": assets.iter().map(|name| json!({
+                "name": name,
+                "browser_download_url": format!("https://example.invalid/{name}"),
+            })).collect::<Vec<_>>()
+        })
+    }
+
+    #[test]
+    fn renamed_release_prefers_wezel_archive_for_the_requested_target() {
+        let release = release(&[
+            "forager_llvm_lines-aarch64-apple-darwin.tar.xz",
+            "wezel_llvm_lines-aarch64-apple-darwin.tar.xz.sha256",
+            "wezel_llvm_lines-x86_64-unknown-linux-gnu.tar.xz",
+            "wezel_llvm_lines-aarch64-apple-darwin.tar.xz",
+        ]);
+        let resolved = resolve_release_metadata(&release, "llvm-lines", TARGET).unwrap();
+        assert_eq!(resolved.binary_name, "wezel_llvm_lines");
+        assert_eq!(resolved.tag, "v1.0.0");
+        assert_eq!(
+            resolved.download_url,
+            "https://example.invalid/wezel_llvm_lines-aarch64-apple-darwin.tar.xz"
+        );
+    }
+
+    #[test]
+    fn pinned_legacy_release_retains_its_archived_binary_name() {
+        for asset in [
+            "forager_llvm_lines-aarch64-apple-darwin.tar.xz",
+            "forager-llvm-lines-v1.0.0-aarch64-apple-darwin.tar.gz",
+        ] {
+            let resolved =
+                resolve_release_metadata(&release(&[asset]), "llvm-lines", TARGET).unwrap();
+            assert_eq!(resolved.binary_name, "forager-llvm-lines");
+            assert_eq!(
+                resolved.download_url,
+                format!("https://example.invalid/{asset}")
+            );
+        }
+    }
+
+    #[test]
+    fn checksums_and_other_plugins_are_not_installable_archives() {
+        let release = release(&[
+            "wezel_cargo-aarch64-apple-darwin.tar.xz.sha256",
+            "wezel_filesize-aarch64-apple-darwin.tar.xz",
+            "wezel_cargo-x86_64-unknown-linux-gnu.tar.xz",
+        ]);
+        assert!(matches!(
+            resolve_release_metadata(&release, "cargo", TARGET),
+            Err(FetchError::NotAvailable { plugin, .. }) if plugin == "wezel_cargo"
+        ));
+    }
 }

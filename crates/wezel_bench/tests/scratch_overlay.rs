@@ -117,11 +117,11 @@ fn plain_create_ignores_worktree() {
 fn nested_project_clones_whole_repo() {
     let src = tempfile::tempdir().unwrap();
     let head = init_repo(src.path());
-    let project = src.path().join("crates/burrow");
+    let project = src.path().join("crates/fiflok");
     fs::create_dir_all(&project).unwrap();
     // An (untracked) file under the project dir, like a not-yet-committed
     // `.wezel/config.toml`, so the overlay carries the subdir into the clone.
-    fs::write(project.join("marker.txt"), "burrow\n").unwrap();
+    fs::write(project.join("marker.txt"), "fiflok\n").unwrap();
 
     // Pass the nested project dir as the source, as the CLI does.
     let scratch = Scratch::create_with_worktree(&project, &head).unwrap();
@@ -132,9 +132,9 @@ fn nested_project_clones_whole_repo() {
         "v1\n"
     );
     // project_dir() points at the subdir within the clone, carried by overlay.
-    assert_eq!(scratch.project_dir(), scratch.path().join("crates/burrow"));
+    assert_eq!(scratch.project_dir(), scratch.path().join("crates/fiflok"));
     assert_eq!(
         fs::read_to_string(scratch.project_dir().join("marker.txt")).unwrap(),
-        "burrow\n"
+        "fiflok\n"
     );
 }

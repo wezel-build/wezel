@@ -73,7 +73,7 @@ impl ProjectConfig {
 }
 
 // `ExperimentToml` / `StepBody` / `EmbeddedSummaryToml` / `DiffField` moved to
-// `wezel_types` (re-exported above) so burrow can validate experiment.toml
+// `wezel_types` (re-exported above) so fiflok can validate experiment.toml
 // against the canonical schema without depending on this crate.
 
 /// Render the JSON Schema for `experiment.toml`. Internal helper used by
@@ -250,7 +250,7 @@ pub fn parse_experiment(experiment_dir: &Path) -> Result<ExperimentDef> {
     entries.sort_by_key(|(_, _, span, _)| *span);
 
     // Step names must be unique across tools — patch filenames and the
-    // `measurements.step` column in burrow assume globally-unique names.
+    // `measurements.step` column in fiflok assume globally-unique names.
     let mut seen: HashSet<String> = HashSet::new();
     for (_, name, _, _) in &entries {
         if !seen.insert(name.clone()) {
@@ -357,7 +357,7 @@ build_target = "workspace"
     }
 
     /// Step names must be unique across tools — same name under two
-    /// different tools collides with patch filenames and burrow's
+    /// different tools collides with patch filenames and fiflok's
     /// `measurements.step` column.
     #[test]
     fn rejects_step_name_collision_across_tools() {
@@ -679,7 +679,7 @@ pub fn invoke_forager(
     workspace: &Workspace,
     fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> std::result::Result<ForagerInvocation, StepError> {
-    let binary_name = format!("forager-{forager_name}");
+    let binary_name = wezel_types::executor_binary_name(forager_name);
     // Resolve from the local store; if missing, ask the fetcher to install.
     let binary = match workspace.resolve_plugin(forager_name) {
         Some(path) => path,

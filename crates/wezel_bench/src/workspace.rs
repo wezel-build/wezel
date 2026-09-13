@@ -15,7 +15,7 @@ use crate::{ProjectConfig, fetch, lockfile};
 pub struct Workspace {
     pub project_dir: PathBuf,
     /// Content-addressed tool store root; binaries live at
-    /// `<tool_store>/<archive-sha>/forager-<name>`.
+    /// `<tool_store>/<archive-sha>/wezel_<name>`.
     pub tool_store: PathBuf,
     pub config: ProjectConfig,
 }
@@ -34,8 +34,15 @@ impl Workspace {
     /// Path of the forager binary pinned in `wezel.lock` for the current
     /// target, or `None` if that version isn't installed.
     pub fn resolve_plugin(&self, forager: &str) -> Option<PathBuf> {
-        let binary = self.plugin_path(forager, &self.locked_sha(forager)?);
-        binary.is_file().then_some(binary)
+        let sha = self.locked_sha(forager)?;
+        let binary = self.plugin_path(forager, &sha);
+        if binary.is_file() {
+            return Some(binary);
+        }
+        // Keep existing locked installations usable without downloading the
+        // same archive again. Their schema sidecars stay beside the old binary.
+        let legacy = self.tool_store.join(sha).join(format!("forager-{forager}"));
+        legacy.is_file().then_some(legacy)
     }
 
     /// Locked archive sha (hex, no `sha256:` prefix) for `forager` on the
@@ -50,7 +57,7 @@ impl Workspace {
     pub fn plugin_path(&self, forager: &str, sha_hex: &str) -> PathBuf {
         self.tool_store
             .join(sha_hex)
-            .join(format!("forager-{forager}"))
+            .join(wezel_types::executor_binary_name(forager))
     }
 
     /// The `--schema` sidecar sits next to its binary.

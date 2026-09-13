@@ -17,7 +17,8 @@ pub enum FetchError {
 /// Implementations live in `wezel_cli`; the trait is defined here so
 /// `invoke_forager` can accept `Option<&mut dyn PluginFetcher>`.
 pub trait PluginFetcher {
-    /// Fetch and install the plugin binary named `forager-{name}`.
+    /// Fetch and install the plugin binary named by
+    /// [`wezel_types::executor_binary_name`].
     /// Returns the path to the installed binary.
     fn fetch(&mut self, name: &str) -> Result<PathBuf, FetchError>;
 }
