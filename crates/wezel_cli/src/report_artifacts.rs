@@ -1,6 +1,6 @@
 //! Write the report artifacts produced by `wezel experiment run`.
 //!
-//! This is deliberately local-only. Dynks owns all Fiflok callbacks and any
+//! This is deliberately local-only. Fafik owns all Fiflok callbacks and any
 //! transport-specific packaging; the CLI just materializes `report.json` in the
 //! same saved run directory that already contains attachments.
 

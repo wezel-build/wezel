@@ -37,20 +37,20 @@ There are four faces to Wezel:
 - The asynchronous scenario executor (provided by the client) named Forager. It runs the scenarios and gathers the measures (both volatile and non-volatile ones).
 
 ### Forager
-Forager is the experimentation arm of Wezel. It runs on dedicated hardware provisioned by the client — consistency of the machine is essential for meaningful volatile measurements. In the managed runner path, Fiflok assigns work to a configured Dynks runner and pushes an exact dispatch ticket to Dynks; Dynks owns cloning, isolation, status changes, heartbeats, report upload, and failure callbacks.
+Forager is the experimentation arm of Wezel. It runs on dedicated hardware provisioned by the client — consistency of the machine is essential for meaningful volatile measurements. In the managed runner path, Fiflok assigns work to a configured Fafik runner and pushes an exact dispatch ticket to Fafik; Fafik owns cloning, isolation, status changes, heartbeats, report upload, and failure callbacks.
 
-The CLI piece used by Dynks is intentionally transport-free:
+The CLI piece used by Fafik is intentionally transport-free:
 
 ```sh
 wezel experiment run clean-build --run-id 123 --output-format json
 ```
 
-Dynks reads Fiflok's `POST /runs` ticket (`run_id`, `project_upstream`, `commit_sha`, `experiment_name`, `api_url`), prepares the clone at `commit_sha`, then passes `experiment_name` and `run_id` into `wezel experiment run`. The command saves the run under `.wezel/runs/...`, writes `report.json` next to `run.json`, and emits the saved `runDir` in JSON output. Dynks then packages/uploads that directory, or reports a failure, back to Fiflok with its runner-scoped token.
+Fafik reads Fiflok's `POST /runs` ticket (`run_id`, `project_upstream`, `commit_sha`, `experiment_name`, `api_url`), prepares the clone at `commit_sha`, then passes `experiment_name` and `run_id` into `wezel experiment run`. The command saves the run under `.wezel/runs/...`, writes `report.json` next to `run.json`, and emits the saved `runDir` in JSON output. Fafik then packages/uploads that directory, or reports a failure, back to Fiflok with its runner-scoped token.
 
 #### Flow
 1. The user observes in Farfocel which scenarios are most common (derived from Pheromone data).
 2. The user pins interesting scenarios for tracking and defines them as **mutations**: a recipe like "build the workspace clean, then add this function to this source file, then rebuild."
-3. Fiflok assigns tracked scenarios to configured runners and pushes exact tickets to Dynks.
+3. Fiflok assigns tracked scenarios to configured runners and pushes exact tickets to Fafik.
 4. Each scenario is executed multiple times to establish statistical confidence — a single timing is not trustworthy even on dedicated hardware.
 5. Results are reported to Fiflok: raw **measurements** from each step, plus **summaries** computed by aggregating those measurements according to formulas defined in the experiment TOML.
 6. Fiflok compares each summary against recent history. If a regression is detected in a bisect-eligible summary, Fiflok enqueues a bisection.
@@ -61,10 +61,10 @@ Bisection is embarrassingly parallel. Each commit under test is independent, so 
 
 The architecture is:
 - **Fiflok scheduler** — decides which run should execute on which runner.
-- **Dynks daemon** — accepts exact tickets, deduplicates retries, starts isolated work, sends heartbeats and callbacks.
-- **Dynks worker shell-out** — runs `wezel experiment run` inside the prepared clone/VM and hands the saved run directory back to Dynks.
+- **Fafik daemon** — accepts exact tickets, deduplicates retries, starts isolated work, sends heartbeats and callbacks.
+- **Fafik worker shell-out** — runs `wezel experiment run` inside the prepared clone/VM and hands the saved run directory back to Fafik.
 
-Worker provisioning and scaling is the client's responsibility until Dynks becomes the Wezel-managed executor.
+Worker provisioning and scaling is the client's responsibility until Fafik becomes the Wezel-managed executor.
 
 #### Experiment definition
 An experiment lives in `.wezel/experiments/<name>/experiment.toml`. It declares:
@@ -101,7 +101,7 @@ Steps may also apply a patch file before running (`apply-diff = true`), enabling
 When Forager identifies a culprit commit, it needs to notify someone. At minimum, Forager exposes a **webhook** so users can wire it to Slack, email, GitHub comments, or whatever fits their workflow. Farfocel also surfaces bisect results in the dashboard.
 
 #### Integration example
-A minimal Dynks execution shell-out after accepting a Fiflok ticket:
+A minimal Fafik execution shell-out after accepting a Fiflok ticket:
 
 ```sh
 git clone "$PROJECT_UPSTREAM" work
@@ -111,7 +111,7 @@ git checkout --detach "$COMMIT_SHA"
 wezel experiment run "$EXPERIMENT_NAME" --run-id "$RUN_ID" --output-format json
 ```
 
-Dynks, not the CLI, reports `running`, heartbeats, `failed`, and successful run results to Fiflok.
+Fafik, not the CLI, reports `running`, heartbeats, `failed`, and successful run results to Fiflok.
 
 ### Fiflok
 Fiflok is Farfocel's backend. It receives events flushed by Pheromone, persists them, and exposes the data Farfocel needs to render scenarios, configurations, and their measures.

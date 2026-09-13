@@ -10,13 +10,13 @@ targets = [
 ]
 
 [tools.foragers.exec]
-github = "wezel-build/forager_exec"
+github = "wezel-build/executor_exec"
 
 [tools.foragers.llvm-lines]
-github = "wezel-build/forager_llvm_lines"
+github = "wezel-build/executor_llvm_lines"
 
 [tools.foragers.cargo]
-github = "wezel-build/forager_cargo"
+github = "wezel-build/executor_cargo"
 
 [tools.foragers.filesize]
-github = "wezel-build/forager_filesize"
+github = "wezel-build/executor_filesize"
