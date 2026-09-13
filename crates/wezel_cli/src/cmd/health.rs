@@ -57,7 +57,7 @@ pub fn health_cmd() -> anyhow::Result<()> {
             if let Some(ref url) = config.server_url {
                 println!();
                 print!("server ({url}): ");
-                match ping_burrow(url) {
+                match ping_fiflok(url) {
                     Ok(()) => println!("reachable ✓"),
                     Err(e) => println!("⚠ unreachable — {e}"),
                 }
@@ -71,7 +71,7 @@ pub fn health_cmd() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn ping_burrow(base: &str) -> anyhow::Result<()> {
+fn ping_fiflok(base: &str) -> anyhow::Result<()> {
     let url = Url::parse(base)?;
     let host = url
         .host_str()

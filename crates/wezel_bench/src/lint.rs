@@ -55,8 +55,8 @@ fn validate_step_inputs(step: &StepDef, sidecar: &ForagerSchema) -> Vec<LintDiag
             return vec![LintDiagnostic {
                 step: step.name.clone(),
                 message: format!(
-                    "cached schema for `forager-{}` failed to compile ({e}) — run `wezel project tool sync` to refresh",
-                    step.forager,
+                    "cached schema for `{}` failed to compile ({e}) — run `wezel project tool sync` to refresh",
+                    wezel_types::executor_binary_name(&step.forager),
                 ),
             }];
         }
@@ -327,7 +327,10 @@ pub fn run_lint(
             {
                 diagnostics.push(LintDiagnostic {
                     step: step.name.clone(),
-                    message: format!("plugin `forager-{}`: {e}", step.forager),
+                    message: format!(
+                        "plugin `{}`: {e}",
+                        wezel_types::executor_binary_name(&step.forager)
+                    ),
                 });
                 continue;
             }
@@ -338,7 +341,10 @@ pub fn run_lint(
                 if warned_plugins.insert(step.forager.clone()) {
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),
-                        message: format!("plugin `forager-{}` not in local store", step.forager),
+                        message: format!(
+                            "plugin `{}` not in local store",
+                            wezel_types::executor_binary_name(&step.forager)
+                        ),
                     });
                 }
                 continue;
@@ -356,8 +362,8 @@ pub fn run_lint(
                         diagnostics.push(LintDiagnostic {
                             step: step.name.clone(),
                             message: format!(
-                                "cached schema for `forager-{}` does not match the current format ({e}) — run `wezel project tool sync` to refresh",
-                                step.forager,
+                                "cached schema for `{}` does not match the current format ({e}) — run `wezel project tool sync` to refresh",
+                                wezel_types::executor_binary_name(&step.forager),
                             ),
                         });
                     }
@@ -366,8 +372,8 @@ pub fn run_lint(
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),
                         message: format!(
-                            "no cached schema for `forager-{}` at {} ({e}) — reinstall the forager",
-                            step.forager,
+                            "no cached schema for `{}` at {} ({e}) — reinstall the executor",
+                            wezel_types::executor_binary_name(&step.forager),
                             schema_path.display()
                         ),
                     });

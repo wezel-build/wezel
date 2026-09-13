@@ -48,7 +48,7 @@ impl LintFixture {
     fn plugin_path(&self, name: &str) -> PathBuf {
         self.tool_store
             .join(fake_sha(name))
-            .join(format!("forager-{name}"))
+            .join(format!("executor_{}", name.replace('-', "_")))
     }
 
     fn add_experiment(&self, name: &str, toml: &str) -> PathBuf {

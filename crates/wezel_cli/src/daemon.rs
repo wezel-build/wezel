@@ -1,7 +1,7 @@
 //! Background daemon for wezel.
 //!
 //! The daemon:
-//!   1. Every 30s: Flushes `~/.wezel/queue/` to burrow.
+//!   1. Every 30s: Flushes `~/.wezel/queue/` to fiflok.
 //!   2. Every 5min: Checks for pheromone binary updates.
 //!   3. Auto-exits after 5min of idle (no queue files seen).
 //!   4. Writes its PID to `~/.wezel/wezel.pid`.
@@ -91,7 +91,7 @@ pub fn run_daemon() {
             {
                 let n = flush_queue(server_url);
                 if n > 0 {
-                    log::info!("daemon: flushed {n} event(s) to burrow");
+                    log::info!("daemon: flushed {n} event(s) to fiflok");
                     last_activity = now;
                 }
             }

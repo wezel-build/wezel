@@ -11,12 +11,12 @@ pub fn status_cmd(project_dir: &Path) -> Result<()> {
 
     println!("project:  {} ({})", ws.config.name, ws.config.project_id);
     println!("config:   {}", config_path.display());
-    let burrow = std::env::var("WEZEL_API_URL")
+    let fiflok = std::env::var("WEZEL_API_URL")
         .ok()
         .filter(|s| !s.is_empty())
         .map(|url| format!("server {url} (WEZEL_API_URL)"))
         .unwrap_or_else(|| "(WEZEL_API_URL not set)".to_string());
-    println!("burrow:   {burrow}");
+    println!("fiflok:   {fiflok}");
 
     let lock = lockfile::load(&ws.project_dir)?;
     let lockfile_present = lockfile::path(&ws.project_dir).is_file();

@@ -1,7 +1,7 @@
 //! Pheromone binary update manager.
 //!
-//! Queries burrow for the latest pheromone versions, downloads updated
-//! tarballs via burrow (which handles caching and dev-mode), extracts
+//! Queries fiflok for the latest pheromone versions, downloads updated
+//! tarballs via fiflok (which handles caching and dev-mode), extracts
 //! the binary into a global cache, and symlinks it into the per-project
 //! pheromone directory.
 //!
@@ -100,9 +100,9 @@ fn ensure_symlink(target: &Path, link: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Check burrow for updated pheromone versions and install any that are newer.
+/// Check fiflok for updated pheromone versions and install any that are newer.
 ///
-/// * `server_url`       — base URL of burrow (e.g. `http://localhost:3001`)
+/// * `server_url`       — base URL of fiflok (e.g. `http://localhost:3001`)
 /// * `pheromone_dir`    — per-project directory where symlinks are placed
 pub fn update_pheromones(server_url: &str, pheromone_dir: &Path) {
     let Some(target) = current_target() else {

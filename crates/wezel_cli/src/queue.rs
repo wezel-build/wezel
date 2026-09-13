@@ -1,7 +1,7 @@
 //! Local event queue at `~/.wezel/queue/`.
 //!
 //! Pheromone-wrapped builds write `BuildEvent` JSON files here.
-//! The daemon (or `wezel sync`) flushes them to burrow.
+//! The daemon (or `wezel sync`) flushes them to fiflok.
 
 use std::path::{Path, PathBuf};
 
@@ -46,7 +46,7 @@ pub fn read_all(dir: &Path) -> Vec<(PathBuf, BuildEvent)> {
     out
 }
 
-/// Flush all queued events to burrow. Deletes successfully sent files.
+/// Flush all queued events to fiflok. Deletes successfully sent files.
 /// Returns the number of events successfully flushed.
 pub fn flush_queue(server_url: &str) -> usize {
     let dir = queue_dir();

@@ -71,23 +71,23 @@ pub fn init_cmd(project_dir: &Path, server_url: Option<&str>) -> anyhow::Result<
 
     // Register the project with the server when a one-shot URL is provided
     // (via --server-url or WEZEL_API_URL). The URL is not persisted.
-    let burrow_url = server_url
+    let fiflok_url = server_url
         .map(str::to_string)
         .or_else(|| std::env::var("WEZEL_API_URL").ok())
         .filter(|s| !s.is_empty());
-    if let Some(burrow_url) = burrow_url {
+    if let Some(fiflok_url) = fiflok_url {
         let upstream = crate::detect_upstream().unwrap_or_default();
         let agent = ureq::AgentBuilder::new()
             .timeout(std::time::Duration::from_secs(10))
             .build();
         match agent
-            .post(&format!("{burrow_url}/api/project"))
+            .post(&format!("{fiflok_url}/api/project"))
             .send_json(serde_json::json!({
                 "uuid": config.project_id.to_string(),
                 "name": config.name,
                 "upstream": upstream,
             })) {
-            Ok(_) => println!("Registered project with {burrow_url}"),
+            Ok(_) => println!("Registered project with {fiflok_url}"),
             Err(e) => log::warn!("Failed to register project with server: {e}"),
         }
     }

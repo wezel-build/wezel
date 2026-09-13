@@ -124,7 +124,7 @@ pub fn __main<F: Forager>() {
         input_schema: F::inputs_schema,
     };
     if let Err(e) = run(forager) {
-        eprintln!("forager-{}: {e:#}", F::NAME);
+        eprintln!("{}: {e:#}", wezel_types::executor_binary_name(F::NAME));
         std::process::exit(1);
     }
 }
