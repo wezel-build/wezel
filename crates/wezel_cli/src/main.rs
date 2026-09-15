@@ -9,6 +9,7 @@ mod queue;
 mod report;
 mod report_artifacts;
 mod shell;
+mod style;
 
 use anyhow::Context as _;
 use log::{debug, warn};
@@ -260,7 +261,10 @@ fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
         return match status {
             Ok(s) => Ok(ExitCode::from(s.code().unwrap_or(1) as u8)),
             Err(e) => {
-                eprintln!("wezel: failed to execute `{tool}`: {e}");
+                eprintln!(
+                    "{}",
+                    style::stderr_failure(format!("wezel: failed to execute `{tool}`: {e}"))
+                );
                 Ok(ExitCode::from(127))
             }
         };
@@ -307,7 +311,10 @@ fn exec_cmd(args: &[String]) -> anyhow::Result<ExitCode> {
     };
 
     if let Err(e) = &status {
-        eprintln!("wezel: failed to execute `{tool}`: {e}");
+        eprintln!(
+            "{}",
+            style::stderr_failure(format!("wezel: failed to execute `{tool}`: {e}"))
+        );
     }
 
     // Close our copy of write_fd so that when the pheromone child closes its
@@ -517,7 +524,7 @@ fn run_result(result: anyhow::Result<()>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("wezel: {e:#}");
+            eprintln!("{}", style::stderr_failure(format!("wezel: {e:#}")));
             ExitCode::FAILURE
         }
     }
@@ -571,25 +578,34 @@ fn main() -> ExitCode {
 
         Command::Completions => {
             let Some(shell) = shell::Shell::detect() else {
-                eprintln!("wezel: could not detect shell from $SHELL");
+                eprintln!(
+                    "{}",
+                    style::stderr_failure("wezel: could not detect shell from $SHELL")
+                );
                 return ExitCode::FAILURE;
             };
             if let Err(e) = shell::ensure_shell_hook(shell) {
-                eprintln!("wezel: {e}");
+                eprintln!("{}", style::stderr_failure(format!("wezel: {e}")));
                 return ExitCode::FAILURE;
             }
             let aliases = cmd::load_aliases().unwrap_or_default().aliases;
             if let Err(e) = shell::sync_init_script(shell, &aliases) {
-                eprintln!("wezel: {e}");
+                eprintln!("{}", style::stderr_failure(format!("wezel: {e}")));
                 return ExitCode::FAILURE;
             }
-            println!("Shell completions enabled. Restart your shell or run:");
+            println!(
+                "{} Restart your shell or run:",
+                style::success("Shell completions enabled.")
+            );
             let shell_name = match shell {
                 shell::Shell::Zsh => "zsh",
                 shell::Shell::Bash => "bash",
                 shell::Shell::Fish => "fish",
             };
-            println!("  source ~/.wezel/init.{shell_name}");
+            println!(
+                "  {}",
+                style::strong(format!("source ~/.wezel/init.{shell_name}"))
+            );
             ExitCode::SUCCESS
         }
 
@@ -740,7 +756,7 @@ fn main() -> ExitCode {
             ObserveCmd::Exec { args } => match exec_cmd(&args) {
                 Ok(code) => code,
                 Err(e) => {
-                    eprintln!("wezel: {e}");
+                    eprintln!("{}", style::stderr_failure(format!("wezel: {e}")));
                     ExitCode::FAILURE
                 }
             },
@@ -748,7 +764,10 @@ fn main() -> ExitCode {
                 if foreground {
                     daemon::run_daemon();
                 } else if let Err(e) = daemon::spawn_detached() {
-                    eprintln!("wezel: failed to spawn daemon: {e}");
+                    eprintln!(
+                        "{}",
+                        style::stderr_failure(format!("wezel: failed to spawn daemon: {e}"))
+                    );
                     return ExitCode::FAILURE;
                 }
                 ExitCode::SUCCESS
@@ -756,19 +775,30 @@ fn main() -> ExitCode {
             ObserveCmd::Sync => {
                 let cwd = std::env::current_dir().unwrap_or_default();
                 let Some((_, config)) = config::discover(&cwd) else {
-                    eprintln!("wezel: no project config found (run `wezel project init` first)");
+                    eprintln!(
+                        "{}",
+                        style::stderr_failure(
+                            "wezel: no project config found (run `wezel project init` first)"
+                        )
+                    );
                     return ExitCode::FAILURE;
                 };
                 let Some(ref server_url) = config.server_url else {
                     eprintln!(
-                        "wezel: server_url not configured (set WEZEL_API_URL or add server_url to .wezel/config.toml)"
+                        "{}",
+                        style::stderr_failure(
+                            "wezel: server_url not configured (set WEZEL_API_URL or add server_url to .wezel/config.toml)"
+                        )
                     );
                     return ExitCode::FAILURE;
                 };
                 let n = queue::flush_queue(server_url);
-                println!("wezel sync: flushed {n} event(s)");
+                println!(
+                    "wezel sync: {}",
+                    style::success(format!("flushed {n} event(s)"))
+                );
                 pheromone_mgr::update_pheromones(server_url, &pheromones_dir());
-                println!("wezel sync: pheromone check done");
+                println!("wezel sync: {}", style::success("pheromone check done"));
                 ExitCode::SUCCESS
             }
         },
@@ -778,7 +808,10 @@ fn main() -> ExitCode {
 fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
     let foragers: Vec<String> = ws.config.tools.foragers.keys().cloned().collect();
     if foragers.is_empty() {
-        println!("No tools declared under [tools.foragers] in .wezel/config.toml.");
+        println!(
+            "{}",
+            style::warning("No tools declared under [tools.foragers] in .wezel/config.toml.")
+        );
         return Ok(());
     }
 
@@ -803,7 +836,11 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
     let mut skipped = 0usize;
     for name in &foragers {
         if sidecar_is_current(ws, name) {
-            println!("  {}  up to date", wezel_types::executor_binary_name(name));
+            println!(
+                "  {}  {}",
+                style::strong(wezel_types::executor_binary_name(name)),
+                style::success("up to date")
+            );
             skipped += 1;
         } else {
             wezel_bench::fetch::PluginFetcher::fetch(&mut fetcher, name)?;
@@ -822,7 +859,10 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
 
     write_schema_bundle(ws, &foragers)?;
 
-    println!("\n{installed} installed, {skipped} up to date.");
+    println!(
+        "\n{}",
+        style::success(format!("{installed} installed, {skipped} up to date."))
+    );
     Ok(())
 }
 
@@ -852,7 +892,11 @@ fn write_schema_bundle(ws: &wezel_bench::Workspace, foragers: &[String]) -> anyh
     let body = serde_json::to_string_pretty(&bundle).context("serialising schema bundle")?;
     std::fs::write(&bundle_path, body)
         .with_context(|| format!("writing {}", bundle_path.display()))?;
-    println!("  wrote {}", bundle_path.display());
+    println!(
+        "  {} {}",
+        style::success("wrote"),
+        style::muted(bundle_path.display())
+    );
     Ok(())
 }
 

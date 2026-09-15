@@ -106,8 +106,12 @@ impl<'ws> ConfigFetcher<'ws> {
         lockfile::save(&self.workspace.project_dir, &self.lock)?;
 
         eprintln!(
-            "Locked `{binary_name}` ({target}) at {} from github.com/{}",
-            resolved.tag, source.github
+            "{} {}",
+            crate::style::stderr_success(format!("Locked `{binary_name}` ({target})")),
+            crate::style::stderr_muted(format!(
+                "at {} from github.com/{}",
+                resolved.tag, source.github
+            ))
         );
         Ok(())
     }
@@ -172,10 +176,14 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
         fetch::strip_quarantine(&dest);
         write_schema_sidecar(name, &dest)?;
         eprintln!(
-            "Installed `{binary_name}` ({}) from github.com/{} to {}",
-            resolved.tag,
-            source.github,
-            dest.display()
+            "{} {}",
+            crate::style::stderr_success(format!("Installed `{binary_name}`")),
+            crate::style::stderr_muted(format!(
+                "({}) from github.com/{} to {}",
+                resolved.tag,
+                source.github,
+                dest.display()
+            ))
         );
 
         if !self.read_only {
