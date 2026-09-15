@@ -15,36 +15,6 @@ use std::process::ExitCode;
 
 use cmd::init_cmd;
 
-fn detect_upstream() -> Option<String> {
-    let output = std::process::Command::new("git")
-        .args(["remote", "get-url", "origin"])
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Some(normalize_upstream(&raw))
-}
-
-/// Strip protocol, user@, and .git suffix so SSH and HTTPS remotes match.
-fn normalize_upstream(url: &str) -> String {
-    let s = url
-        .trim()
-        .trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .trim_start_matches("ssh://")
-        .trim_start_matches("git://");
-    // Handle git@host:user/repo style
-    let s = if let Some(rest) = s.strip_prefix("git@") {
-        rest.replacen(':', "/", 1)
-    } else {
-        s.to_string()
-    };
-    s.trim_end_matches(".git").to_string()
-}
-
 fn complete_experiments() -> Vec<CompletionCandidate> {
     let Ok(cwd) = std::env::current_dir() else {
         return vec![];
@@ -111,12 +81,8 @@ enum ProjectCmd {
     /// Initialize wezel in the current project.
     ///
     /// Creates `.wezel/config.toml` in the current directory.
-    /// Options not passed on the command line are prompted interactively.
-    Init {
-        /// Fiflok API URL to push build timings to.
-        #[arg(long)]
-        server_url: Option<String>,
-    },
+    /// Project details are prompted interactively.
+    Init,
     /// Manage external tools declared under `[tools]` in `.wezel/config.toml`.
     Tool {
         #[command(subcommand)]
@@ -219,9 +185,7 @@ fn main() -> ExitCode {
 
     match cli.command {
         Command::Project { cmd } => match cmd {
-            ProjectCmd::Init { server_url } => {
-                run_result(init_cmd(&project_dir, server_url.as_deref()))
-            }
+            ProjectCmd::Init => run_result(init_cmd(&project_dir)),
             ProjectCmd::Tool { cmd } => match cmd {
                 ToolCmd::Sync => run_result((|| -> anyhow::Result<()> {
                     let ws = make_workspace(project_dir)?;
