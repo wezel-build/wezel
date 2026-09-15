@@ -1981,6 +1981,7 @@ dependencies = [
  "sha2",
  "toml",
  "ureq",
+ "url",
  "uuid",
  "wezel_bench",
  "wezel_types",
