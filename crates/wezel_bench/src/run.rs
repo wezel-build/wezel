@@ -98,8 +98,8 @@ pub struct SavedRun {
     pub output: ExperimentRunOutput,
 }
 
-/// RFC3339 UTC timestamp using the `date` command — matches the chrono-free
-/// approach in `daemon.rs`. Returns `"unknown"` if `date` is unavailable.
+/// RFC3339 UTC timestamp using the `date` command. Returns `"unknown"` if
+/// `date` is unavailable.
 pub fn utc_timestamp_rfc3339() -> String {
     std::process::Command::new("date")
         .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])

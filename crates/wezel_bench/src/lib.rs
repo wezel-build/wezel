@@ -31,8 +31,7 @@ pub struct ProjectConfig {
     pub tools: ToolsSection,
 }
 
-/// Umbrella for declared external binaries — foragers today, with room for
-/// pheromones, explainers, etc. as their installs become first-class.
+/// Umbrella for external binaries used by experiments.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ToolsSection {
     /// Target triples the project locks tool binaries for. `wezel project
