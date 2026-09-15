@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::{ProjectConfig, ToolsConfig};
+use crate::style;
 
 const DEFAULT_GITIGNORE: &str = "\
 # Wezel project-local state. Add patterns here as needed.
@@ -55,7 +56,11 @@ pub fn init_cmd(project_dir: &Path, server_url: Option<&str>) -> anyhow::Result<
     let config = if path.exists() {
         let raw = fs::read_to_string(&path)?;
         let config: ProjectConfig = toml::from_str(&raw)?;
-        println!("Using existing {}", path.display());
+        println!(
+            "{} {}",
+            style::warning("Using existing"),
+            style::muted(path.display())
+        );
         config
     } else {
         let config = create_config(project_dir)?;
@@ -65,7 +70,11 @@ pub fn init_cmd(project_dir: &Path, server_url: Option<&str>) -> anyhow::Result<
         // The .gitignore is part of the initial scaffold; written alongside
         // config.toml so first-run state is reproducible across machines.
         fs::write(dot_wezel(project_dir).join(".gitignore"), DEFAULT_GITIGNORE)?;
-        println!("Created {}", path.display());
+        println!(
+            "{} {}",
+            style::success("Created"),
+            style::muted(path.display())
+        );
         config
     };
 
@@ -87,7 +96,10 @@ pub fn init_cmd(project_dir: &Path, server_url: Option<&str>) -> anyhow::Result<
                 "name": config.name,
                 "upstream": upstream,
             })) {
-            Ok(_) => println!("Registered project with {fiflok_url}"),
+            Ok(_) => println!(
+                "{}",
+                style::success(format!("Registered project with {fiflok_url}"))
+            ),
             Err(e) => log::warn!("Failed to register project with server: {e}"),
         }
     }

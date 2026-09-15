@@ -127,7 +127,11 @@ pub fn ensure_shell_hook(shell: Shell) -> anyhow::Result<()> {
         writeln!(file)?;
         writeln!(file, "{}", shell.source_block())?;
 
-        println!("Installed source hook in {}", rc.display());
+        println!(
+            "{} {}",
+            crate::style::success("Installed source hook in"),
+            crate::style::muted(rc.display())
+        );
     }
     Ok(())
 }

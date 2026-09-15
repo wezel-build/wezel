@@ -5,14 +5,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::pheromones_dir;
 use crate::shell::{Shell, ensure_shell_hook, sync_init_script};
+use crate::style;
 use crate::wezel_dir;
 
 fn warn_missing_handler(handler: &str) {
     let path = pheromones_dir().join(format!("pheromone-{handler}"));
     if !path.is_file() {
         eprintln!(
-            "warning: pheromone-{handler} not found in {}",
-            pheromones_dir().display()
+            "{}",
+            style::stderr_warning(format!(
+                "warning: pheromone-{handler} not found in {}",
+                pheromones_dir().display()
+            ))
         );
     }
 }
@@ -56,14 +60,24 @@ pub fn alias_cmd(name: Option<&str>, handler: Option<&str>, remove: bool) -> any
             ensure_shell_hook(shell)?;
             sync_init_script(shell, &aliases.aliases)?;
             if aliases.aliases.is_empty() {
-                println!("Shell hook is set up. No aliases configured yet.");
+                println!(
+                    "{} {}",
+                    style::success("Shell hook is set up."),
+                    style::muted("No aliases configured yet.")
+                );
             } else {
                 println!(
-                    "Shell hook is set up. {} alias(es) active:",
-                    aliases.aliases.len()
+                    "{} {}",
+                    style::success("Shell hook is set up."),
+                    style::strong(format!("{} alias(es) active:", aliases.aliases.len()))
                 );
                 for (k, v) in &aliases.aliases {
-                    println!("  {k} -> pheromone-{v}");
+                    println!(
+                        "  {} {} pheromone-{}",
+                        style::strong(k),
+                        style::muted("->"),
+                        v
+                    );
                 }
             }
         }
@@ -72,9 +86,9 @@ pub fn alias_cmd(name: Option<&str>, handler: Option<&str>, remove: bool) -> any
                 if aliases.aliases.remove(name).is_some() {
                     save_aliases(&aliases)?;
                     sync_init_script(shell, &aliases.aliases)?;
-                    println!("Removed alias `{name}`.");
+                    println!("{}", style::success(format!("Removed alias `{name}`.")));
                 } else {
-                    println!("No alias `{name}` found.");
+                    println!("{}", style::warning(format!("No alias `{name}` found.")));
                 }
             } else {
                 let handler = handler.unwrap_or(name);
@@ -85,7 +99,12 @@ pub fn alias_cmd(name: Option<&str>, handler: Option<&str>, remove: bool) -> any
                     .insert(name.to_string(), handler.to_string());
                 save_aliases(&aliases)?;
                 sync_init_script(shell, &aliases.aliases)?;
-                println!("Alias `{name}` -> pheromone-{handler}");
+                println!(
+                    "{} {} pheromone-{}",
+                    style::success(format!("Alias `{name}`")),
+                    style::muted("->"),
+                    handler
+                );
             }
         }
     }

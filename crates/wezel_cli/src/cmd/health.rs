@@ -6,11 +6,12 @@ use url::Url;
 
 use crate::config;
 use crate::pheromones_dir;
+use crate::style;
 
 pub fn health_cmd() -> anyhow::Result<()> {
     // 1. List available pheromones
     let pdir = pheromones_dir();
-    println!("pheromones dir: {}", pdir.display());
+    println!("pheromones dir: {}", style::muted(pdir.display()));
     if pdir.is_dir() {
         let mut found = false;
         for entry in fs::read_dir(&pdir)? {
@@ -18,24 +19,32 @@ pub fn health_cmd() -> anyhow::Result<()> {
             let name = entry.file_name();
             let name = name.to_string_lossy();
             if name.starts_with("pheromone-") {
-                println!("  {name} ✓");
+                println!("  {} {}", style::strong(name), style::success("✓"));
                 found = true;
             }
         }
         if !found {
-            println!("  (none found)");
+            println!("  {}", style::muted("(none found)"));
         }
     } else {
-        println!("  ⚠ directory not found");
+        println!("  {}", style::warning("⚠ directory not found"));
     }
 
     // 2. Check global config
     println!();
     let global_path = config::global_config_path();
     if global_path.is_file() {
-        println!("global config: {} ✓", global_path.display());
+        println!(
+            "global config: {} {}",
+            style::muted(global_path.display()),
+            style::success("✓")
+        );
     } else {
-        println!("global config: {} (not found)", global_path.display());
+        println!(
+            "global config: {} {}",
+            style::muted(global_path.display()),
+            style::warning("(not found)")
+        );
     }
 
     // 3. Check project config
@@ -44,27 +53,31 @@ pub fn health_cmd() -> anyhow::Result<()> {
     match config::discover(&cwd) {
         Some((wezel_dir, config)) => {
             println!(
-                "project config: {} ✓",
-                wezel_dir.join("config.toml").display()
+                "project config: {} {}",
+                style::muted(wezel_dir.join("config.toml").display()),
+                style::success("✓")
             );
             match &config.server_url {
-                Some(url) => println!("  WEZEL_API_URL: {url}"),
-                None => println!("  WEZEL_API_URL: (not set)"),
+                Some(url) => println!("  WEZEL_API_URL: {}", style::strong(url)),
+                None => println!("  WEZEL_API_URL: {}", style::warning("(not set)")),
             }
-            println!("  username: {}", config.username);
+            println!("  username: {}", style::strong(&config.username));
 
             // 4. Ping server
             if let Some(ref url) = config.server_url {
                 println!();
                 print!("server ({url}): ");
                 match ping_fiflok(url) {
-                    Ok(()) => println!("reachable ✓"),
-                    Err(e) => println!("⚠ unreachable — {e}"),
+                    Ok(()) => println!("{}", style::success("reachable ✓")),
+                    Err(e) => println!("{}", style::warning(format!("⚠ unreachable — {e}"))),
                 }
             }
         }
         None => {
-            println!("project config: ⚠ no .wezel/config.toml found (run `wezel project init`)");
+            println!(
+                "project config: {}",
+                style::warning("⚠ no .wezel/config.toml found (run `wezel project init`)")
+            );
         }
     }
 
