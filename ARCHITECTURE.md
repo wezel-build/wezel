@@ -21,20 +21,19 @@ Non-volatile measures can be gathered as an asynchronous CI step (since it doesn
 
 Wezel distinguishes between two levels of data:
 
-- **Measurements** — raw observations emitted by a forager plugin. A single experiment step can produce many measurements (e.g. `cargo llvm-lines` emits one measurement per function, tagged with `function` and `unit`). Measurements carry arbitrary JSON values and are always surfaced to users for inspection.
+- **Measurements** — raw results emitted by a forager plugin. A single experiment step can produce many measurements (e.g. `cargo llvm-lines` emits one measurement per function, tagged with `function` and `unit`). Measurements carry arbitrary JSON values and are always surfaced to users for inspection.
 
 - **Summaries** — named scalars derived from measurements via a pure aggregation function (`sum`, `mean`, `median`, `max`, or `min`), optionally filtered by tags. Summaries are defined in the experiment TOML and are the only thing used for regression detection and bisection. For example, `total-llvm-lines` might be the `sum` of all `llvm-lines` measurements where `unit=lines`.
 
 This split keeps raw data intact for debugging while giving regression detection a clean, well-typed scalar to compare.
 
 ### Wezel's approach
-Wezel places emphasis on highlighting the scenarios that get executed the most often. It associates *builds* with their *scenarios* (what code gets built - tests/non tests) and *configurations* (how it is built). 
+Wezel starts with explicit, reproducible experiments. Users choose the behavior they need to track, define its setup and measurements, and run it consistently across commits. A measurement can describe build time, benchmark performance, binary size, profiling data, or any other property exposed by a forager plugin.
 
-There are four faces to Wezel:
-- Ligthweight agent running locally (Pheromone) - that identifies what code-changes developers make locally. 
-- The dashboard (Farfocel), showcasing which scenarios get executed the most often. It lets the user make the decision as to which scenarios should be tracked by..
-- The backend (Fiflok) - the infrastructure beneath Farfocel. It ingests events from Pheromone, stores them, and serves data to the dashboard.
-- The asynchronous scenario executor (provided by the client) named Forager. It runs the scenarios and gathers the measures (both volatile and non-volatile ones).
+There are three faces to Wezel:
+- The CLI defines, validates, and runs experiments.
+- The dashboard (Farfocel) presents experiment history and regressions.
+- The backend (Fiflok) schedules managed runs, stores their reports, and serves data to the dashboard.
 
 ### Forager
 Forager is the experimentation arm of Wezel. It runs on dedicated hardware provisioned by the client — consistency of the machine is essential for meaningful volatile measurements. In the managed runner path, Fiflok assigns work to a configured Fafik runner and pushes an exact dispatch ticket to Fafik; Fafik owns cloning, isolation, status changes, heartbeats, report upload, and failure callbacks.
@@ -48,13 +47,12 @@ wezel experiment run clean-build --run-id 123 --output-format json
 Fafik reads Fiflok's `POST /runs` ticket (`run_id`, `project_upstream`, `commit_sha`, `experiment_name`, `api_url`), prepares the clone at `commit_sha`, then passes `experiment_name` and `run_id` into `wezel experiment run`. The command saves the run under `.wezel/runs/...`, writes `report.json` next to `run.json`, and emits the saved `runDir` in JSON output. Fafik then packages/uploads that directory, or reports a failure, back to Fiflok with its runner-scoped token.
 
 #### Flow
-1. The user observes in Farfocel which scenarios are most common (derived from Pheromone data).
-2. The user pins interesting scenarios for tracking and defines them as **mutations**: a recipe like "build the workspace clean, then add this function to this source file, then rebuild."
-3. Fiflok assigns tracked scenarios to configured runners and pushes exact tickets to Fafik.
-4. Each scenario is executed multiple times to establish statistical confidence — a single timing is not trustworthy even on dedicated hardware.
-5. Results are reported to Fiflok: raw **measurements** from each step, plus **summaries** computed by aggregating those measurements according to formulas defined in the experiment TOML.
-6. Fiflok compares each summary against recent history. If a regression is detected in a bisect-eligible summary, Fiflok enqueues a bisection.
-7. Forager workers test the midpoint commits; bisection narrows until the culprit is identified.
+1. The user defines an experiment for a behavior or artifact they need to track.
+2. Fiflok assigns the experiment to a configured runner and pushes an exact ticket to Fafik.
+3. The experiment is executed multiple times when needed to establish statistical confidence — a single timing is not trustworthy even on dedicated hardware.
+4. Results are reported to Fiflok: raw **measurements** from each step, plus **summaries** computed by aggregating those measurements according to formulas defined in the experiment TOML.
+5. Fiflok compares each summary against recent history. If a regression is detected in a bisect-eligible summary, Fiflok enqueues a bisection.
+6. Forager workers test the midpoint commits; bisection narrows until the culprit is identified.
 
 #### Bisection
 Bisection is embarrassingly parallel. Each commit under test is independent, so the user can provision multiple worker machines to test commits concurrently. With enough workers, every commit in the range can be tested in a single round — no binary search needed.
@@ -114,16 +112,4 @@ wezel experiment run "$EXPERIMENT_NAME" --run-id "$RUN_ID" --output-format json
 Fafik, not the CLI, reports `running`, heartbeats, `failed`, and successful run results to Fiflok.
 
 ### Fiflok
-Fiflok is Farfocel's backend. It receives events flushed by Pheromone, persists them, and exposes the data Farfocel needs to render scenarios, configurations, and their measures.
-
-### Pheromone
-Pheromone is an agent running locally. It consists of a single binary (pheromone_cli) that is invoked via precmd hooks in the shell. The cli delegates to the build-system-specific processes named `pheromone-<build system>` such as `pheromone-cargo` for Rust. The build system-specific process is responsible for identifying the scenario being executed and reporting it back to the pheromone_cli.
-All events are dumped into ~/.wezel/events/.json. As a post-cmd hook (in the background), wezel will flush the events to the currently configured Farfocel instance.
-
-pheromone_cli is thus responsible for:
-- shell handling (precmd and postcmd hooks)
-- Alias normalization (cargo build and cargo b are the same)
-- Flushing the events to Farfocel
-
-#### Custom toolchains
-Build systems often circumvent the shell; for example, rustup may end up invoking the cargo binary directly. In such cases one can set up a custom toolchain that invokes pheromone-cargo instead of cargo (busybox-style). This way, the events will be captured as well. The same applies to other build systems. Wezel will provide a set of instructions for setting up such custom toolchains for the most popular build systems.
+Fiflok is Farfocel's backend. It schedules managed experiment runs, persists their reports, and exposes the data Farfocel needs to render experiment history and regressions.

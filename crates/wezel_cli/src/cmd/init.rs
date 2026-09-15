@@ -6,7 +6,6 @@ use crate::style;
 
 const DEFAULT_GITIGNORE: &str = "\
 # Wezel project-local state. Add patterns here as needed.
-events/
 runs/
 *.local.toml
 ";
@@ -42,9 +41,6 @@ fn create_config(project_dir: &Path) -> anyhow::Result<ProjectConfig> {
     Ok(ProjectConfig {
         project_id: uuid::Uuid::new_v4(),
         name,
-        username: None,
-        pheromone_dir: None,
-        queue_dir: None,
         registries: None,
         tools: ToolsConfig { targets },
     })

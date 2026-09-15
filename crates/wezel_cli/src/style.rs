@@ -32,12 +32,6 @@ pub fn failure(value: impl Display) -> String {
         .to_string()
 }
 
-pub fn stderr_warning(value: impl Display) -> String {
-    value
-        .if_supports_color(Stream::Stderr, |value| value.yellow())
-        .to_string()
-}
-
 pub fn stderr_success(value: impl Display) -> String {
     value
         .if_supports_color(Stream::Stderr, |value| value.green())

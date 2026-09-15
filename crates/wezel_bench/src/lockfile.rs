@@ -2,8 +2,7 @@
 //!
 //! Pins resolved versions and content hashes for anything declared in
 //! `.wezel/config.toml` that needs reproducible re-installs across machines —
-//! today, foragers (under `[tools.foragers]`); tomorrow, pheromones, explainer
-//! modules, or other declared dependencies.
+//! currently foragers under `[tools.foragers]`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
