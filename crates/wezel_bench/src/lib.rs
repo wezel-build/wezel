@@ -643,12 +643,6 @@ pub enum StepError {
     Other(#[from] anyhow::Error),
 }
 
-impl StepError {
-    pub fn is_hard(&self) -> bool {
-        matches!(self, Self::PluginNotFound { .. } | Self::SpawnFailed { .. })
-    }
-}
-
 #[derive(Debug)]
 pub struct ForagerInvocation {
     pub outcomes: Vec<ForagerPluginOutput>,

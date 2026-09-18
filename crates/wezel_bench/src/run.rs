@@ -640,7 +640,6 @@ fn run_in_scratch(
 
         let mut all_measurements = Vec::new();
         let mut executions = Vec::new();
-        let mut hard_failure = None;
         // Forager-only time: excludes snapshot capture and inter-sample
         // restores, so it's comparable to what the step actually measures.
         let mut measuring = std::time::Duration::ZERO;
@@ -679,19 +678,11 @@ fn run_in_scratch(
                         executions.push(collected.execution);
                     }
                 }
-                Err(e) if e.is_hard() => {
-                    hard_failure = Some(e);
-                    break;
-                }
-                Err(e) => log::warn!("{e}"),
+                Err(e) => return Err(e.into()),
             }
             if let Some(r) = reporter {
                 r.sample_done(&step.name, iter, samples);
             }
-        }
-
-        if let Some(e) = hard_failure {
-            bail!("{e}");
         }
 
         if let Some(r) = reporter {
@@ -729,6 +720,84 @@ fn run_in_scratch(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn git(repo: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .current_dir(repo)
+            .args(args)
+            .status()
+            .expect("spawning git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_forager_fails_the_experiment() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let project = tempfile::tempdir().unwrap();
+        let tool_store = tempfile::tempdir().unwrap();
+        let wezel_dir = project.path().join(".wezel");
+        std::fs::create_dir_all(wezel_dir.join("experiments/failure")).unwrap();
+        std::fs::write(
+            wezel_dir.join("config.toml"),
+            format!(
+                "project_id = \"{}\"\nname = \"test\"\n\n[tools.foragers.fail]\ngithub = \"example/fail\"\n",
+                uuid::Uuid::new_v4()
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            wezel_dir.join("experiments/failure/experiment.toml"),
+            "[step.fail.broken]\n",
+        )
+        .unwrap();
+
+        let sha = "a".repeat(64);
+        let target = crate::fetch::current_target().expect("supported test target");
+        std::fs::write(
+            wezel_dir.join("wezel.lock"),
+            format!(
+                "version = 1\n\n[tools.foragers.fail]\ngithub = \"example/fail\"\ntag = \"v1\"\n\n[tools.foragers.fail.assets]\n\"{target}\" = \"sha256:{sha}\"\n"
+            ),
+        )
+        .unwrap();
+        let binary_dir = tool_store.path().join(&sha);
+        std::fs::create_dir_all(&binary_dir).unwrap();
+        let binary = binary_dir.join("wezel_fail");
+        std::fs::write(
+            &binary,
+            "#!/bin/sh\necho intentional failure >&2\nexit 23\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        git(project.path(), &["init", "--quiet"]);
+        git(
+            project.path(),
+            &["config", "user.email", "test@example.com"],
+        );
+        git(project.path(), &["config", "user.name", "Test"]);
+        git(project.path(), &["add", "."]);
+        git(project.path(), &["commit", "--quiet", "-m", "fixture"]);
+
+        let workspace = Workspace::discover(
+            project.path().to_path_buf(),
+            tool_store.path().to_path_buf(),
+        )
+        .unwrap();
+        let error = run_experiment("failure", &workspace, None, None)
+            .expect_err("failed forager must fail its experiment")
+            .to_string();
+        assert!(
+            error.contains("exit status: 23"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            error.contains("intentional failure"),
+            "unexpected error: {error}"
+        );
+    }
 
     #[test]
     fn unix_seconds_matches_known_epochs() {
