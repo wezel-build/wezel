@@ -66,15 +66,6 @@ enum Command {
         #[command(subcommand)]
         cmd: ProjectCmd,
     },
-    /// Add and synchronize a project tool (shorthand for `project tool add`).
-    #[command(name = "pta")]
-    ProjectToolAdd {
-        /// Name used to reference the tool in experiment definitions.
-        name: String,
-        /// HTTPS GitHub repository URL for the tool.
-        #[arg(value_name = "GITHUB_URL")]
-        repository: String,
-    },
     /// Active measurement: run experiments across commits.
     #[command(visible_alias = "exp", visible_alias = "e")]
     Experiment {
@@ -214,10 +205,6 @@ fn main() -> ExitCode {
             },
             ProjectCmd::Status => run_result(cmd::status_cmd(&project_dir)),
         },
-
-        Command::ProjectToolAdd { name, repository } => {
-            run_result(cmd::tool_add_cmd(&project_dir, &name, &repository))
-        }
 
         Command::Completions => {
             let shell = std::env::var("SHELL").unwrap_or_default();
@@ -522,24 +509,16 @@ mod tests {
     }
 
     #[test]
-    fn pta_shorthand_parses_as_written() {
-        let cli = Cli::try_parse_from([
-            "wezel",
-            "pta",
-            "filesize",
-            "https://github.com/wezel-build/wezel_filesize",
-        ])
-        .unwrap();
-
-        let Command::ProjectToolAdd { name, repository } = cli.command else {
-            panic!("expected pta command");
-        };
-        assert_eq!(name, "filesize");
-        assert_eq!(repository, "https://github.com/wezel-build/wezel_filesize");
-    }
-
-    #[test]
-    fn unrequested_composed_aliases_are_not_commands() {
+    fn composed_aliases_are_not_commands() {
+        assert!(
+            Cli::try_parse_from([
+                "wezel",
+                "pta",
+                "filesize",
+                "https://github.com/wezel-build/wezel_filesize",
+            ])
+            .is_err()
+        );
         assert!(Cli::try_parse_from(["wezel", "er", "build"]).is_err());
         assert!(
             Cli::try_parse_from([
