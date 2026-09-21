@@ -56,7 +56,7 @@ fn validate_step_inputs(step: &StepDef, sidecar: &ForagerSchema) -> Vec<LintDiag
                 step: step.name.clone(),
                 message: format!(
                     "cached schema for `{}` failed to compile ({e}) — run `wezel project tool sync` to refresh",
-                    wezel_types::executor_binary_name(&step.forager),
+                    step.forager,
                 ),
             }];
         }
@@ -327,10 +327,7 @@ pub fn run_lint(
             {
                 diagnostics.push(LintDiagnostic {
                     step: step.name.clone(),
-                    message: format!(
-                        "plugin `{}`: {e}",
-                        wezel_types::executor_binary_name(&step.forager)
-                    ),
+                    message: format!("plugin `{}`: {e}", step.forager),
                 });
                 continue;
             }
@@ -341,10 +338,7 @@ pub fn run_lint(
                 if warned_plugins.insert(step.forager.clone()) {
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),
-                        message: format!(
-                            "plugin `{}` not in local store",
-                            wezel_types::executor_binary_name(&step.forager)
-                        ),
+                        message: format!("plugin `{}` not in local store", step.forager),
                     });
                 }
                 continue;
@@ -363,7 +357,7 @@ pub fn run_lint(
                             step: step.name.clone(),
                             message: format!(
                                 "cached schema for `{}` does not match the current format ({e}) — run `wezel project tool sync` to refresh",
-                                wezel_types::executor_binary_name(&step.forager),
+                                step.forager,
                             ),
                         });
                     }
@@ -373,7 +367,7 @@ pub fn run_lint(
                         step: step.name.clone(),
                         message: format!(
                             "no cached schema for `{}` at {} ({e}) — reinstall the executor",
-                            wezel_types::executor_binary_name(&step.forager),
+                            step.forager,
                             schema_path.display()
                         ),
                     });

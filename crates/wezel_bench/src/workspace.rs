@@ -15,7 +15,7 @@ use crate::{ProjectConfig, fetch, lockfile};
 pub struct Workspace {
     pub project_dir: PathBuf,
     /// Content-addressed tool store root; binaries live at
-    /// `<tool_store>/<archive-sha>/wezel_<name>`.
+    /// `<tool_store>/<archive-sha>/<published-binary-name>`.
     pub tool_store: PathBuf,
     pub config: ProjectConfig,
 }
@@ -35,14 +35,16 @@ impl Workspace {
     /// target, or `None` if that version isn't installed.
     pub fn resolve_plugin(&self, forager: &str) -> Option<PathBuf> {
         let sha = self.locked_sha(forager)?;
-        let binary = self.plugin_path(forager, &sha);
-        if binary.is_file() {
-            return Some(binary);
-        }
-        // Keep existing locked installations usable without downloading the
-        // same archive again. Their schema sidecars stay beside the old binary.
-        let legacy = self.tool_store.join(sha).join(format!("forager-{forager}"));
-        legacy.is_file().then_some(legacy)
+        let link = self.executor_path(forager)?;
+        let target = std::fs::read_link(&link).ok()?;
+        let target = if target.is_absolute() {
+            target
+        } else {
+            link.parent()?.join(target)
+        };
+        let expected_dir = self.tool_store.join(sha).canonicalize().ok()?;
+        let target = target.canonicalize().ok()?;
+        (target.parent() == Some(expected_dir.as_path()) && target.is_file()).then_some(link)
     }
 
     /// Locked archive sha (hex, no `sha256:` prefix) for `forager` on the
@@ -54,10 +56,15 @@ impl Workspace {
         Some(key.strip_prefix("sha256:").unwrap_or(key).to_string())
     }
 
-    pub fn plugin_path(&self, forager: &str, sha_hex: &str) -> PathBuf {
-        self.tool_store
-            .join(sha_hex)
-            .join(wezel_types::executor_binary_name(forager))
+    /// Project-local executable alias chosen by the user. The path is absent
+    /// for unsafe names so config keys can never escape `.wezel/executors`.
+    pub fn executor_path(&self, name: &str) -> Option<PathBuf> {
+        is_valid_tool_name(name)
+            .then(|| self.project_dir.join(".wezel").join("executors").join(name))
+    }
+
+    pub fn install_dir(&self, sha_hex: &str) -> PathBuf {
+        self.tool_store.join(sha_hex)
     }
 
     /// The `--schema` sidecar sits next to its binary.
@@ -77,6 +84,15 @@ impl Workspace {
             .join(".wezel")
             .join("tools"))
     }
+}
+
+pub fn is_valid_tool_name(name: &str) -> bool {
+    name.chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphanumeric())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
 /// Per-run isolated checkout. Foragers run inside this directory so a build's

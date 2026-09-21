@@ -370,6 +370,8 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    ensure_executors_ignored(ws)?;
+
     let host = wezel_bench::fetch::current_target()
         .ok_or_else(|| anyhow::anyhow!("current platform is not a recognised target triple"))?;
     let targets = &ws.config.tools.targets;
@@ -393,7 +395,7 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
         if sidecar_is_current(ws, name) {
             println!(
                 "  {}  {}",
-                style::strong(wezel_types::executor_binary_name(name)),
+                style::strong(name),
                 style::success("up to date")
             );
             skipped += 1;
@@ -427,9 +429,9 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
 fn write_schema_bundle(ws: &wezel_bench::Workspace, foragers: &[String]) -> anyhow::Result<()> {
     let mut sidecars = Vec::with_capacity(foragers.len());
     for name in foragers {
-        let binary = ws.resolve_plugin(name).with_context(|| {
-            format!("{} not installed", wezel_types::executor_binary_name(name))
-        })?;
+        let binary = ws
+            .resolve_plugin(name)
+            .with_context(|| format!("{name} not installed"))?;
         let path = wezel_bench::Workspace::schema_sidecar_path(&binary);
         let raw = std::fs::read_to_string(&path)
             .with_context(|| format!("reading sidecar {}", path.display()))?;
@@ -455,6 +457,21 @@ fn write_schema_bundle(ws: &wezel_bench::Workspace, foragers: &[String]) -> anyh
     Ok(())
 }
 
+fn ensure_executors_ignored(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
+    const ENTRY: &str = "executors/";
+    let path = ws.project_dir.join(".wezel").join(".gitignore");
+    let mut contents = std::fs::read_to_string(&path).unwrap_or_default();
+    if contents.lines().any(|line| line.trim() == ENTRY) {
+        return Ok(());
+    }
+    if !contents.is_empty() && !contents.ends_with('\n') {
+        contents.push('\n');
+    }
+    contents.push_str(ENTRY);
+    contents.push('\n');
+    std::fs::write(&path, contents).with_context(|| format!("writing {}", path.display()))
+}
+
 /// True only when the cached sidecar exists and matches the current
 /// [`wezel_types::ForagerSchema`] shape. A stale-format file is treated as
 /// missing so `tool sync` re-fetches it.
@@ -466,7 +483,8 @@ fn sidecar_is_current(ws: &wezel_bench::Workspace, forager: &str) -> bool {
     let Ok(raw) = std::fs::read_to_string(&path) else {
         return false;
     };
-    serde_json::from_str::<wezel_types::ForagerSchema>(&raw).is_ok()
+    serde_json::from_str::<wezel_types::ForagerSchema>(&raw)
+        .is_ok_and(|schema| schema.name == forager)
 }
 
 #[cfg(test)]
@@ -591,5 +609,31 @@ mod tests {
     #[test]
     fn run_dispatched_is_not_a_command() {
         assert!(Cli::try_parse_from(["wezel", "experiment", "run-dispatched"]).is_err());
+    }
+
+    #[test]
+    fn executor_ignore_entry_is_idempotent() {
+        let project = tempfile::tempdir().unwrap();
+        let store = tempfile::tempdir().unwrap();
+        std::fs::create_dir(project.path().join(".wezel")).unwrap();
+        std::fs::write(
+            project.path().join(".wezel/config.toml"),
+            format!(
+                "project_id = \"{}\"\nname = \"test\"\n",
+                uuid::Uuid::new_v4()
+            ),
+        )
+        .unwrap();
+        std::fs::write(project.path().join(".wezel/.gitignore"), "runs/\n").unwrap();
+        let workspace =
+            wezel_bench::Workspace::discover(project.path().into(), store.path().into()).unwrap();
+
+        ensure_executors_ignored(&workspace).unwrap();
+        ensure_executors_ignored(&workspace).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(project.path().join(".wezel/.gitignore")).unwrap(),
+            "runs/\nexecutors/\n"
+        );
     }
 }

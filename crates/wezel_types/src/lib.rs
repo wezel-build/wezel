@@ -588,24 +588,15 @@ pub struct ExperimentPrResponse {
     pub pr_url: String,
 }
 
-/// Executable name for a measurement plugin's logical identifier.
-///
-/// Experiment and schema identifiers retain hyphens (for example,
-/// `llvm-lines`), while executable names use underscores (`wezel_llvm_lines`).
-pub fn executor_binary_name(name: &str) -> String {
-    format!("wezel_{}", name.replace('-', "_"))
-}
-
-// ── Forager schema (sidecar emitted by `wezel_<name> --schema`) ───────────
+// ── Forager schema ──────────────────────────────────────────────────────────
 
 /// Self-description a forager prints in response to `--schema`. The wezel CLI
-/// caches the JSON next to the installed binary at install time and reads it
-/// back to compose the bundled `.wezel/schema.json` used by editors for
+/// caches the JSON next to the project-local executor link and reads it back to
+/// compose the bundled `.wezel/schema.json` used by editors for
 /// `experiment.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForagerSchema {
-    /// Logical forager identifier, such as `llvm-lines`. Its executable name
-    /// is derived with [`executor_binary_name`].
+    /// Logical forager identifier, such as `llvm-lines`.
     pub name: String,
     /// One-line human description shown in CLI listings.
     pub description: String,
