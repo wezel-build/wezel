@@ -94,6 +94,14 @@ enum ProjectCmd {
 
 #[derive(Subcommand)]
 enum ToolCmd {
+    /// Declare a tool from a GitHub repository, then install and lock it.
+    Add {
+        /// Name used to reference the tool in experiment definitions.
+        name: String,
+        /// HTTPS GitHub repository URL for the tool.
+        #[arg(value_name = "GITHUB_URL")]
+        repository: String,
+    },
     /// Install every declared tool to the local store and refresh `wezel.lock`.
     ///
     /// Idempotent: tools whose binary and schema sidecar are already present
@@ -187,6 +195,9 @@ fn main() -> ExitCode {
         Command::Project { cmd } => match cmd {
             ProjectCmd::Init => run_result(init_cmd(&project_dir)),
             ProjectCmd::Tool { cmd } => match cmd {
+                ToolCmd::Add { name, repository } => {
+                    run_result(cmd::tool_add_cmd(&project_dir, &name, &repository))
+                }
                 ToolCmd::Sync => run_result((|| -> anyhow::Result<()> {
                     let ws = make_workspace(project_dir)?;
                     tool_sync(&ws)
@@ -470,6 +481,56 @@ mod tests {
     #[test]
     fn observe_is_not_a_command() {
         assert!(Cli::try_parse_from(["wezel", "observe", "exec", "cargo"]).is_err());
+    }
+
+    #[test]
+    fn project_tool_add_parses() {
+        let cli = Cli::try_parse_from([
+            "wezel",
+            "project",
+            "tool",
+            "add",
+            "filesize",
+            "https://github.com/wezel-build/wezel_filesize",
+        ])
+        .unwrap();
+
+        let Command::Project {
+            cmd:
+                ProjectCmd::Tool {
+                    cmd: ToolCmd::Add { name, repository },
+                },
+        } = cli.command
+        else {
+            panic!("expected project tool add command");
+        };
+        assert_eq!(name, "filesize");
+        assert_eq!(repository, "https://github.com/wezel-build/wezel_filesize");
+    }
+
+    #[test]
+    fn composed_aliases_are_not_commands() {
+        assert!(
+            Cli::try_parse_from([
+                "wezel",
+                "pta",
+                "filesize",
+                "https://github.com/wezel-build/wezel_filesize",
+            ])
+            .is_err()
+        );
+        assert!(Cli::try_parse_from(["wezel", "er", "build"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "wezel",
+                "p",
+                "t",
+                "a",
+                "filesize",
+                "https://github.com/wezel-build/wezel_filesize",
+            ])
+            .is_err()
+        );
     }
 
     #[test]
