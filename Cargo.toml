@@ -20,6 +20,7 @@ dirs = "6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = { version = "0.8", features = ["preserve_order"] }
+toml_edit = "0.22"
 indexmap = { version = "2", features = ["serde"] }
 wezel_types = { path = "crates/wezel_types" }
 forager_sdk = { path = "crates/forager_sdk" }
