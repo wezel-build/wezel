@@ -672,7 +672,7 @@ pub fn invoke_forager(
     workspace: &Workspace,
     fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
 ) -> std::result::Result<ForagerInvocation, StepError> {
-    let binary_name = wezel_types::executor_binary_name(forager_name);
+    let binary_name = forager_name.to_string();
     // Resolve from the local store; if missing, ask the fetcher to install.
     let binary = match workspace.resolve_plugin(forager_name) {
         Some(path) => path,

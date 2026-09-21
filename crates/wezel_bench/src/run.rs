@@ -586,12 +586,8 @@ fn run_in_scratch(
             {
                 continue;
             }
-            f.fetch(&step.forager).with_context(|| {
-                format!(
-                    "installing {}",
-                    wezel_types::executor_binary_name(&step.forager)
-                )
-            })?;
+            f.fetch(&step.forager)
+                .with_context(|| format!("installing {}", step.forager))?;
         }
     }
 
@@ -764,13 +760,15 @@ mod tests {
         .unwrap();
         let binary_dir = tool_store.path().join(&sha);
         std::fs::create_dir_all(&binary_dir).unwrap();
-        let binary = binary_dir.join("wezel_fail");
+        let binary = binary_dir.join("publisher-binary");
         std::fs::write(
             &binary,
             "#!/bin/sh\necho intentional failure >&2\nexit 23\n",
         )
         .unwrap();
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::create_dir_all(wezel_dir.join("executors")).unwrap();
+        std::os::unix::fs::symlink(&binary, wezel_dir.join("executors/fail")).unwrap();
 
         git(project.path(), &["init", "--quiet"]);
         git(

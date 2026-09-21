@@ -43,12 +43,9 @@ impl LintFixture {
         }
     }
 
-    /// Path a fake forager binary occupies in the content-addressed store,
-    /// matching [`Workspace::plugin_path`] for [`fake_sha`].
-    fn plugin_path(&self, name: &str) -> PathBuf {
-        self.tool_store
-            .join(fake_sha(name))
-            .join(format!("wezel_{}", name.replace('-', "_")))
+    /// Project-local alias used to invoke a fake forager.
+    fn executor_path(&self, name: &str) -> PathBuf {
+        self.project_dir.join(".wezel/executors").join(name)
     }
 
     fn add_experiment(&self, name: &str, toml: &str) -> PathBuf {
@@ -75,14 +72,20 @@ impl LintFixture {
     }
 
     fn install_fake_forager_with_inputs(&self, name: &str, inputs: serde_json::Value) {
-        let path = self.plugin_path(name);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+        let binary = self.tool_store.join(fake_sha(name)).join("published-tool");
+        fs::create_dir_all(binary.parent().unwrap()).unwrap();
+        fs::write(&binary, "#!/bin/sh\nexit 0\n").unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+            fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
         }
+        let path = self.executor_path(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&binary, &path).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&binary, &path).unwrap();
         let schema_path = Workspace::schema_sidecar_path(&path);
         let sidecar = wezel_types::ForagerSchema {
             name: name.into(),
@@ -327,14 +330,20 @@ fn lint_fails_when_schema_sidecar_missing() {
     let fx = LintFixture::new("[tools.foragers.exec]\ngithub = \"acme/forager_exec\"\n");
     fx.lock_forager("exec");
     // Install just the binary, no sidecar.
-    let path = fx.plugin_path("exec");
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+    let binary = fx.tool_store.join(fake_sha("exec")).join("anything");
+    fs::create_dir_all(binary.parent().unwrap()).unwrap();
+    fs::write(&binary, "#!/bin/sh\nexit 0\n").unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
     }
+    let path = fx.executor_path("exec");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&binary, &path).unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(&binary, &path).unwrap();
     fx.add_experiment("e1", &experiment_with_step("exec", "cmd = \"true\""));
     assert!(
         fx.run_lint().is_err(),

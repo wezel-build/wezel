@@ -1,19 +1,27 @@
 use std::fs;
+use std::path::Path;
 
 use wezel_bench::{Workspace, fetch};
 
+fn symlink_file(target: &Path, link: &Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link).unwrap();
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(target, link).unwrap();
+}
+
 #[test]
-fn locked_plugins_keep_legacy_installations_and_prefer_renamed_binaries() {
+fn resolves_project_alias_only_when_it_targets_the_locked_install() {
     let project = tempfile::tempdir().unwrap();
     let store = tempfile::tempdir().unwrap();
-    fs::create_dir(project.path().join(".wezel")).unwrap();
+    fs::create_dir_all(project.path().join(".wezel/executors")).unwrap();
     fs::write(
         project.path().join(".wezel/config.toml"),
         format!(
             r#"
 project_id = "{}"
 name = "executor-test"
-[tools.foragers.llvm-lines]
+[tools.foragers.ir]
 github = "example/measurements"
 "#,
             uuid::Uuid::new_v4()
@@ -27,47 +35,40 @@ github = "example/measurements"
         format!(
             r#"
 version = 1
-[tools.foragers.llvm-lines]
+[tools.foragers.ir]
 github = "example/measurements"
 tag = "v1"
-[tools.foragers.llvm-lines.assets]
+[tools.foragers.ir.assets]
 "{target}" = "sha256:{sha}"
 "#
         ),
     )
     .unwrap();
     let ws = Workspace::discover(project.path().into(), store.path().into()).unwrap();
-    assert!(ws.resolve_plugin("llvm-lines").is_none());
+    assert!(ws.resolve_plugin("ir").is_none());
 
-    // An unrelated cached version must never satisfy the pinned hash.
-    fs::create_dir(store.path().join("unlocked-version")).unwrap();
-    fs::write(
-        store.path().join("unlocked-version/wezel_llvm_lines"),
-        "unlocked",
-    )
-    .unwrap();
-    assert!(ws.resolve_plugin("llvm-lines").is_none());
+    let unrelated_dir = store.path().join("unlocked-version");
+    fs::create_dir(&unrelated_dir).unwrap();
+    let unrelated = unrelated_dir.join("publisher-binary");
+    fs::write(&unrelated, "unlocked").unwrap();
+    let link = ws.executor_path("ir").unwrap();
+    symlink_file(&unrelated, &link);
+    assert!(ws.resolve_plugin("ir").is_none());
 
-    let dir = store.path().join(&sha);
-    fs::create_dir(&dir).unwrap();
-    let legacy = dir.join("forager-llvm-lines");
-    fs::write(&legacy, "legacy").unwrap();
-    fs::write(Workspace::schema_sidecar_path(&legacy), "legacy schema").unwrap();
-    let resolved = ws.resolve_plugin("llvm-lines").unwrap();
-    assert_eq!(resolved, legacy);
-    assert_eq!(
-        fs::read_to_string(Workspace::schema_sidecar_path(&resolved)).unwrap(),
-        "legacy schema"
-    );
+    fs::remove_file(&link).unwrap();
+    let install_dir = store.path().join(&sha);
+    fs::create_dir(&install_dir).unwrap();
+    let published = install_dir.join("measure-ir");
+    fs::write(&published, "locked").unwrap();
+    symlink_file(&published, &link);
 
-    let renamed = dir.join("wezel_llvm_lines");
-    assert_eq!(ws.plugin_path("llvm-lines", &sha), renamed);
-    fs::write(&renamed, "renamed").unwrap();
-    fs::write(Workspace::schema_sidecar_path(&renamed), "new schema").unwrap();
-    let resolved = ws.resolve_plugin("llvm-lines").unwrap();
-    assert_eq!(resolved, renamed);
-    assert_eq!(
-        fs::read_to_string(Workspace::schema_sidecar_path(&resolved)).unwrap(),
-        "new schema"
-    );
+    assert_eq!(ws.resolve_plugin("ir"), Some(link));
+}
+
+#[test]
+fn rejects_tool_names_that_can_escape_the_executor_directory() {
+    assert!(wezel_bench::workspace::is_valid_tool_name("filesize.prod"));
+    for invalid in ["", ".", "..", ".hidden", "../filesize", "tools/filesize"] {
+        assert!(!wezel_bench::workspace::is_valid_tool_name(invalid));
+    }
 }

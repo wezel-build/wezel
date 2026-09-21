@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use wezel_bench::Workspace;
@@ -48,7 +48,6 @@ impl<'ws> ConfigFetcher<'ws> {
     ///
     /// No-op when the entry already exists at the resolved tag.
     pub fn lock_target(&mut self, name: &str, target: &str) -> anyhow::Result<()> {
-        let binary_name = wezel_types::executor_binary_name(name);
         let source = self
             .workspace
             .config
@@ -75,7 +74,7 @@ impl<'ws> ConfigFetcher<'ws> {
         }
 
         let sha_url = format!("{}.sha256", resolved.download_url);
-        let body = http_get_bytes(&sha_url, &binary_name)
+        let body = http_get_bytes(&sha_url, name)
             .map_err(|e| anyhow::anyhow!("fetching {sha_url}: {e}"))?;
         let text =
             std::str::from_utf8(&body).map_err(|_| anyhow::anyhow!("{sha_url}: non-utf8 body"))?;
@@ -107,7 +106,7 @@ impl<'ws> ConfigFetcher<'ws> {
 
         eprintln!(
             "{} {}",
-            crate::style::stderr_success(format!("Locked `{binary_name}` ({target})")),
+            crate::style::stderr_success(format!("Locked `{name}` ({target})")),
             crate::style::stderr_muted(format!(
                 "at {} from github.com/{}",
                 resolved.tag, source.github
@@ -119,9 +118,13 @@ impl<'ws> ConfigFetcher<'ws> {
 
 impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
     fn fetch(&mut self, name: &str) -> Result<PathBuf, FetchError> {
-        let binary_name = wezel_types::executor_binary_name(name);
+        if !wezel_bench::workspace::is_valid_tool_name(name) {
+            return Err(FetchError::Other(anyhow::anyhow!(
+                "invalid tool name `{name}`; use only letters, numbers, dots, hyphens, and underscores"
+            )));
+        }
         let target = fetch::current_target().ok_or_else(|| FetchError::NotAvailable {
-            plugin: binary_name.clone(),
+            plugin: name.to_string(),
             target: "unknown".into(),
         })?;
 
@@ -148,6 +151,19 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
             )));
         }
 
+        if let Some(archive_sha) = locked
+            .as_ref()
+            .and_then(|locked| locked.assets.get(target))
+            .map(|key| key.strip_prefix("sha256:").unwrap_or(key))
+        {
+            let install_dir = self.workspace.install_dir(archive_sha);
+            if let Some(binary) = fetch::installed_binary(&install_dir) {
+                let executor = link_executor(self.workspace, name, &binary)?;
+                write_schema_sidecar(name, &executor)?;
+                return Ok(executor);
+            }
+        }
+
         // Priority for the tag: lockfile > config pin > latest release.
         let resolved = resolve_release(
             &source.github,
@@ -157,7 +173,7 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
             target,
         )?;
 
-        let bytes = http_get_bytes(&resolved.download_url, &binary_name)?;
+        let bytes = http_get_bytes(&resolved.download_url, name)?;
         let archive_sha = sha256_hex(&bytes);
         let lock_key = format!("sha256:{archive_sha}");
 
@@ -165,24 +181,25 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
             && expected != &lock_key
         {
             return Err(FetchError::Other(anyhow::anyhow!(
-                "wezel.lock sha mismatch for {binary_name} ({target}): \
+                "wezel.lock sha mismatch for {name} ({target}): \
                      expected {expected}, got {lock_key}. \
                      Delete .wezel/wezel.lock to refresh."
             )));
         }
 
-        let dest = self.workspace.plugin_path(name, &archive_sha);
-        fetch::extract_and_install(&bytes, &resolved.binary_name, &dest)?;
-        fetch::strip_quarantine(&dest);
-        write_schema_sidecar(name, &dest)?;
+        let install_dir = self.workspace.install_dir(&archive_sha);
+        let binary = fetch::extract_and_install(&bytes, &install_dir)?;
+        fetch::strip_quarantine(&binary);
+        let executor = link_executor(self.workspace, name, &binary)?;
+        write_schema_sidecar(name, &executor)?;
         eprintln!(
             "{} {}",
-            crate::style::stderr_success(format!("Installed `{binary_name}`")),
+            crate::style::stderr_success(format!("Installed `{name}`")),
             crate::style::stderr_muted(format!(
                 "({}) from github.com/{} to {}",
                 resolved.tag,
                 source.github,
-                dest.display()
+                binary.display()
             ))
         );
 
@@ -206,15 +223,14 @@ impl<'ws> PluginFetcher for ConfigFetcher<'ws> {
             lockfile::save(&self.workspace.project_dir, &self.lock).map_err(FetchError::Other)?;
         }
 
-        Ok(dest)
+        Ok(executor)
     }
 }
 
+#[derive(Debug)]
 struct ResolvedRelease {
     tag: String,
     download_url: String,
-    /// Name inside the archive, which may belong to a pinned legacy release.
-    binary_name: String,
 }
 
 fn resolve_release(
@@ -247,39 +263,38 @@ fn resolve_release_metadata(
         .as_array()
         .ok_or_else(|| FetchError::Other(anyhow::anyhow!("release has no assets")))?;
 
-    // Prefer wezel_* archives, but still install older pinned releases. Their
-    // package names use underscores and the archived executables use hyphens.
-    let canonical = wezel_types::executor_binary_name(name);
-    let (binary_name, asset) = [canonical.clone(), format!("forager-{name}")]
-        .into_iter()
-        .find_map(|binary_name| {
-            let underscored = binary_name.replace('-', "_");
-            assets
-                .iter()
-                .find(|asset| {
-                    let fname = asset["name"].as_str().unwrap_or("");
-                    (fname.starts_with(&format!("{binary_name}-"))
-                        || fname.starts_with(&format!("{underscored}-")))
-                        && (fname.ends_with(&format!("-{target}.tar.gz"))
-                            || fname.ends_with(&format!("-{target}.tar.xz")))
-                })
-                .map(|asset| (binary_name, asset))
+    let suffixes = [format!("-{target}.tar.gz"), format!("-{target}.tar.xz")];
+    let matching: Vec<_> = assets
+        .iter()
+        .filter(|asset| {
+            let name = asset["name"].as_str().unwrap_or_default();
+            suffixes.iter().any(|suffix| {
+                name.strip_suffix(suffix)
+                    .is_some_and(|prefix| !prefix.is_empty())
+            })
         })
-        .ok_or_else(|| FetchError::NotAvailable {
-            plugin: canonical,
-            target: target.into(),
-        })?;
+        .collect();
+    let asset = match matching.as_slice() {
+        [asset] => *asset,
+        [] => {
+            return Err(FetchError::NotAvailable {
+                plugin: name.into(),
+                target: target.into(),
+            });
+        }
+        _ => {
+            return Err(FetchError::Other(anyhow::anyhow!(
+                "release has multiple archives for target `{target}`"
+            )));
+        }
+    };
 
     let download_url = asset["browser_download_url"]
         .as_str()
         .ok_or_else(|| FetchError::Other(anyhow::anyhow!("asset has no download URL")))?
         .to_string();
 
-    Ok(ResolvedRelease {
-        tag,
-        download_url,
-        binary_name,
-    })
+    Ok(ResolvedRelease { tag, download_url })
 }
 
 /// Fetch the most recent release. Uses `/releases?per_page=1` rather than
@@ -358,36 +373,62 @@ fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(h.finalize())
 }
 
+fn link_executor(workspace: &Workspace, name: &str, binary: &Path) -> Result<PathBuf, FetchError> {
+    let link = workspace.executor_path(name).ok_or_else(|| {
+        FetchError::Other(anyhow::anyhow!("invalid project executor name `{name}`"))
+    })?;
+    let parent = link
+        .parent()
+        .ok_or_else(|| FetchError::Other(anyhow::anyhow!("executor path has no parent")))?;
+    std::fs::create_dir_all(parent).map_err(|e| FetchError::Other(e.into()))?;
+    let binary = binary
+        .canonicalize()
+        .map_err(|e| FetchError::Other(e.into()))?;
+    let temporary = parent.join(format!(".{name}.{}.tmp", uuid::Uuid::new_v4()));
+
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&binary, &temporary).map_err(|e| FetchError::Other(e.into()))?;
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(&binary, &temporary)
+        .map_err(|e| FetchError::Other(e.into()))?;
+
+    #[cfg(windows)]
+    if std::fs::symlink_metadata(&link).is_ok() {
+        std::fs::remove_file(&link).map_err(|e| FetchError::Other(e.into()))?;
+    }
+    if let Err(error) = std::fs::rename(&temporary, &link) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(FetchError::Other(error.into()));
+    }
+    Ok(link)
+}
+
 /// Run `<binary> --schema` once at install time and write the JSON to the
-/// schema sidecar so lint and runtime tools can read it without spawning a
-/// child process.
+/// project-local schema sidecar. The project alias replaces the publisher's
+/// schema name so one global binary can have different names across projects.
 fn write_schema_sidecar(forager_name: &str, binary: &std::path::Path) -> Result<(), FetchError> {
-    let binary_name = wezel_types::executor_binary_name(forager_name);
     let out = std::process::Command::new(binary)
         .arg("--schema")
         .output()
         .map_err(|e| {
-            FetchError::Other(anyhow::anyhow!("running --schema for {binary_name}: {e}"))
+            FetchError::Other(anyhow::anyhow!("running --schema for {forager_name}: {e}"))
         })?;
     if !out.status.success() {
         return Err(FetchError::Other(anyhow::anyhow!(
-            "{binary_name} --schema exited with {}",
+            "{forager_name} --schema exited with {}",
             out.status
         )));
     }
-    let parsed: wezel_types::ForagerSchema = serde_json::from_slice(&out.stdout).map_err(|e| {
-        FetchError::Other(anyhow::anyhow!(
-            "{binary_name} --schema produced invalid output: {e}"
-        ))
-    })?;
-    if parsed.name != forager_name {
-        return Err(FetchError::Other(anyhow::anyhow!(
-            "{binary_name} --schema reports name `{}` — binary/schema mismatch",
-            parsed.name,
-        )));
-    }
+    let mut parsed: wezel_types::ForagerSchema =
+        serde_json::from_slice(&out.stdout).map_err(|e| {
+            FetchError::Other(anyhow::anyhow!(
+                "{forager_name} --schema produced invalid output: {e}"
+            ))
+        })?;
+    parsed.name = forager_name.to_string();
     let schema_path = Workspace::schema_sidecar_path(binary);
-    std::fs::write(&schema_path, &out.stdout).map_err(|e| {
+    let body = serde_json::to_vec_pretty(&parsed).map_err(|e| FetchError::Other(e.into()))?;
+    std::fs::write(&schema_path, body).map_err(|e| {
         FetchError::Other(anyhow::anyhow!("writing {}: {e}", schema_path.display()))
     })?;
     Ok(())
@@ -411,48 +452,141 @@ mod tests {
     }
 
     #[test]
-    fn renamed_release_prefers_wezel_archive_for_the_requested_target() {
+    fn release_archive_name_is_independent_of_project_alias() {
         let release = release(&[
-            "forager_llvm_lines-aarch64-apple-darwin.tar.xz",
-            "wezel_llvm_lines-aarch64-apple-darwin.tar.xz.sha256",
-            "wezel_llvm_lines-x86_64-unknown-linux-gnu.tar.xz",
-            "wezel_llvm_lines-aarch64-apple-darwin.tar.xz",
+            "publisher-tool-aarch64-apple-darwin.tar.xz.sha256",
+            "publisher-tool-x86_64-unknown-linux-gnu.tar.xz",
+            "publisher-tool-aarch64-apple-darwin.tar.xz",
         ]);
-        let resolved = resolve_release_metadata(&release, "llvm-lines", TARGET).unwrap();
-        assert_eq!(resolved.binary_name, "wezel_llvm_lines");
+        let resolved = resolve_release_metadata(&release, "my-alias", TARGET).unwrap();
         assert_eq!(resolved.tag, "v1.0.0");
         assert_eq!(
             resolved.download_url,
-            "https://example.invalid/wezel_llvm_lines-aarch64-apple-darwin.tar.xz"
+            "https://example.invalid/publisher-tool-aarch64-apple-darwin.tar.xz"
         );
     }
 
     #[test]
-    fn pinned_legacy_release_retains_its_archived_binary_name() {
-        for asset in [
-            "forager_llvm_lines-aarch64-apple-darwin.tar.xz",
-            "forager-llvm-lines-v1.0.0-aarch64-apple-darwin.tar.gz",
-        ] {
-            let resolved =
-                resolve_release_metadata(&release(&[asset]), "llvm-lines", TARGET).unwrap();
-            assert_eq!(resolved.binary_name, "forager-llvm-lines");
-            assert_eq!(
-                resolved.download_url,
-                format!("https://example.invalid/{asset}")
-            );
-        }
+    fn multiple_archives_for_one_target_are_ambiguous() {
+        let release = release(&[
+            "first-aarch64-apple-darwin.tar.xz",
+            "second-aarch64-apple-darwin.tar.gz",
+        ]);
+        let error = resolve_release_metadata(&release, "alias", TARGET).unwrap_err();
+        assert!(error.to_string().contains("multiple archives"));
     }
 
     #[test]
-    fn checksums_and_other_plugins_are_not_installable_archives() {
+    fn checksums_and_other_targets_are_not_installable_archives() {
         let release = release(&[
             "wezel_cargo-aarch64-apple-darwin.tar.xz.sha256",
-            "wezel_filesize-aarch64-apple-darwin.tar.xz",
             "wezel_cargo-x86_64-unknown-linux-gnu.tar.xz",
         ]);
         assert!(matches!(
             resolve_release_metadata(&release, "cargo", TARGET),
-            Err(FetchError::NotAvailable { plugin, .. }) if plugin == "wezel_cargo"
+            Err(FetchError::NotAvailable { plugin, .. }) if plugin == "cargo"
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_alias_links_to_unchanged_global_name_and_owns_schema_name() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let project = tempfile::tempdir().unwrap();
+        let store = tempfile::tempdir().unwrap();
+        std::fs::create_dir(project.path().join(".wezel")).unwrap();
+        std::fs::write(
+            project.path().join(".wezel/config.toml"),
+            format!(
+                "project_id = \"{}\"\nname = \"test\"\n",
+                uuid::Uuid::new_v4()
+            ),
+        )
+        .unwrap();
+        let binary_dir = store.path().join("hash");
+        std::fs::create_dir(&binary_dir).unwrap();
+        let binary = binary_dir.join("publishers-own-name");
+        std::fs::write(
+            &binary,
+            "#!/bin/sh\nprintf '%s' '{\"name\":\"publisher-name\",\"description\":\"test\",\"inputs\":{},\"outcomes_doc\":\"\"}'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let workspace = Workspace::discover(project.path().into(), store.path().into()).unwrap();
+
+        let executor = link_executor(&workspace, "local-alias", &binary).unwrap();
+        write_schema_sidecar("local-alias", &executor).unwrap();
+
+        assert_eq!(
+            std::fs::read_link(&executor).unwrap(),
+            binary.canonicalize().unwrap()
+        );
+        assert!(binary.is_file());
+        let schema: wezel_types::ForagerSchema = serde_json::from_slice(
+            &std::fs::read(Workspace::schema_sidecar_path(&executor)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(schema.name, "local-alias");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn locked_global_install_is_reused_through_a_project_alias() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let project = tempfile::tempdir().unwrap();
+        let store = tempfile::tempdir().unwrap();
+        std::fs::create_dir(project.path().join(".wezel")).unwrap();
+        std::fs::write(
+            project.path().join(".wezel/config.toml"),
+            format!(
+                "project_id = \"{}\"\nname = \"test\"\n\n[tools.foragers.size-check]\ngithub = \"wezel-build/wezel_filesize\"\n",
+                uuid::Uuid::new_v4()
+            ),
+        )
+        .unwrap();
+
+        let target = fetch::current_target().unwrap();
+        let hash = "ab".repeat(32);
+        let mut lock = WezelLock {
+            version: lockfile::CURRENT_VERSION,
+            ..WezelLock::default()
+        };
+        lock.tools.foragers.insert(
+            "size-check".into(),
+            LockedTool {
+                github: "wezel-build/wezel_filesize".into(),
+                tag: "v1.0.0".into(),
+                assets: BTreeMap::from([(target.into(), format!("sha256:{hash}"))]),
+            },
+        );
+        lockfile::save(project.path(), &lock).unwrap();
+
+        let binary_dir = store.path().join(&hash);
+        std::fs::create_dir(&binary_dir).unwrap();
+        let binary = binary_dir.join("wezel_filesize");
+        std::fs::write(
+            &binary,
+            "#!/bin/sh\nprintf '%s' '{\"name\":\"filesize\",\"description\":\"test\",\"inputs\":{},\"outcomes_doc\":\"\"}'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let workspace = Workspace::discover(project.path().into(), store.path().into()).unwrap();
+        let executor = ConfigFetcher::new(&workspace)
+            .unwrap()
+            .fetch("size-check")
+            .unwrap();
+
+        assert_eq!(
+            std::fs::read_link(&executor).unwrap(),
+            binary.canonicalize().unwrap()
+        );
+        let schema: wezel_types::ForagerSchema = serde_json::from_slice(
+            &std::fs::read(Workspace::schema_sidecar_path(&executor)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(schema.name, "size-check");
     }
 }

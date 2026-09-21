@@ -17,9 +17,8 @@ pub enum FetchError {
 /// Implementations live in `wezel_cli`; the trait is defined here so
 /// `invoke_forager` can accept `Option<&mut dyn PluginFetcher>`.
 pub trait PluginFetcher {
-    /// Fetch and install the plugin binary named by
-    /// [`wezel_types::executor_binary_name`].
-    /// Returns the path to the installed binary.
+    /// Fetch and install the plugin, then return its project-local executable
+    /// alias.
     fn fetch(&mut self, name: &str) -> Result<PathBuf, FetchError>;
 }
 
@@ -114,12 +113,9 @@ pub fn strip_quarantine(path: &Path) {
     }
 }
 
-/// Extract a named binary from a `.tar.gz` or `.tar.xz` archive and write it atomically to `dest`.
-pub fn extract_and_install(
-    archive_bytes: &[u8],
-    binary_name: &str,
-    dest: &Path,
-) -> Result<(), FetchError> {
+/// Extract the single executable from a `.tar.gz` or `.tar.xz` archive into
+/// `dest_dir`, preserving its published file name.
+pub fn extract_and_install(archive_bytes: &[u8], dest_dir: &Path) -> Result<PathBuf, FetchError> {
     use tar::Archive;
 
     // Detect format from magic bytes: XZ = fd 37 7a 58 5a 00, gzip = 1f 8b
@@ -127,47 +123,127 @@ pub fn extract_and_install(
 
     fn install_from_tar<R: std::io::Read>(
         mut archive: Archive<R>,
-        binary_name: &str,
-        dest: &Path,
-    ) -> Result<(), FetchError> {
+        dest_dir: &Path,
+    ) -> Result<PathBuf, FetchError> {
+        let mut executable = None;
         for entry in archive.entries().map_err(|e| FetchError::Other(e.into()))? {
             let mut entry = entry.map_err(|e| FetchError::Other(e.into()))?;
-            let path = entry.path().map_err(|e| FetchError::Other(e.into()))?;
-            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if file_name == binary_name {
-                if let Some(parent) = dest.parent() {
-                    std::fs::create_dir_all(parent).map_err(|e| FetchError::Other(e.into()))?;
-                }
-                let mut bytes = Vec::new();
-                entry
-                    .read_to_end(&mut bytes)
-                    .map_err(|e| FetchError::Other(e.into()))?;
-                let tmp = dest.with_extension("tmp");
-                std::fs::write(&tmp, &bytes).map_err(|e| FetchError::Other(e.into()))?;
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let mut perms = std::fs::metadata(&tmp)
-                        .map_err(|e| FetchError::Other(e.into()))?
-                        .permissions();
-                    perms.set_mode(0o755);
-                    std::fs::set_permissions(&tmp, perms)
-                        .map_err(|e| FetchError::Other(e.into()))?;
-                }
-                std::fs::rename(&tmp, dest).map_err(|e| FetchError::Other(e.into()))?;
-                return Ok(());
+            if !entry.header().entry_type().is_file() {
+                continue;
             }
+            let path = entry.path().map_err(|e| FetchError::Other(e.into()))?;
+            let file_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            let mode = entry.header().mode().unwrap_or_default();
+            if mode & 0o111 == 0 && !file_name.ends_with(".exe") {
+                continue;
+            }
+            if executable.is_some() {
+                return Err(FetchError::Other(anyhow::anyhow!(
+                    "archive contains more than one executable"
+                )));
+            }
+            let mut bytes = Vec::new();
+            entry
+                .read_to_end(&mut bytes)
+                .map_err(|e| FetchError::Other(e.into()))?;
+            executable = Some((file_name, bytes));
         }
-        Err(FetchError::Other(anyhow::anyhow!(
-            "binary '{binary_name}' not found in archive"
-        )))
+        let (file_name, bytes) = executable
+            .ok_or_else(|| FetchError::Other(anyhow::anyhow!("archive contains no executable")))?;
+        std::fs::create_dir_all(dest_dir).map_err(|e| FetchError::Other(e.into()))?;
+        let dest = dest_dir.join(file_name);
+        let tmp = dest.with_extension("tmp");
+        std::fs::write(&tmp, &bytes).map_err(|e| FetchError::Other(e.into()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&tmp)
+                .map_err(|e| FetchError::Other(e.into()))?
+                .permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&tmp, perms).map_err(|e| FetchError::Other(e.into()))?;
+        }
+        std::fs::rename(&tmp, &dest).map_err(|e| FetchError::Other(e.into()))?;
+        Ok(dest)
     }
 
     if is_xz {
         let xz = xz2::read::XzDecoder::new(archive_bytes);
-        install_from_tar(Archive::new(xz), binary_name, dest)
+        install_from_tar(Archive::new(xz), dest_dir)
     } else {
         let gz = flate2::read::GzDecoder::new(archive_bytes);
-        install_from_tar(Archive::new(gz), binary_name, dest)
+        install_from_tar(Archive::new(gz), dest_dir)
+    }
+}
+
+/// Find the sole installed executable in a content-addressed store directory.
+/// Old schema sidecars are ignored so existing installations can be linked
+/// into a project without downloading the archive again.
+pub fn installed_binary(dir: &Path) -> Option<PathBuf> {
+    let candidates: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && !path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with(".schema.json"))
+        })
+        .collect();
+    (candidates.len() == 1).then(|| candidates[0].clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write as _;
+
+    use super::*;
+
+    fn archive(entries: &[(&str, u32)]) -> Vec<u8> {
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        for (name, mode) in entries {
+            let body = format!("contents of {name}");
+            let mut header = tar::Header::new_gnu();
+            header.set_size(body.len() as u64);
+            header.set_mode(*mode);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, name, body.as_bytes())
+                .unwrap();
+        }
+        let mut encoder = builder.into_inner().unwrap();
+        encoder.flush().unwrap();
+        encoder.finish().unwrap()
+    }
+
+    #[test]
+    fn extraction_preserves_the_publishers_binary_name() {
+        let bytes = archive(&[("package/README", 0o644), ("package/acme-measure", 0o755)]);
+        let dir = tempfile::tempdir().unwrap();
+
+        let installed = extract_and_install(&bytes, dir.path()).unwrap();
+
+        assert_eq!(installed, dir.path().join("acme-measure"));
+        assert_eq!(
+            std::fs::read_to_string(installed).unwrap(),
+            "contents of package/acme-measure"
+        );
+    }
+
+    #[test]
+    fn extraction_rejects_ambiguous_executables() {
+        let bytes = archive(&[("package/first", 0o755), ("package/second", 0o755)]);
+        let dir = tempfile::tempdir().unwrap();
+
+        let error = extract_and_install(&bytes, dir.path()).unwrap_err();
+
+        assert!(error.to_string().contains("more than one executable"));
     }
 }

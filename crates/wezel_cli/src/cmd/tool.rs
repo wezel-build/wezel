@@ -55,6 +55,11 @@ fn table<'a>(item: &'a mut Item, name: &str) -> anyhow::Result<&'a mut Table> {
 }
 
 fn add_declaration(project_dir: &Path, name: &str, repository: &str) -> anyhow::Result<AddOutcome> {
+    if !wezel_bench::workspace::is_valid_tool_name(name) {
+        anyhow::bail!(
+            "invalid tool name `{name}`; use only letters, numbers, dots, hyphens, and underscores"
+        );
+    }
     let path = project_dir.join(".wezel").join("config.toml");
     let raw = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     let mut config = raw
@@ -179,6 +184,21 @@ mod tests {
         assert_eq!(
             parsed["tools"]["foragers"]["filesize"]["github"].as_str(),
             Some("wezel-build/wezel_filesize")
+        );
+    }
+
+    #[test]
+    fn rejects_tool_names_that_are_not_safe_executor_file_names() {
+        let config = format!("project_id = \"{PROJECT_ID}\"\nname = \"demo\"\n");
+        let dir = project(&config);
+
+        let error =
+            add_declaration(dir.path(), "../filesize", "wezel-build/wezel_filesize").unwrap_err();
+
+        assert!(error.to_string().contains("invalid tool name"));
+        assert_eq!(
+            fs::read_to_string(dir.path().join(".wezel/config.toml")).unwrap(),
+            config
         );
     }
 

@@ -11,6 +11,7 @@ const DEFAULT_APP_URL: &str = "https://app.wezel.build";
 const DEFAULT_GITIGNORE: &str = "\
 # Wezel project-local state. Add patterns here as needed.
 runs/
+executors/
 *.local.toml
 ";
 
