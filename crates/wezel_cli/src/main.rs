@@ -370,7 +370,7 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    ensure_executors_ignored(ws)?;
+    ensure_project_tools_ignored(ws)?;
 
     let host = wezel_bench::fetch::current_target()
         .ok_or_else(|| anyhow::anyhow!("current platform is not a recognised target triple"))?;
@@ -457,8 +457,8 @@ fn write_schema_bundle(ws: &wezel_bench::Workspace, foragers: &[String]) -> anyh
     Ok(())
 }
 
-fn ensure_executors_ignored(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
-    const ENTRY: &str = "executors/";
+fn ensure_project_tools_ignored(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
+    const ENTRY: &str = "tools/";
     let path = ws.project_dir.join(".wezel").join(".gitignore");
     let mut contents = std::fs::read_to_string(&path).unwrap_or_default();
     if contents.lines().any(|line| line.trim() == ENTRY) {
@@ -612,7 +612,7 @@ mod tests {
     }
 
     #[test]
-    fn executor_ignore_entry_is_idempotent() {
+    fn project_tools_ignore_entry_is_added_and_idempotent() {
         let project = tempfile::tempdir().unwrap();
         let store = tempfile::tempdir().unwrap();
         std::fs::create_dir(project.path().join(".wezel")).unwrap();
@@ -624,16 +624,20 @@ mod tests {
             ),
         )
         .unwrap();
-        std::fs::write(project.path().join(".wezel/.gitignore"), "runs/\n").unwrap();
+        std::fs::write(
+            project.path().join(".wezel/.gitignore"),
+            "runs/\nexecutors/\n",
+        )
+        .unwrap();
         let workspace =
             wezel_bench::Workspace::discover(project.path().into(), store.path().into()).unwrap();
 
-        ensure_executors_ignored(&workspace).unwrap();
-        ensure_executors_ignored(&workspace).unwrap();
+        ensure_project_tools_ignored(&workspace).unwrap();
+        ensure_project_tools_ignored(&workspace).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(project.path().join(".wezel/.gitignore")).unwrap(),
-            "runs/\nexecutors/\n"
+            "runs/\nexecutors/\ntools/\n"
         );
     }
 }

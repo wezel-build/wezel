@@ -45,7 +45,7 @@ impl LintFixture {
 
     /// Project-local alias used to invoke a fake forager.
     fn executor_path(&self, name: &str) -> PathBuf {
-        self.project_dir.join(".wezel/executors").join(name)
+        self.project_dir.join(".wezel/tools").join(name)
     }
 
     fn add_experiment(&self, name: &str, toml: &str) -> PathBuf {

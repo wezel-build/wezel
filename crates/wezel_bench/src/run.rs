@@ -767,8 +767,8 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
-        std::fs::create_dir_all(wezel_dir.join("executors")).unwrap();
-        std::os::unix::fs::symlink(&binary, wezel_dir.join("executors/fail")).unwrap();
+        std::fs::create_dir_all(wezel_dir.join("tools")).unwrap();
+        std::os::unix::fs::symlink(&binary, wezel_dir.join("tools/fail")).unwrap();
 
         git(project.path(), &["init", "--quiet"]);
         git(

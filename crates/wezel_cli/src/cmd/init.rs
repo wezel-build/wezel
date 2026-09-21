@@ -11,7 +11,7 @@ const DEFAULT_APP_URL: &str = "https://app.wezel.build";
 const DEFAULT_GITIGNORE: &str = "\
 # Wezel project-local state. Add patterns here as needed.
 runs/
-executors/
+tools/
 *.local.toml
 ";
 
@@ -189,6 +189,12 @@ pub fn init_cmd(project_dir: &Path) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_tools_are_ignored_by_default() {
+        assert!(DEFAULT_GITIGNORE.lines().any(|line| line == "tools/"));
+        assert!(!DEFAULT_GITIGNORE.lines().any(|line| line == "executors/"));
+    }
 
     #[test]
     fn normalizes_https_and_scp_remotes() {
