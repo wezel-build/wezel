@@ -75,31 +75,6 @@ enum Command {
         #[arg(value_name = "GITHUB_URL")]
         repository: String,
     },
-    /// Run an experiment (shorthand for `experiment run`).
-    #[command(name = "er")]
-    ExperimentRun {
-        /// Experiment name (matches .wezel/experiments/<name>/).
-        #[arg(add = ArgValueCandidates::new(complete_experiments))]
-        experiment: String,
-        /// Output format.
-        #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
-        output_format: OutputFormat,
-        /// Include per-step measurements in human-readable output.
-        #[arg(short = 'v', long)]
-        verbose: bool,
-        /// Persist the run under `.wezel/runs/<experiment>/<id>/run.json`.
-        #[arg(
-            long,
-            action = clap::ArgAction::Set,
-            value_parser = clap::builder::BoolishValueParser::new(),
-            default_value = "yes",
-            value_name = "yes|no",
-        )]
-        save: bool,
-        /// Fiflok run id to place in `report.json` inside the saved run dir.
-        #[arg(long, value_name = "ID")]
-        run_id: Option<u64>,
-    },
     /// Active measurement: run experiments across commits.
     #[command(visible_alias = "exp", visible_alias = "e")]
     Experiment {
@@ -118,7 +93,6 @@ enum ProjectCmd {
     /// Project details are prompted interactively.
     Init,
     /// Manage external tools declared under `[tools]` in `.wezel/config.toml`.
-    #[command(visible_alias = "t")]
     Tool {
         #[command(subcommand)]
         cmd: ToolCmd,
@@ -130,7 +104,6 @@ enum ProjectCmd {
 #[derive(Subcommand)]
 enum ToolCmd {
     /// Declare a tool from a GitHub repository, then install and lock it.
-    #[command(visible_alias = "a")]
     Add {
         /// Name used to reference the tool in experiment definitions.
         name: String,
@@ -142,7 +115,6 @@ enum ToolCmd {
     ///
     /// Idempotent: tools whose binary and schema sidecar are already present
     /// are skipped.
-    #[command(visible_alias = "s")]
     Sync,
 }
 
@@ -151,7 +123,6 @@ enum ExperimentCmd {
     /// Create a new experiment (interactive wizard).
     New,
     /// Run an experiment against the current checkout.
-    #[command(visible_alias = "r")]
     Run {
         /// Experiment name (matches .wezel/experiments/<name>/).
         #[arg(add = ArgValueCandidates::new(complete_experiments))]
@@ -228,26 +199,8 @@ fn main() -> ExitCode {
 
     let cli = Cli::parse();
     let project_dir = resolve_project_dir(cli.project_dir);
-    let command = match cli.command {
-        Command::ExperimentRun {
-            experiment,
-            output_format,
-            verbose,
-            save,
-            run_id,
-        } => Command::Experiment {
-            cmd: ExperimentCmd::Run {
-                experiment,
-                output_format,
-                verbose,
-                save,
-                run_id,
-            },
-        },
-        command => command,
-    };
 
-    match command {
+    match cli.command {
         Command::Project { cmd } => match cmd {
             ProjectCmd::Init => run_result(init_cmd(&project_dir)),
             ProjectCmd::Tool { cmd } => match cmd {
@@ -265,8 +218,6 @@ fn main() -> ExitCode {
         Command::ProjectToolAdd { name, repository } => {
             run_result(cmd::tool_add_cmd(&project_dir, &name, &repository))
         }
-
-        Command::ExperimentRun { .. } => unreachable!("normalized above"),
 
         Command::Completions => {
             let shell = std::env::var("SHELL").unwrap_or_default();
@@ -588,39 +539,19 @@ mod tests {
     }
 
     #[test]
-    fn spaced_project_tool_add_aliases_still_parse() {
-        let cli = Cli::try_parse_from([
-            "wezel",
-            "p",
-            "t",
-            "a",
-            "filesize",
-            "https://github.com/wezel-build/wezel_filesize",
-        ])
-        .unwrap();
-
-        assert!(matches!(
-            cli.command,
-            Command::Project {
-                cmd: ProjectCmd::Tool {
-                    cmd: ToolCmd::Add { .. }
-                }
-            }
-        ));
-    }
-
-    #[test]
-    fn er_shorthand_parses_as_written() {
-        let cli = Cli::try_parse_from(["wezel", "er", "build", "--run-id", "7"]).unwrap();
-
-        let Command::ExperimentRun {
-            experiment, run_id, ..
-        } = cli.command
-        else {
-            panic!("expected er command");
-        };
-        assert_eq!(experiment, "build");
-        assert_eq!(run_id, Some(7));
+    fn unrequested_composed_aliases_are_not_commands() {
+        assert!(Cli::try_parse_from(["wezel", "er", "build"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "wezel",
+                "p",
+                "t",
+                "a",
+                "filesize",
+                "https://github.com/wezel-build/wezel_filesize",
+            ])
+            .is_err()
+        );
     }
 
     #[test]
