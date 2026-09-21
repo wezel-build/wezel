@@ -14,7 +14,7 @@ fn symlink_file(target: &Path, link: &Path) {
 fn resolves_project_alias_only_when_it_targets_the_locked_install() {
     let project = tempfile::tempdir().unwrap();
     let store = tempfile::tempdir().unwrap();
-    fs::create_dir_all(project.path().join(".wezel/executors")).unwrap();
+    fs::create_dir_all(project.path().join(".wezel/tools")).unwrap();
     fs::write(
         project.path().join(".wezel/config.toml"),
         format!(
@@ -66,7 +66,7 @@ tag = "v1"
 }
 
 #[test]
-fn rejects_tool_names_that_can_escape_the_executor_directory() {
+fn rejects_tool_names_that_can_escape_the_project_tools_directory() {
     assert!(wezel_bench::workspace::is_valid_tool_name("filesize.prod"));
     for invalid in ["", ".", "..", ".hidden", "../filesize", "tools/filesize"] {
         assert!(!wezel_bench::workspace::is_valid_tool_name(invalid));

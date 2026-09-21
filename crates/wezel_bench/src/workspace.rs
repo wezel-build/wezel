@@ -57,10 +57,9 @@ impl Workspace {
     }
 
     /// Project-local executable alias chosen by the user. The path is absent
-    /// for unsafe names so config keys can never escape `.wezel/executors`.
+    /// for unsafe names so config keys can never escape `.wezel/tools`.
     pub fn executor_path(&self, name: &str) -> Option<PathBuf> {
-        is_valid_tool_name(name)
-            .then(|| self.project_dir.join(".wezel").join("executors").join(name))
+        is_valid_tool_name(name).then(|| self.project_dir.join(".wezel").join("tools").join(name))
     }
 
     pub fn install_dir(&self, sha_hex: &str) -> PathBuf {
