@@ -66,6 +66,34 @@ tag = "v1"
 }
 
 #[test]
+fn workspace_discovery_makes_relative_project_dir_absolute() {
+    let current_dir = std::env::current_dir().unwrap();
+    let project = tempfile::Builder::new()
+        .prefix("wezel-relative-workspace-")
+        .tempdir_in(&current_dir)
+        .unwrap();
+    let store = tempfile::tempdir().unwrap();
+    fs::create_dir(project.path().join(".wezel")).unwrap();
+    fs::write(
+        project.path().join(".wezel/config.toml"),
+        format!(
+            "project_id = \"{}\"\nname = \"relative-project\"\n",
+            uuid::Uuid::new_v4()
+        ),
+    )
+    .unwrap();
+
+    let relative_project = project.path().strip_prefix(&current_dir).unwrap();
+    let workspace = Workspace::discover(relative_project.into(), store.path().into()).unwrap();
+
+    assert!(workspace.project_dir.is_absolute());
+    assert_eq!(
+        workspace.project_dir,
+        project.path().canonicalize().unwrap()
+    );
+}
+
+#[test]
 fn rejects_tool_names_that_can_escape_the_project_tools_directory() {
     assert!(wezel_bench::workspace::is_valid_tool_name("filesize.prod"));
     for invalid in ["", ".", "..", ".hidden", "../filesize", "tools/filesize"] {
