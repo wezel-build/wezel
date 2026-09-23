@@ -594,6 +594,12 @@ fn run_in_scratch(
     if let Some(r) = reporter {
         r.run_started(experiment_name, commit_sha, &plan);
     }
+    let run_start = std::time::Instant::now();
+    log::info!(
+        "experiment '{experiment_name}' started at {} [steps={}]",
+        &commit_sha[..7.min(commit_sha.len())],
+        experiment.steps.len()
+    );
 
     // Run each step.
     let mut step_reports: Vec<ExperimentRunStep> = Vec::new();
@@ -608,8 +614,11 @@ fn run_in_scratch(
             .copied()
             .unwrap_or(1)
             .max(1);
+        let step_start = std::time::Instant::now();
         log::info!(
-            "step '{}' [forager={}, samples={samples}]",
+            "step {}/{} '{}' started [forager={}, samples={samples}]",
+            step_index + 1,
+            experiment.steps.len(),
             step.name,
             step.forager
         );
@@ -647,7 +656,9 @@ fn run_in_scratch(
                     format!("restoring snapshot for step '{}' iter {iter}", step.name)
                 })?;
             }
-            log::debug!("  iter {iter}/{samples}");
+            if samples > 1 {
+                log::info!("step '{}' sample {iter}/{samples} started", step.name);
+            }
             if let Some(r) = reporter {
                 r.sample_started(&step.name, iter, samples);
             }
@@ -674,16 +685,37 @@ fn run_in_scratch(
                         executions.push(collected.execution);
                     }
                 }
-                Err(e) => return Err(e.into()),
+                Err(error) => {
+                    log::error!(
+                        "step '{}' sample {iter}/{samples} failed after {:?}: {error}",
+                        step.name,
+                        sample_start.elapsed()
+                    );
+                    return Err(error.into());
+                }
             }
             if let Some(r) = reporter {
                 r.sample_done(&step.name, iter, samples);
+            }
+            if samples > 1 {
+                log::info!(
+                    "step '{}' sample {iter}/{samples} finished in {:?}",
+                    step.name,
+                    sample_start.elapsed()
+                );
             }
         }
 
         if let Some(r) = reporter {
             r.step_finished(&step.name);
         }
+        log::info!(
+            "step {}/{} '{}' finished in {:?}",
+            step_index + 1,
+            experiment.steps.len(),
+            step.name,
+            step_start.elapsed()
+        );
 
         step_reports.push(ExperimentRunStep {
             index: Some(u32::try_from(step_index).context("too many experiment steps")?),
@@ -698,9 +730,10 @@ fn run_in_scratch(
         r.run_finished();
     }
 
-    log::debug!(
-        "experiment '{experiment_name}' finished at {}",
-        &commit_sha[..7.min(commit_sha.len())]
+    log::info!(
+        "experiment '{experiment_name}' finished at {} in {:?}",
+        &commit_sha[..7.min(commit_sha.len())],
+        run_start.elapsed()
     );
 
     Ok(CompletedRun {
