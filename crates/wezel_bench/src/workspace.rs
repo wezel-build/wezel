@@ -22,8 +22,8 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn discover(project_dir: PathBuf, tool_store: PathBuf) -> Result<Self> {
-        let canonical_project_dir = std::fs::canonicalize(&project_dir)?;
-        let config = ProjectConfig::load(&canonical_project_dir)?;
+        let project_dir = std::fs::canonicalize(project_dir)?;
+        let config = ProjectConfig::load(&project_dir)?;
         Ok(Self {
             project_dir,
             tool_store,
