@@ -102,6 +102,19 @@ enum ToolCmd {
         #[arg(value_name = "GITHUB_URL")]
         repository: String,
     },
+    /// Override a project tool with a local executable for development.
+    Link {
+        /// Name used to reference the tool in experiment definitions.
+        name: String,
+        /// Path to a locally built executor binary.
+        #[arg(value_name = "EXECUTABLE")]
+        executable: PathBuf,
+    },
+    /// Remove a local override and restore published tool resolution.
+    Unlink {
+        /// Project tool name whose local override should be removed.
+        name: String,
+    },
     /// Install every declared tool to the local store and refresh `wezel.lock`.
     ///
     /// Idempotent: tools whose binary and schema sidecar are already present
@@ -198,6 +211,10 @@ fn main() -> ExitCode {
                 ToolCmd::Add { name, repository } => {
                     run_result(cmd::tool_add_cmd(&project_dir, &name, &repository))
                 }
+                ToolCmd::Link { name, executable } => {
+                    run_result(cmd::tool_link_cmd(&project_dir, &name, &executable))
+                }
+                ToolCmd::Unlink { name } => run_result(cmd::tool_unlink_cmd(&project_dir, &name)),
                 ToolCmd::Sync => run_result((|| -> anyhow::Result<()> {
                     let ws = make_workspace(project_dir)?;
                     tool_sync(&ws)
@@ -361,38 +378,65 @@ fn main() -> ExitCode {
 }
 
 fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
-    let foragers: Vec<String> = ws.config.tools.foragers.keys().cloned().collect();
+    let foragers: Vec<String> = ws.tool_names().into_iter().collect();
     if foragers.is_empty() {
         println!(
             "{}",
-            style::warning("No tools declared under [tools.foragers] in .wezel/config.toml.")
+            style::warning("No project tools declared or linked locally.")
         );
+        write_schema_bundle(ws, &foragers)?;
         return Ok(());
     }
 
     ensure_project_tools_ignored(ws)?;
 
-    let host = wezel_bench::fetch::current_target()
-        .ok_or_else(|| anyhow::anyhow!("current platform is not a recognised target triple"))?;
+    let published: Vec<_> = ws
+        .config
+        .tools
+        .foragers
+        .keys()
+        .filter(|name| !ws.has_local_tool(name))
+        .collect();
     let targets = &ws.config.tools.targets;
-    if targets.is_empty() {
-        anyhow::bail!(
-            "no targets declared. Add `targets = [\"{host}\"]` under [tools] in \
-             .wezel/config.toml (new projects: `wezel project init` does this automatically)"
-        );
-    }
-    if !targets.iter().any(|t| t == host) {
-        anyhow::bail!(
-            "host target `{host}` is not in [tools] targets. Add it so the lockfile \
-             can be populated from this machine."
-        );
-    }
+    let host = if published.is_empty() {
+        None
+    } else {
+        let host = wezel_bench::fetch::current_target()
+            .ok_or_else(|| anyhow::anyhow!("current platform is not a recognised target triple"))?;
+        if targets.is_empty() {
+            anyhow::bail!(
+                "no targets declared. Add `targets = [\"{host}\"]` under [tools] in \
+                 .wezel/config.toml (new projects: `wezel project init` does this automatically)"
+            );
+        }
+        if !targets.iter().any(|t| t == host) {
+            anyhow::bail!(
+                "host target `{host}` is not in [tools] targets. Add it so the lockfile \
+                 can be populated from this machine."
+            );
+        }
+        Some(host)
+    };
 
     let mut fetcher = fetcher::ConfigFetcher::new(ws)?;
     let mut installed = 0usize;
+    let mut local = 0usize;
     let mut skipped = 0usize;
     for name in &foragers {
-        if sidecar_is_current(ws, name) {
+        if ws.has_local_tool(name) {
+            let executable = ws
+                .local_tool_path(name)
+                .with_context(|| format!("local tool `{name}` has no executable path"))?;
+            let alias = fetcher::link_local_executor(ws, name, executable)?;
+            fetcher::write_schema_sidecar(name, &alias)?;
+            println!(
+                "  {}  {} ({})",
+                style::strong(name),
+                style::success("local schema refreshed"),
+                style::muted(executable.display())
+            );
+            local += 1;
+        } else if sidecar_is_current(ws, name) {
             println!(
                 "  {}  {}",
                 style::strong(name),
@@ -407,7 +451,10 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
         // wezel.lock is identical on every machine (host was locked by the
         // install above).
         for target in targets {
-            if target == host {
+            if ws.has_local_tool(name) {
+                break;
+            }
+            if host.is_some_and(|host| target == host) {
                 continue;
             }
             fetcher.lock_target(name, target)?;
@@ -418,7 +465,9 @@ fn tool_sync(ws: &wezel_bench::Workspace) -> anyhow::Result<()> {
 
     println!(
         "\n{}",
-        style::success(format!("{installed} installed, {skipped} up to date."))
+        style::success(format!(
+            "{installed} installed, {local} local refreshed, {skipped} up to date."
+        ))
     );
     Ok(())
 }
@@ -524,6 +573,41 @@ mod tests {
         };
         assert_eq!(name, "filesize");
         assert_eq!(repository, "https://github.com/wezel-build/wezel_filesize");
+    }
+
+    #[test]
+    fn project_tool_link_and_unlink_parse() {
+        let cli = Cli::try_parse_from([
+            "wezel",
+            "project",
+            "tool",
+            "link",
+            "filesize-dev",
+            "target/debug/wezel_filesize",
+        ])
+        .unwrap();
+        let Command::Project {
+            cmd:
+                ProjectCmd::Tool {
+                    cmd: ToolCmd::Link { name, executable },
+                },
+        } = cli.command
+        else {
+            panic!("expected project tool link command");
+        };
+        assert_eq!(name, "filesize-dev");
+        assert_eq!(executable, PathBuf::from("target/debug/wezel_filesize"));
+
+        let cli =
+            Cli::try_parse_from(["wezel", "project", "tool", "unlink", "filesize-dev"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Command::Project {
+                cmd: ProjectCmd::Tool {
+                    cmd: ToolCmd::Unlink { name }
+                }
+            } if name == "filesize-dev"
+        ));
     }
 
     #[test]

@@ -18,8 +18,8 @@ pub fn bundle_is_stale(workspace: &Workspace) -> bool {
         return true;
     };
     let mut sidecars = Vec::new();
-    for name in workspace.config.tools.foragers.keys() {
-        let Some(binary) = workspace.resolve_plugin(name) else {
+    for name in workspace.tool_names() {
+        let Some(binary) = workspace.resolve_plugin(&name) else {
             return false;
         };
         let Ok(raw) = std::fs::read_to_string(Workspace::schema_sidecar_path(&binary)) else {
@@ -172,10 +172,18 @@ pub fn run_lint(
         bail!("no experiments directory at {}", experiments_dir.display());
     }
 
-    // The lockfile is the source of truth for resolution; missing it is a
-    // hard error so CI surfaces drift instead of silently fetching latest.
+    // The lockfile is the source of truth for published resolution; missing
+    // it is a hard error so CI surfaces drift instead of silently fetching
+    // latest. Explicit machine-local overrides do not participate in it.
     let lock_path = lockfile::path(&workspace.project_dir);
-    if !lock_path.is_file() {
+    if !lock_path.is_file()
+        && workspace
+            .config
+            .tools
+            .foragers
+            .keys()
+            .any(|name| !workspace.has_local_tool(name))
+    {
         bail!(
             "no lockfile at {} — run `wezel experiment run` once to populate it",
             lock_path.display()
@@ -286,10 +294,13 @@ pub fn run_lint(
                 }
             }
 
-            // The forager must be declared in [tools.foragers.<name>].
+            // The forager must be declared in [tools.foragers.<name>] or be an
+            // explicit machine-local override.
             // Skip downstream checks if it isn't — they'd just produce noise
             // about the same root cause.
-            if !workspace.config.tools.foragers.contains_key(&step.forager) {
+            if !workspace.config.tools.foragers.contains_key(&step.forager)
+                && !workspace.has_local_tool(&step.forager)
+            {
                 if warned_plugins.insert(step.forager.clone()) {
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),
@@ -302,9 +313,11 @@ pub fn run_lint(
                 continue;
             }
 
-            // The lockfile must contain a locked entry; otherwise lint refuses
-            // to fetch latest behind the user's back.
-            if !lock.tools.foragers.contains_key(&step.forager) {
+            // Published tools need a locked entry; local overrides are
+            // intentionally machine-local and never enter the lockfile.
+            if !workspace.has_local_tool(&step.forager)
+                && !lock.tools.foragers.contains_key(&step.forager)
+            {
                 if warned_plugins.insert(step.forager.clone()) {
                     diagnostics.push(LintDiagnostic {
                         step: step.name.clone(),

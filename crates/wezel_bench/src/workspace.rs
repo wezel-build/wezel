@@ -4,10 +4,12 @@
 //! project config. Wezel is moot without a config, so `Workspace::discover`
 //! fails when one isn't found.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use serde::Deserialize;
 
 use crate::{ProjectConfig, fetch, lockfile};
 
@@ -18,22 +20,65 @@ pub struct Workspace {
     /// `<tool_store>/<archive-sha>/<published-binary-name>`.
     pub tool_store: PathBuf,
     pub config: ProjectConfig,
+    local_foragers: BTreeMap<String, PathBuf>,
+    local_tools_dir: PathBuf,
+}
+
+#[derive(Default, Deserialize)]
+struct LocalToolsConfig {
+    #[serde(default)]
+    foragers: BTreeMap<String, PathBuf>,
 }
 
 impl Workspace {
     pub fn discover(project_dir: PathBuf, tool_store: PathBuf) -> Result<Self> {
         let canonical_project_dir = std::fs::canonicalize(&project_dir)?;
         let config = ProjectConfig::load(&canonical_project_dir)?;
+        let local_foragers = load_local_foragers(&canonical_project_dir)?;
+        let local_tools_dir = canonical_project_dir
+            .join(".wezel")
+            .join("tools")
+            .join(".local");
         Ok(Self {
             project_dir,
             tool_store,
             config,
+            local_foragers,
+            local_tools_dir,
         })
+    }
+
+    /// Use local overrides loaded by another workspace while executing from a
+    /// scratch checkout. Local state is ignored by git and intentionally is
+    /// not copied into that checkout.
+    pub(crate) fn inherit_local_tools(&mut self, source: &Self) {
+        self.local_foragers.clone_from(&source.local_foragers);
+        self.local_tools_dir.clone_from(&source.local_tools_dir);
+    }
+
+    /// Dispatched/reproducible runs never honor machine-local overrides, even
+    /// if a local state file was accidentally committed.
+    pub(crate) fn clear_local_tools(&mut self) {
+        self.local_foragers.clear();
     }
 
     /// Path of the forager binary pinned in `wezel.lock` for the current
     /// target, or `None` if that version isn't installed.
     pub fn resolve_plugin(&self, forager: &str) -> Option<PathBuf> {
+        if let Some(expected) = self.local_foragers.get(forager) {
+            let link = self.local_executor_path(forager)?;
+            let target = std::fs::read_link(&link).ok()?;
+            let target = if target.is_absolute() {
+                target
+            } else {
+                link.parent()?.join(target)
+            };
+            if target.canonicalize().ok()? == expected.canonicalize().ok()? && target.is_file() {
+                return Some(link);
+            }
+            return None;
+        }
+
         let sha = self.locked_sha(forager)?;
         let link = self.executor_path(forager)?;
         let target = std::fs::read_link(&link).ok()?;
@@ -62,6 +107,29 @@ impl Workspace {
         is_valid_tool_name(name).then(|| self.project_dir.join(".wezel").join("tools").join(name))
     }
 
+    /// Ignored project-local alias used for an explicit development override.
+    pub fn local_executor_path(&self, name: &str) -> Option<PathBuf> {
+        is_valid_tool_name(name).then(|| self.local_tools_dir.join(name))
+    }
+
+    pub fn has_local_tool(&self, name: &str) -> bool {
+        self.local_foragers.contains_key(name)
+    }
+
+    pub fn local_tool_path(&self, name: &str) -> Option<&Path> {
+        self.local_foragers.get(name).map(PathBuf::as_path)
+    }
+
+    pub fn tool_names(&self) -> BTreeSet<String> {
+        self.config
+            .tools
+            .foragers
+            .keys()
+            .chain(self.local_foragers.keys())
+            .cloned()
+            .collect()
+    }
+
     pub fn install_dir(&self, sha_hex: &str) -> PathBuf {
         self.tool_store.join(sha_hex)
     }
@@ -83,6 +151,29 @@ impl Workspace {
             .join(".wezel")
             .join("tools"))
     }
+}
+
+fn load_local_foragers(project_dir: &Path) -> Result<BTreeMap<String, PathBuf>> {
+    let path = project_dir.join(".wezel").join("tools.local.toml");
+    if !path.is_file() {
+        return Ok(BTreeMap::new());
+    }
+    let raw =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let local: LocalToolsConfig =
+        toml::from_str(&raw).with_context(|| format!("parsing {}", path.display()))?;
+    for (name, executable) in &local.foragers {
+        if !is_valid_tool_name(name) {
+            bail!("invalid local tool name `{name}` in {}", path.display());
+        }
+        if !executable.is_absolute() {
+            bail!(
+                "local tool `{name}` in {} must use an absolute executable path",
+                path.display()
+            );
+        }
+    }
+    Ok(local.foragers)
 }
 
 pub fn is_valid_tool_name(name: &str) -> bool {

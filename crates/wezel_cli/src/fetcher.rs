@@ -377,6 +377,21 @@ fn link_executor(workspace: &Workspace, name: &str, binary: &Path) -> Result<Pat
     let link = workspace.executor_path(name).ok_or_else(|| {
         FetchError::Other(anyhow::anyhow!("invalid project executor name `{name}`"))
     })?;
+    link_executor_at(&link, name, binary)
+}
+
+pub(crate) fn link_local_executor(
+    workspace: &Workspace,
+    name: &str,
+    binary: &Path,
+) -> Result<PathBuf, FetchError> {
+    let link = workspace.local_executor_path(name).ok_or_else(|| {
+        FetchError::Other(anyhow::anyhow!("invalid project executor name `{name}`"))
+    })?;
+    link_executor_at(&link, name, binary)
+}
+
+fn link_executor_at(link: &Path, name: &str, binary: &Path) -> Result<PathBuf, FetchError> {
     let parent = link
         .parent()
         .ok_or_else(|| FetchError::Other(anyhow::anyhow!("executor path has no parent")))?;
@@ -396,17 +411,20 @@ fn link_executor(workspace: &Workspace, name: &str, binary: &Path) -> Result<Pat
     if std::fs::symlink_metadata(&link).is_ok() {
         std::fs::remove_file(&link).map_err(|e| FetchError::Other(e.into()))?;
     }
-    if let Err(error) = std::fs::rename(&temporary, &link) {
+    if let Err(error) = std::fs::rename(&temporary, link) {
         let _ = std::fs::remove_file(&temporary);
         return Err(FetchError::Other(error.into()));
     }
-    Ok(link)
+    Ok(link.to_path_buf())
 }
 
 /// Run `<binary> --schema` once at install time and write the JSON to the
 /// project-local schema sidecar. The project alias replaces the publisher's
 /// schema name so one global binary can have different names across projects.
-fn write_schema_sidecar(forager_name: &str, binary: &std::path::Path) -> Result<(), FetchError> {
+pub(crate) fn read_schema(
+    forager_name: &str,
+    binary: &std::path::Path,
+) -> Result<wezel_types::ForagerSchema, FetchError> {
     let out = std::process::Command::new(binary)
         .arg("--schema")
         .output()
@@ -426,6 +444,14 @@ fn write_schema_sidecar(forager_name: &str, binary: &std::path::Path) -> Result<
             ))
         })?;
     parsed.name = forager_name.to_string();
+    Ok(parsed)
+}
+
+pub(crate) fn write_schema_sidecar(
+    forager_name: &str,
+    binary: &std::path::Path,
+) -> Result<(), FetchError> {
+    let parsed = read_schema(forager_name, binary)?;
     let schema_path = Workspace::schema_sidecar_path(binary);
     let body = serde_json::to_vec_pretty(&parsed).map_err(|e| FetchError::Other(e.into()))?;
     std::fs::write(&schema_path, body).map_err(|e| {

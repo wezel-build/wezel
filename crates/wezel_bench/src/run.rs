@@ -9,7 +9,7 @@ use wezel_types::{ExperimentRunStep, ExperimentRunStepExecution, RunReportAttach
 
 use crate::git;
 use crate::workspace::{Scratch, Snapshot};
-use crate::{ExperimentToml, ProjectConfig, Workspace, fetch, invoke_forager, parse_experiment};
+use crate::{ExperimentToml, Workspace, fetch, invoke_forager, parse_experiment};
 
 /// One entry in the up-front plan handed to a `RunReporter` so it can size
 /// progress UI before any step actually starts.
@@ -357,6 +357,7 @@ pub fn run_experiment(
         scratch,
         &commit_sha,
         &workspace.tool_store,
+        Some(workspace),
         fetcher,
         reporter,
     )
@@ -380,7 +381,15 @@ pub fn run_experiment_at(
 ) -> Result<CompletedRun> {
     git::ensure_commit(repo_src, sha)?;
     let scratch = Scratch::create(repo_src, sha)?;
-    run_in_scratch(experiment_name, scratch, sha, tool_store, fetcher, reporter)
+    run_in_scratch(
+        experiment_name,
+        scratch,
+        sha,
+        tool_store,
+        None,
+        fetcher,
+        reporter,
+    )
 }
 
 struct CollectedExecutionAttachments {
@@ -526,16 +535,18 @@ fn run_in_scratch(
     scratch: Scratch,
     commit_sha: &str,
     tool_store: &Path,
+    local_tools: Option<&Workspace>,
     mut fetcher: Option<&mut (dyn fetch::PluginFetcher + '_)>,
     reporter: Option<&dyn RunReporter>,
 ) -> Result<CompletedRun> {
     log::debug!("scratch checkout at {}", scratch.path().display());
     let project_dir = scratch.project_dir();
-    let scratch_workspace = Workspace {
-        project_dir: project_dir.clone(),
-        tool_store: tool_store.to_path_buf(),
-        config: ProjectConfig::load(&project_dir)?,
-    };
+    let mut scratch_workspace = Workspace::discover(project_dir.clone(), tool_store.to_path_buf())?;
+    if let Some(source) = local_tools {
+        scratch_workspace.inherit_local_tools(source);
+    } else {
+        scratch_workspace.clear_local_tools();
+    }
 
     let experiment_dir = scratch_workspace
         .project_dir
@@ -845,15 +856,14 @@ mod tests {
     }
 
     fn workspace_at(project_dir: &Path) -> Workspace {
-        Workspace {
-            project_dir: project_dir.to_path_buf(),
-            tool_store: project_dir.join("tools"),
-            config: ProjectConfig {
-                project_id: uuid::Uuid::nil(),
-                name: "test".into(),
-                tools: Default::default(),
-            },
-        }
+        let wezel_dir = project_dir.join(".wezel");
+        std::fs::create_dir_all(&wezel_dir).unwrap();
+        std::fs::write(
+            wezel_dir.join("config.toml"),
+            format!("project_id = \"{}\"\nname = \"test\"\n", uuid::Uuid::nil()),
+        )
+        .unwrap();
+        Workspace::discover(project_dir.to_path_buf(), project_dir.join("tools")).unwrap()
     }
 
     #[test]

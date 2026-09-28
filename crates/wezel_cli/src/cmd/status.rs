@@ -25,17 +25,38 @@ pub fn status_cmd(project_dir: &Path) -> Result<()> {
 
     let lock = lockfile::load(&ws.project_dir)?;
     let lockfile_present = lockfile::path(&ws.project_dir).is_file();
+    let foragers = ws.tool_names();
 
     println!();
     println!(
         "{}",
-        style::strong(format!("foragers ({}):", ws.config.tools.foragers.len()))
+        style::strong(format!("foragers ({}):", foragers.len()))
     );
-    if ws.config.tools.foragers.is_empty() {
-        println!("  {}", style::muted("(none declared in [tools.foragers])"));
+    if foragers.is_empty() {
+        println!("  {}", style::muted("(none declared or linked locally)"));
     }
-    for (name, source) in &ws.config.tools.foragers {
+    for name in &foragers {
         let installed = ws.resolve_plugin(name).is_some();
+        if let Some(path) = ws.local_tool_path(name) {
+            let mark = if installed {
+                style::success("✓")
+            } else {
+                style::failure("✗")
+            };
+            let published = if ws.config.tools.foragers.contains_key(name) {
+                "; overrides published source"
+            } else {
+                ""
+            };
+            println!(
+                "  {mark} {} (local: {}{})",
+                style::strong(format!("{name:<12}")),
+                style::muted(path.display()),
+                style::muted(published)
+            );
+            continue;
+        }
+        let source = &ws.config.tools.foragers[name];
         let locked = lock.tools.foragers.get(name);
         let mark = if installed {
             style::success("✓")
@@ -72,7 +93,13 @@ pub fn status_cmd(project_dir: &Path) -> Result<()> {
 
     println!();
     if lockfile_present {
-        let declared: std::collections::BTreeSet<_> = ws.config.tools.foragers.keys().collect();
+        let declared: std::collections::BTreeSet<_> = ws
+            .config
+            .tools
+            .foragers
+            .keys()
+            .filter(|name| !ws.has_local_tool(name))
+            .collect();
         let locked_set: std::collections::BTreeSet<_> = lock.tools.foragers.keys().collect();
         let missing: Vec<_> = declared.difference(&locked_set).collect();
         if missing.is_empty() {
@@ -95,10 +122,16 @@ pub fn status_cmd(project_dir: &Path) -> Result<()> {
                 style::failure(status)
             );
         }
-    } else if ws.config.tools.foragers.is_empty() {
+    } else if ws
+        .config
+        .tools
+        .foragers
+        .keys()
+        .all(|name| ws.has_local_tool(name))
+    {
         println!(
             "lockfile: {}",
-            style::muted("(no wezel.lock — no foragers declared)")
+            style::muted("(not required by active local tools)")
         );
     } else {
         println!(
@@ -108,7 +141,7 @@ pub fn status_cmd(project_dir: &Path) -> Result<()> {
         );
     }
 
-    if ws.config.tools.foragers.is_empty() {
+    if foragers.is_empty() {
         println!("schema:   {}", style::muted("(n/a — no foragers declared)"));
     } else if lint::bundle_is_stale(&ws) {
         println!(
