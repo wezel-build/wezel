@@ -2,13 +2,13 @@ version = 1
 
 [tools.foragers.cargo]
 github = "wezel-build/wezel_cargo"
-tag = "nightly-2026-07-17-a5d2720"
+tag = "nightly-2026-10-05-e1202ed"
 
 [tools.foragers.cargo.assets]
-aarch64-apple-darwin = "sha256:71b9c58e1907cbd25a12093218dc41f2c1b03cd9a0400cab66c548039432c14b"
-aarch64-unknown-linux-gnu = "sha256:d7e29c3f03488f5dcee51f4f3f76ee359e812d731d61177264c22bff9ffda0e8"
-x86_64-apple-darwin = "sha256:6368d9b7181d06f378db0218aad41ea090763715e657cf46fa10df4e2fe2e28d"
-x86_64-unknown-linux-gnu = "sha256:28c3563228537c4ee57750b2609523b3bff974a766d05d3ae3c27ada3c3a734b"
+aarch64-apple-darwin = "sha256:858002167fd0c5bd8bf3b2ee35db1e8db8fe7c2a9bd367fbd76844930380c175"
+aarch64-unknown-linux-gnu = "sha256:38b341d874950649a357af4a80d4392254f8a7fd913e73befa2deb4378a30bfa"
+x86_64-apple-darwin = "sha256:39ead99e939e5403607b927c7f55d6d4ccf4be8c93feb84df7dece3d6cad5c54"
+x86_64-unknown-linux-gnu = "sha256:a1c6fe467ef9dcf4908f63dab07ff11beef3c1f577a429d995a9926327de9613"
 
 [tools.foragers.exec]
 github = "wezel-build/wezel_exec"
